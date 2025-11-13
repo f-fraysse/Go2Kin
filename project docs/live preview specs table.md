@@ -1,0 +1,13 @@
+| **Feature**             | **Wi-Fi – ViewFinder Preview**  | **Wi-Fi – LiveStream**                         | **USB – ViewFinder Preview** | **USB – Webcam Preview**     | **USB – Webcam**             |
+| ----------------------- | ------------------------------- | ---------------------------------------------- | ---------------------------- | ---------------------------- | ---------------------------- |
+| **Orientation**         | Floating or Fixed               | Landscape facing up                            | Floating or Fixed            | Landscape: Floating or Fixed | Landscape: Floating or Fixed |
+| **Streaming Protocols** | UDP (MPEG-TS)                   | RTMP, UDP (MPEG-TS)                            | UDP (MPEG-TS)                | UDP (MPEG-TS), RTSP          | UDP (MPEG-TS), RTSP          |
+| **Connection Protocol** | Wi-Fi – AP Mode                 | Wi-Fi – STA Mode                               | NCM                          | NCM                          | NCM                          |
+| **Resolution**          | 480p, 720p                      | 480p, 720p, 1080p                              | 480p, 720p                   | 720p, 1080p                  | 720p, 1080p                  |
+| **Frame Rate**          | 30 fps                          | 30 fps                                         | 30 fps                       | 30 fps                       | 30 fps                       |
+| **Bitrate**             | 2.5–4 Mbps (model-dependent)    | 0.8–8 Mbps (configurable)                      | 2.5–4 Mbps (model-dependent) | 6 Mbps                       | 6 Mbps                       |
+| **Stabilization**       | Basic Stabilization             | HyperSmooth or none                            | Basic Stabilization          | None                         | None                         |
+| **Image Quality**       | Basic                           | Same as recorded content                       | Basic                        | Basic                        | Same as recorded content     |
+| **Minimum Latency**     | ~210 ms                         | >100 ms (unstabilized), >1,100 ms (stabilized) | ~210 ms                      | ~210 ms                      | ~210 ms                      |
+| **Audio**               | None                            | Stereo                                         | None                         | None                         | None                         |
+| **Max Stream Time**     | ~150 min (720p, Enduro battery) | ~85 min (720p, Enduro battery)                 | Unlimited (USB power)        | Unlimited (USB power)        | Unlimited (USB power)        |
