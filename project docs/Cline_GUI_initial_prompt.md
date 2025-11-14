@@ -132,6 +132,15 @@ Here is a draft plan for flow, please check against API specs that the plan is s
 5.	Progress list showing each camera’s download status. Once downloads finish, optionally display a summary list of the saved files and expose a “Open Folder” button.
 6. delete all media from cameras (i believe there is API function for this although I have not tested. See GPCAMERA_DELETE_ALL_FILES_ID in API specs)
 
+## 6. Implementation plan
 
+First we want to make a very simple script, similar in structure to /code/goproUSB/examples/goproRecordVideo_threeCameras.py, to test the lve preview functionality
+- start live preview on camera 1 (SNcam1 = 'C3501326042700')
+- capture live stream with openCV and display live feed in a window
+
+Once we confirm this works, we will implement the GUI:
+- first tab 1
+- then tab 3 (record)
+- then tab 2 (live preview)
 
 
