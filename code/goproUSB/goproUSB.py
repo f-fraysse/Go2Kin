@@ -176,6 +176,25 @@ class GPcam:
         response = requests.get(url)
         return response
     #*******************************************
+    #Preview Stream Control
+    #*******************************************
+    def previewStreamStart(self, port=8554):
+        url = self.base_url + '/gopro/camera/stream/start'
+        querystring = {"port": str(port)}
+        response = requests.get(url, params=querystring)
+        return response
+    def previewStreamStop(self):
+        url = self.base_url + '/gopro/camera/stream/stop'
+        response = requests.get(url)
+        return response
+    #*******************************************
+    #Media Management
+    #*******************************************
+    def deleteAllFiles(self):
+        url = self.base_url + '/gp/gpControl/command/storage/delete/all'
+        response = requests.get(url)
+        return response
+    #*******************************************
     #Lenses settings
     #*******************************************
     def setPhotoLensesNarrow(self):
@@ -420,6 +439,3 @@ class GPcam:
                 for chunk in request.iter_content(chunk_size=8192):
                     f.write(chunk)
         return True
-        
-
-
