@@ -55,7 +55,11 @@
 ### Phase 3: GUI Implementation (COMPLETED)
 - [x] **Tab 1 - Camera Settings**: 4-camera grid, status indicators, configuration UI
 - [x] **Tab 3 - Recording**: Multi-camera recording workflow with progress tracking
-- [x] **Tab 2 - Live Preview**: UI placeholder for future streaming integration
+- [x] **Tab 2 - Live Preview**: FULLY INTEGRATED ✅
+  - [x] Live preview stream integrated into Preview GUI tab
+  - [x] OpenCV optimizations applied from Go2Rep reference
+  - [x] Threaded video capture implemented for GUI responsiveness
+  - [x] Optimized cv2.VideoCapture settings for reduced delay
 - [x] JSON configuration persistence
 - [x] Error handling and user feedback
 - [x] Multi-threaded operations with proper file organization
@@ -110,20 +114,22 @@
 ✅ **Digital Zoom Implementation**: Full zoom control during live streaming
 
 ### In Progress
-🔄 **Phase 5 GUI Integration**: Integrating live preview functionality into existing GUI Preview tab
+🔄 **Phase 5 GUI Enhancement**: Adding zoom and ISO controls to integrated live preview
 
 ### Pending
-⏳ **GUI Live Preview Integration**: Replace placeholder with working video display
+⏳ **Zoom Controls Integration**: Add zoom slider and buttons to Preview tab GUI
+⏳ **ISO/Exposure Controls**: Implement exposure controls during streaming
+⏳ **GUI Layout Improvements**: Optimize Preview tab sizing and organization
 ⏳ **Final Testing**: Complete system validation with all 4 cameras
 ⏳ **User Documentation**: Create user guide for research team
 
 ## Known Issues
 
 ### Current Limitations
-- **GUI Live Preview**: Preview tab currently has placeholder UI (working functionality exists separately)
 - **Stream Latency**: 0.5-1s delay in live preview (acceptable for research use)
 - **Single Camera Preview**: Only one camera preview at a time (by design)
 - **Manual Configuration**: Some settings require manual JSON editing
+- **Missing GUI Controls**: Zoom and ISO controls not yet integrated into Preview tab
 
 ### Potential Risks
 - **OpenCV Compatibility**: May not handle GoPro's specific stream format

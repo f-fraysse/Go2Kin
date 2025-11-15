@@ -27,7 +27,11 @@ Implementing Go2Kin multi-camera GoPro control GUI following the established 4-p
 **Phase 3 Complete - GUI Implementation:**
 - ✅ Tab 1: Camera Settings (4-camera grid, status indicators, configuration UI)
 - ✅ Tab 3: Recording (complete multi-camera recording workflow)
-- ✅ Tab 2: Live Preview (UI placeholder with clear explanation and future framework)
+- ✅ Tab 2: Live Preview - FULLY INTEGRATED ✅
+  - ✅ Live preview stream integrated into Preview GUI tab
+  - ✅ OpenCV optimizations applied from Go2Rep reference
+  - ✅ Threaded video capture implemented for GUI responsiveness
+  - ✅ Optimized cv2.VideoCapture settings for reduced delay
 - ✅ JSON configuration persistence
 - ✅ Real-time status monitoring
 - ✅ Multi-threaded operations with progress tracking
@@ -78,14 +82,19 @@ Complete multi-camera recording system ready for production use. Trial name work
 - Captured all requirements, architecture, and technical constraints
 - User clarified future exploration of multi-preview and preview-while-recording
 
-### Live Stream Processing Strategy - IMPLEMENTED ✅
-**OpenCV Direct Capture**: `cv2.VideoCapture('udp://0.0.0.0:8554')` works 
-- OpenCV successfully handles GoPro H.264 UDP stream without additional configuration
-- Stable video display with frame counter overlay
-- Automatic reconnection capability on stream failure
-- No need for FFmpeg integration - OpenCV handles it natively
-- large delay (approximately 1 second)
-- need to test zoom (need to implement in goproUSB class)
+### Live Stream Processing Strategy - FULLY IMPLEMENTED ✅
+**OpenCV Direct Capture with Go2Rep Optimizations**: 
+- ✅ OpenCV successfully handles GoPro H.264 UDP stream with optimized settings
+- ✅ Applied cv2.VideoCapture optimizations from Go2Rep reference implementation
+- ✅ Threaded video capture implemented for improved GUI responsiveness
+- ✅ Stable video display with frame counter overlay
+- ✅ Automatic reconnection capability on stream failure
+- ✅ Reduced delay through buffer optimization and threading
+- ✅ No FFmpeg dependency required - OpenCV handles it natively
+
+**Reference Scripts Created**:
+- ✅ `opencv_live_preview_optimized.py` - Standalone demo of optimized live preview setup
+- ✅ `opencv_settings_test.py` - Demonstrates zoom control during live preview streaming
 
 ### Real-Time Camera Settings Control - FULLY IMPLEMENTED ✅
 **Settings That Work During Streaming**:
@@ -112,51 +121,43 @@ Complete multi-camera recording system ready for production use. Trial name work
 
 ## Next Steps
 
-### Immediate Priority: GUI Integration (Phase 5)
-**Objective**: Integrate working live preview and zoom functionality into existing GUI Preview tab
+### Current Priority: Live Preview Enhancement (Phase 5)
+**Status**: Live preview GUI integration COMPLETE ✅ - Now focusing on control enhancements
 
-1. **Replace Preview Tab Placeholder** with functional OpenCV video display
-   - Remove current placeholder UI elements
-   - Add tkinter Canvas for video frame display
-   - Implement frame update loop with threading
+**Immediate Next Steps**:
 
-2. **Add Zoom Controls to GUI**
-   - Zoom slider widget (0-100% range)
-   - Zoom +/- buttons for precise control
-   - Current zoom level display
-   - Integration with existing camera settings
+1. **Add Zoom Controls to Live Preview GUI**
+   - Integrate zoom slider widget (0-100% range) into Preview tab
+   - Add zoom +/- buttons for precise control
+   - Display current zoom level indicator
+   - Use `opencv_settings_test.py` as reference implementation
 
-3. **Integrate Camera Settings Control**
-   - Connect Tab 1 camera settings to live preview
-   - Real-time lens mode changes during streaming
-   - FPS control integration
-   - Settings synchronization between tabs
+2. **Add ISO/Exposure Controls to Live Preview**
+   - Implement "Liveview Exposure Select Mode" controls found in API specs
+   - Add ISO lock functionality during streaming
+   - Exposure compensation controls
+   - Auto/manual exposure mode switching
 
-4. **Handle Threading for GUI Responsiveness**
-   - Background thread for OpenCV video capture
-   - Thread-safe GUI updates for video frames
-   - Proper cleanup on preview stop/camera disconnect
-   - Error handling for stream failures
-
-5. **Add Stream Status Indicators**
-   - Connection status (connected/streaming/disconnected)
-   - Stream quality indicators (frame rate, resolution)
-   - Error messages for troubleshooting
-   - Recording indicator when preview active during recording
+3. **GUI Sizing and Layout Improvements**
+   - Optimize Preview tab layout for better video display
+   - Improve control panel organization
+   - Better responsive design for different screen sizes
+   - Enhanced visual feedback for control states
 
 ### Technical Implementation Details
-- **Video Display**: tkinter Canvas with PIL Image conversion
-- **Frame Threading**: Queue-based frame passing between capture and display threads  
-- **Zoom Integration**: Direct calls to goproUSB zoom methods from GUI controls
-- **Settings Sync**: Shared camera state between Settings and Preview tabs
-- **Error Recovery**: Automatic reconnection and graceful failure handling
+- **Zoom Integration**: Direct calls to existing goproUSB zoom methods from GUI controls
+- **ISO Controls**: Implement GoPro API setting ID 65 (Liveview Exposure Select Mode)
+- **Settings Sync**: Real-time synchronization between Preview controls and camera state
+- **Layout Optimization**: Improved tkinter geometry management for better UX
 
-### Success Criteria
-- ✅ Live video preview displays in GUI Preview tab
-- ✅ Zoom controls work smoothly during streaming
-- ✅ Camera settings changes reflect immediately in preview
-- ✅ GUI remains responsive during streaming operations
-- ✅ Clean startup/shutdown without threading issues
+### Success Criteria (Updated)
+- ✅ Live video preview displays in GUI Preview tab (COMPLETE)
+- ✅ Threaded video capture with GUI responsiveness (COMPLETE)
+- ✅ OpenCV optimizations applied for reduced delay (COMPLETE)
+- [ ] Zoom controls integrated into Preview tab GUI
+- [ ] ISO/exposure controls functional during streaming
+- [ ] Improved GUI layout and sizing
+- [ ] Clean control state management and visual feedback
 
 ## Active Decisions and Considerations
 

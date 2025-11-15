@@ -10,13 +10,100 @@ from tkinter import ttk, filedialog, messagebox
 import json
 import threading
 import time
+import queue
+import cv2
 from pathlib import Path
 from datetime import datetime
 import concurrent.futures
+from PIL import Image, ImageTk
 
 # Add goproUSB to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'goproUSB'))
 from goproUSB import GPcam
+
+class LivePreviewCapture:
+    """Simplified video capture class for live preview with threading optimization"""
+    
+    def __init__(self, stream_url):
+        self.stream_url = stream_url
+        self.cap = None
+        self.running = False
+        self.frame_queue = queue.Queue(maxsize=2)  # Small queue to prevent buildup
+        self.capture_thread = None
+        
+    def start_capture(self):
+        """Start the optimized video capture with threading"""
+        if self.running:
+            return False
+            
+        # Create optimized VideoCapture
+        self.cap = cv2.VideoCapture()
+        
+        # Pre-configure properties for low latency
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimal buffer
+        self.cap.set(cv2.CAP_PROP_FPS, 30)        # Match camera FPS
+        
+        # Open with optimized FFmpeg parameters
+        stream_params = "?overrun_nonfatal=1&fifo_size=1000000&fflags=nobuffer&flags=low_delay"
+        success = self.cap.open(self.stream_url + stream_params, cv2.CAP_FFMPEG)
+        
+        if not success:
+            # Fallback to original parameters
+            stream_params = "?overrun_nonfatal=1&fifo_size=50000000"
+            success = self.cap.open(self.stream_url + stream_params, cv2.CAP_FFMPEG)
+        
+        if success:
+            self.running = True
+            self.capture_thread = threading.Thread(target=self._capture_frames, daemon=True)
+            self.capture_thread.start()
+            return True
+        else:
+            if self.cap:
+                self.cap.release()
+                self.cap = None
+            return False
+    
+    def _capture_frames(self):
+        """Background thread for continuous frame capture"""
+        while self.running and self.cap and self.cap.isOpened():
+            ret, frame = self.cap.read()
+            if ret:
+                # Drop old frames if queue is full (prevents buildup)
+                if self.frame_queue.full():
+                    try:
+                        self.frame_queue.get_nowait()
+                    except queue.Empty:
+                        pass
+                
+                try:
+                    self.frame_queue.put_nowait(frame)
+                except queue.Full:
+                    pass  # Drop frame if queue is full
+            else:
+                time.sleep(0.001)  # Brief pause on read failure
+    
+    def get_latest_frame(self):
+        """Get the latest frame for display (BGR format)"""
+        try:
+            return self.frame_queue.get_nowait()
+        except queue.Empty:
+            return None
+    
+    def stop_capture(self):
+        """Stop the video capture and cleanup"""
+        self.running = False
+        if self.capture_thread:
+            self.capture_thread.join(timeout=1.0)
+        if self.cap:
+            self.cap.release()
+            self.cap = None
+        
+        # Clear remaining frames
+        while not self.frame_queue.empty():
+            try:
+                self.frame_queue.get_nowait()
+            except queue.Empty:
+                break
 
 class Go2KinMainWindow:
     def __init__(self, root):
@@ -36,6 +123,12 @@ class Go2KinMainWindow:
         self.recording = False
         self.recording_thread = None
         self.start_time = None
+        
+        # Live preview state
+        self.preview_active = False
+        self.preview_capture = None
+        self.preview_camera_num = None
+        self.preview_update_job = None
         
         # Create GUI
         self.create_widgets()
@@ -158,14 +251,14 @@ class Go2KinMainWindow:
         serial_entry.pack(side=tk.RIGHT)
         frame.serial_var = serial_var
         
-        # Lens setting
+        # Lens setting (fixed to Linear)
         lens_frame = ttk.Frame(frame)
         lens_frame.pack(fill=tk.X, pady=3)
         ttk.Label(lens_frame, text="Lens:", width=10).pack(side=tk.LEFT)
-        lens_var = tk.StringVar()
+        lens_var = tk.StringVar(value="Linear")
         lens_combo = ttk.Combobox(lens_frame, textvariable=lens_var, 
-                                 values=["Narrow", "Linear", "Wide", "SuperView"], 
-                                 state="readonly", width=15)
+                                 values=["Linear"], 
+                                 state="disabled", width=15)
         lens_combo.pack(side=tk.RIGHT)
         frame.lens_var = lens_var
         
@@ -209,54 +302,60 @@ class Go2KinMainWindow:
         return frame
     
     def create_live_preview_tab(self):
-        """Create the live preview tab (placeholder)"""
+        """Create the functional live preview tab"""
         self.preview_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.preview_frame, text="Live Preview")
         
-        # Placeholder content
-        placeholder_frame = ttk.Frame(self.preview_frame)
-        placeholder_frame.pack(expand=True, fill=tk.BOTH)
-        
-        title_label = ttk.Label(placeholder_frame, text="Live Preview", 
+        # Title
+        title_label = ttk.Label(self.preview_frame, text="Live Preview", 
                                font=("Arial", 16, "bold"))
-        title_label.pack(pady=30)
+        title_label.pack(pady=15)
         
-        info_label = ttk.Label(placeholder_frame, 
-                              text="Live preview functionality is currently unavailable\n"
-                                   "due to network firewall constraints.\n\n"
-                                   "Camera streaming has been confirmed (3.6 Mbps data flow),\n"
-                                   "but UDP port access is blocked by corporate firewall.\n\n"
-                                   "This feature will be implemented when\n"
-                                   "streaming connectivity is resolved.",
-                              justify=tk.CENTER,
-                              font=("Arial", 11))
-        info_label.pack(pady=20)
+        # Control panel
+        control_frame = ttk.LabelFrame(self.preview_frame, text="Preview Controls", padding=15)
+        control_frame.pack(fill=tk.X, padx=20, pady=10)
         
-        # Camera selector (for future use)
-        selector_frame = ttk.Frame(placeholder_frame)
-        selector_frame.pack(pady=30)
+        # Camera selector
+        selector_frame = ttk.Frame(control_frame)
+        selector_frame.pack(fill=tk.X, pady=5)
         
         ttk.Label(selector_frame, text="Camera:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=(0, 10))
-        self.preview_camera_var = tk.StringVar(value="GoPro 1")
-        preview_combo = ttk.Combobox(selector_frame, textvariable=self.preview_camera_var,
-                                   values=["GoPro 1", "GoPro 2", "GoPro 3", "GoPro 4"],
-                                   state="readonly", width=12)
-        preview_combo.pack(side=tk.LEFT, padx=(0, 15))
+        self.preview_camera_var = tk.StringVar()
+        self.preview_combo = ttk.Combobox(selector_frame, textvariable=self.preview_camera_var,
+                                         state="readonly", width=15)
+        self.preview_combo.pack(side=tk.LEFT, padx=(0, 20))
         
-        start_preview_btn = ttk.Button(selector_frame, text="▶ Start Preview", state="disabled")
-        start_preview_btn.pack(side=tk.LEFT, padx=(0, 8))
+        # Preview buttons
+        self.start_preview_btn = ttk.Button(selector_frame, text="▶ Start Preview", 
+                                          command=self.start_preview)
+        self.start_preview_btn.pack(side=tk.LEFT, padx=(0, 8))
         
-        stop_preview_btn = ttk.Button(selector_frame, text="⏹ Stop Preview", state="disabled")
-        stop_preview_btn.pack(side=tk.LEFT)
+        self.stop_preview_btn = ttk.Button(selector_frame, text="⏹ Stop Preview", 
+                                         command=self.stop_preview, state="disabled")
+        self.stop_preview_btn.pack(side=tk.LEFT)
         
-        # Placeholder video area
-        video_frame = ttk.LabelFrame(placeholder_frame, text="Video Display", padding=20)
-        video_frame.pack(fill=tk.BOTH, expand=True, padx=40, pady=20)
+        # Status indicator
+        status_frame = ttk.Frame(control_frame)
+        status_frame.pack(fill=tk.X, pady=(10, 0))
         
-        video_placeholder = tk.Label(video_frame, text="Preview video will appear here\nwhen streaming is available",
-                                    bg="black", fg="white", font=("Arial", 12),
-                                    width=60, height=20)
-        video_placeholder.pack(expand=True, fill=tk.BOTH)
+        ttk.Label(status_frame, text="Status:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
+        self.preview_status_var = tk.StringVar(value="Ready")
+        status_label = ttk.Label(status_frame, textvariable=self.preview_status_var, 
+                               font=("Arial", 10))
+        status_label.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Video display area
+        video_frame = ttk.LabelFrame(self.preview_frame, text="Video Display", padding=10)
+        video_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        # Video label for displaying frames
+        self.video_label = tk.Label(video_frame, text="Select a connected camera and click Start Preview",
+                                   bg="black", fg="white", font=("Arial", 14),
+                                   width=80, height=30)
+        self.video_label.pack(expand=True, fill=tk.BOTH)
+        
+        # Update camera dropdown initially
+        self.update_preview_camera_dropdown()
     
     def create_recording_tab(self):
         """Create the recording tab"""
@@ -425,6 +524,170 @@ class Go2KinMainWindow:
         color = "green" if connected else "red"
         outline_color = "darkgreen" if connected else "darkred"
         panel.status_canvas.itemconfig(panel.status_circle, fill=color, outline=outline_color)
+        
+        # Update preview camera dropdown when camera status changes
+        self.update_preview_camera_dropdown()
+    
+    def update_preview_camera_dropdown(self):
+        """Update the preview camera dropdown to show only connected cameras"""
+        connected_cameras = []
+        for camera_num in range(1, 5):
+            if camera_num in self.cameras and self.camera_status.get(camera_num, False):
+                connected_cameras.append(f"GoPro {camera_num}")
+        
+        # Update dropdown values
+        self.preview_combo['values'] = connected_cameras
+        
+        # Set default selection if cameras are available
+        if connected_cameras:
+            if not self.preview_camera_var.get() or self.preview_camera_var.get() not in connected_cameras:
+                self.preview_camera_var.set(connected_cameras[0])
+            self.start_preview_btn.config(state="normal")
+        else:
+            self.preview_camera_var.set("")
+            self.start_preview_btn.config(state="disabled")
+            self.preview_status_var.set("No cameras connected")
+    
+    def start_preview(self):
+        """Start live preview for the selected camera"""
+        if self.preview_active:
+            return
+        
+        # Get selected camera
+        selected_camera = self.preview_camera_var.get()
+        if not selected_camera:
+            messagebox.showerror("Error", "Please select a camera for preview")
+            return
+        
+        # Extract camera number
+        camera_num = int(selected_camera.split()[-1])
+        
+        if camera_num not in self.cameras or not self.camera_status.get(camera_num, False):
+            messagebox.showerror("Error", f"GoPro {camera_num} is not connected")
+            return
+        
+        try:
+            self.preview_status_var.set("Starting preview...")
+            camera = self.cameras[camera_num]
+            
+            # Apply fixed preview settings (Linear lens, 1080p, 30fps)
+            camera.modeVideo()
+            camera.setVideoLensesLinear()  # Always Linear
+            camera.setVideoResolution1080()  # Always 1080p
+            camera.setFPS30()  # Always 30fps
+            
+            # Start UDP stream
+            response = camera.previewStreamStart(port=8554)
+            if response.status_code != 200:
+                raise Exception(f"Failed to start preview stream (status: {response.status_code})")
+            
+            # Wait for stream to initialize
+            time.sleep(2)
+            
+            # Create capture instance
+            stream_url = "udp://0.0.0.0:8554"
+            self.preview_capture = LivePreviewCapture(stream_url)
+            
+            if self.preview_capture.start_capture():
+                self.preview_active = True
+                self.preview_camera_num = camera_num
+                
+                # Update UI
+                self.start_preview_btn.config(state="disabled")
+                self.stop_preview_btn.config(state="normal")
+                self.preview_combo.config(state="disabled")  # Disable camera selection during preview
+                self.preview_status_var.set(f"Streaming from GoPro {camera_num}")
+                
+                # Start video display update loop
+                self.update_video_display()
+                
+            else:
+                raise Exception("Failed to start video capture")
+                
+        except Exception as e:
+            self.preview_status_var.set(f"Error: {e}")
+            messagebox.showerror("Preview Error", f"Failed to start preview:\n{e}")
+            self.cleanup_preview()
+    
+    def stop_preview(self):
+        """Stop live preview"""
+        if not self.preview_active:
+            return
+        
+        self.preview_status_var.set("Stopping preview...")
+        self.cleanup_preview()
+        self.preview_status_var.set("Ready")
+    
+    def cleanup_preview(self):
+        """Clean up preview resources"""
+        self.preview_active = False
+        
+        # Cancel video update job
+        if self.preview_update_job:
+            self.root.after_cancel(self.preview_update_job)
+            self.preview_update_job = None
+        
+        # Stop capture
+        if self.preview_capture:
+            self.preview_capture.stop_capture()
+            self.preview_capture = None
+        
+        # Stop camera stream
+        if self.preview_camera_num and self.preview_camera_num in self.cameras:
+            try:
+                camera = self.cameras[self.preview_camera_num]
+                camera.previewStreamStop()
+            except Exception as e:
+                print(f"Error stopping camera stream: {e}")
+        
+        self.preview_camera_num = None
+        
+        # Reset UI
+        self.start_preview_btn.config(state="normal")
+        self.stop_preview_btn.config(state="disabled")
+        self.preview_combo.config(state="readonly")  # Re-enable camera selection
+        
+        # Clear video display
+        self.video_label.config(image='', text="Select a connected camera and click Start Preview")
+        
+        # Update dropdown in case camera status changed
+        self.update_preview_camera_dropdown()
+    
+    def update_video_display(self):
+        """Update the video display with the latest frame"""
+        if not self.preview_active or not self.preview_capture:
+            return
+        
+        try:
+            # Get latest frame
+            frame = self.preview_capture.get_latest_frame()
+            
+            if frame is not None:
+                # Convert BGR to RGB (OpenCV uses BGR, tkinter expects RGB)
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                # Resize frame to fit display area (maintain aspect ratio)
+                display_height = 400  # Target height
+                height, width = frame_rgb.shape[:2]
+                aspect_ratio = width / height
+                display_width = int(display_height * aspect_ratio)
+                
+                frame_resized = cv2.resize(frame_rgb, (display_width, display_height))
+                
+                # Convert to PIL Image and then to ImageTk
+                pil_image = Image.fromarray(frame_resized)
+                photo = ImageTk.PhotoImage(pil_image)
+                
+                # Update label
+                self.video_label.config(image=photo, text="")
+                self.video_label.image = photo  # Keep a reference to prevent garbage collection
+            
+        except Exception as e:
+            print(f"Error updating video display: {e}")
+        
+        # Schedule next update (~30 FPS)
+        if self.preview_active:
+            self.preview_update_job = self.root.after(33, self.update_video_display)
     
     def start_status_monitoring(self):
         """Start background thread for status monitoring"""

@@ -1,0 +1,2 @@
+install gopro webcam (to get the drivers)
+Firewall: open UDP port 8554 (inbound) AND allow edge traversal
