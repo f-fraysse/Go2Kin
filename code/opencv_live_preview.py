@@ -86,7 +86,7 @@ def main():
         
         # Initialize OpenCV VideoCapture
         print(f"Connecting to stream: {STREAM_URL}")
-        cap = cv2.VideoCapture(STREAM_URL)
+        cap = cv2.VideoCapture(STREAM_URL, cv2.CAP_FFMPEG)
         
         if not cap.isOpened():
             print("ERROR: Could not open video stream with OpenCV")
