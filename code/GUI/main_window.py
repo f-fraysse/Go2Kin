@@ -390,7 +390,7 @@ class Go2KinMainWindow:
             # Test connection
             response = camera.USBenable()
             if response.status_code == 200:
-                time.sleep(1)
+                # time.sleep(1)
                 response = camera.keepAlive()
                 if response.status_code == 200:
                     self.cameras[camera_num] = camera
@@ -555,7 +555,7 @@ class Go2KinMainWindow:
         
         # Set video mode
         camera.modeVideo()
-        time.sleep(1)
+        # time.sleep(1)
         
         # Apply lens setting
         lens = panel.lens_var.get()
@@ -568,7 +568,7 @@ class Go2KinMainWindow:
         elif lens == "SuperView":
             camera.setVideoLensesSuperview()
         
-        time.sleep(0.5)
+        # time.sleep(0.5)
         
         # Apply resolution
         resolution = panel.res_var.get()
@@ -583,7 +583,7 @@ class Go2KinMainWindow:
         elif resolution == "5K":
             camera.setVideoResolution5k()
         
-        time.sleep(0.5)
+        # time.sleep(0.5)
         
         # Apply FPS
         fps = int(panel.fps_var.get())
@@ -602,7 +602,7 @@ class Go2KinMainWindow:
         elif fps == 240:
             camera.setFPS240()
         
-        time.sleep(1)
+        # time.sleep(1)
         
         # Start recording
         camera.shutterStart()

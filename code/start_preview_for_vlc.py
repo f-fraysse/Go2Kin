@@ -40,7 +40,7 @@ def main():
             print(f"ERROR: Failed to enable USB control (status: {response.status_code})")
             return
         print("✓ USB control enabled")
-        time.sleep(1)  # Wait between API calls
+        # time.sleep(1)  # Wait between API calls
         
         # Check camera status
         print("Checking camera status...")
@@ -49,7 +49,7 @@ def main():
             print(f"ERROR: Camera not responding (status: {response.status_code})")
             return
         print("✓ Camera responding")
-        time.sleep(1)  # Wait between API calls
+        # time.sleep(1)  # Wait between API calls
         
         # Set video mode
         print("Setting video mode...")
@@ -58,11 +58,11 @@ def main():
             print(f"WARNING: Video mode response: {response.status_code}")
         else:
             print("✓ Video mode set")
-        time.sleep(1)  # Wait between API calls
+        # time.sleep(1)  # Wait between API calls
         
         # Wait for camera to be ready
         print("Waiting for camera to be ready...")
-        time.sleep(2)
+        # time.sleep(2)
         
         # Start preview stream
         print(f"Starting preview stream on port {STREAM_PORT}...")
@@ -72,7 +72,7 @@ def main():
             return
         
         print("✓ Preview stream started successfully!")
-        time.sleep(1)  # Wait for stream to initialize
+        # time.sleep(1)  # Wait for stream to initialize
         print()
         print("=" * 60)
         print("STREAM IS NOW ACTIVE")
@@ -107,7 +107,7 @@ def main():
         except Exception as e:
             print(f"Error stopping stream: {e}")
         
-        time.sleep(1)  # Wait between API calls
+        # time.sleep(1)  # Wait between API calls
         
         # Disable USB control
         print("Disabling USB control...")
