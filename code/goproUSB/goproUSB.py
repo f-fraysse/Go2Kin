@@ -73,6 +73,42 @@ class GPcam:
         response = requests.get(url)
         return response
     #*******************************************
+    #Digital Zoom Control
+    #*******************************************
+    def setDigitalZoom(self, percent):
+        """Set digital zoom level (0-100%)"""
+        if not 0 <= percent <= 100:
+            raise ValueError("Zoom percent must be between 0 and 100")
+        url = self.base_url + f'/gopro/camera/digital_zoom?percent={percent}'
+        response = requests.get(url)
+        return response
+    
+    def getZoomLevel(self):
+        """Get current zoom level from camera state"""
+        try:
+            state = self.getState()
+            if state.status_code == 200:
+                return state.json()['status']['75']  # Zoom Level status
+        except (KeyError, requests.RequestException):
+            pass
+        return None
+    
+    def zoomIn(self, step=5):
+        """Zoom in by step amount (default 5%)"""
+        current = self.getZoomLevel()
+        if current is not None:
+            new_zoom = min(100, current + step)
+            return self.setDigitalZoom(new_zoom)
+        return None
+    
+    def zoomOut(self, step=5):
+        """Zoom out by step amount (default 5%)"""
+        current = self.getZoomLevel()
+        if current is not None:
+            new_zoom = max(0, current - step)
+            return self.setDigitalZoom(new_zoom)
+        return None
+    #*******************************************
     #Modes and presets
     #*******************************************
     def modePhoto(self):

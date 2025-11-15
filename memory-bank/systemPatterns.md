@@ -30,12 +30,15 @@
 - **Error Isolation**: Individual camera failures don't affect others
 - **Sequential Setup**: Connect cameras one by one, then coordinate operations
 
-#### Live Preview Architecture
+#### Live Preview Architecture (IMPLEMENTED ✅)
 - **UDP Server**: App binds to port 8554, camera connects as client
 - **MPEG-TS Container**: Transport stream format from camera
 - **AVC/H264 Codec**: Video encoding for Hero 12 cameras
-- **OpenCV Decoding**: Frame extraction and display
-- **Single Camera**: Only one preview stream active at a time
+- **OpenCV Direct Capture**: `cv2.VideoCapture('udp://0.0.0.0:8554')` handles H.264 stream natively
+- **Real-Time Settings Control**: Camera settings changeable during streaming without interruption
+- **Digital Zoom Integration**: Live zoom control (0-100%) with immediate visual feedback
+- **Single Camera**: Only one preview stream active at a time (by design)
+- **Performance**: 0.5-1s latency, acceptable for research applications
 
 ## Component Relationships
 
@@ -45,7 +48,8 @@ GPcam(serial_number)           # Individual camera control
 ├── HTTP API methods           # Camera commands and settings
 ├── Status monitoring          # camBusy(), encodingActive()
 ├── Media management          # Download, delete operations
-└── Stream control            # Preview start/stop
+├── Stream control            # Preview start/stop
+└── Digital zoom control      # setDigitalZoom(), getZoomLevel(), zoomIn(), zoomOut()
 
 CameraManager                  # Multi-camera coordination
 ├── Camera discovery          # Auto-detect connected cameras
@@ -102,14 +106,24 @@ ConfigManager                 # Settings persistence
 7. ThreadPoolExecutor.map(mediaDownloadLast, cameras)
 ```
 
-### Live Preview Stream
+### Live Preview Stream (IMPLEMENTED ✅)
 ```python
 1. previewStreamStart(port=8554) → Start camera UDP client
-2. UDP socket bind to port 8554 → Receive MPEG-TS data
-3. MPEG-TS parsing → Extract H264 elementary stream
-4. OpenCV decode → Convert to displayable frames
-5. tkinter Canvas update → Show frames in GUI
+2. cv2.VideoCapture('udp://0.0.0.0:8554') → OpenCV handles MPEG-TS/H264 directly
+3. cap.read() → Extract frames with automatic decoding
+4. Frame overlay → Add status information (frame count, settings, zoom level)
+5. cv2.imshow() → Display frames in OpenCV window
 6. previewStreamStop() → Clean shutdown
+```
+
+### Digital Zoom Control (IMPLEMENTED ✅)
+```python
+1. setDigitalZoom(percent) → Direct API call with 0-100% range
+2. getZoomLevel() → Query current zoom from camera state (status['75'])
+3. zoomIn(step=5) → Increment zoom with boundary checking
+4. zoomOut(step=5) → Decrement zoom with boundary checking
+5. Real-time feedback → Zoom changes visible immediately in stream
+6. Boundary handling → Prevents zoom beyond 0-100% limits
 ```
 
 ## Design Patterns in Use
@@ -142,11 +156,13 @@ ConfigManager                 # Settings persistence
    - Lens/Resolution/FPS dropdown controls
    - Individual Connect/Disconnect functionality
 
-2. **Live Preview Tab**: Framework ready for future streaming integration
+2. **Live Preview Tab**: Ready for integration with working streaming functionality
    - Camera selector dropdown (GoPro 1-4)
-   - Start/Stop preview controls (disabled pending firewall resolution)
-   - Video display area placeholder (black background)
-   - Clear explanation of current network limitations
+   - Start/Stop preview controls (functionality implemented, needs GUI integration)
+   - Video display area (placeholder ready for OpenCV Canvas integration)
+   - Zoom controls (slider and +/- buttons for 0-100% range)
+   - Stream status indicators (connection, quality, error states)
+   - Real-time settings control integration with Tab 1
 
 3. **Recording Tab**: Complete multi-camera recording workflow
    - Output directory selection with file browser
