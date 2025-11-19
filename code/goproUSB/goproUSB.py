@@ -25,6 +25,12 @@ class GPcam:
     #*******************************************
     #Camera status and info
     #*******************************************
+    def getCameraInfo(self):
+        """Get camera information including serial number, model, and firmware version"""
+        url = self.base_url + '/gopro/camera/info'
+        response = requests.get(url)
+        return response
+    
     def getState(self):
         url = self.base_url + '/gopro/camera/state'
         response = requests.get(url)
@@ -223,6 +229,26 @@ class GPcam:
         url = self.base_url + '/gopro/camera/stream/stop'
         response = requests.get(url)
         return response
+    #*******************************************
+    #Settings Management
+    #*******************************************
+    def querySetting(self, setting_id, option=-1):
+        """
+        Query a setting with an option value to discover available options.
+        Using an invalid option (e.g., -1) returns a 403 error with supported_options list.
+        """
+        url = self.base_url + '/gopro/camera/setting'
+        querystring = {"setting": str(setting_id), "option": str(option)}
+        response = requests.get(url, params=querystring)
+        return response
+    
+    def setSetting(self, setting_id, option):
+        """Set a camera setting to a specific option value"""
+        url = self.base_url + '/gopro/camera/setting'
+        querystring = {"setting": str(setting_id), "option": str(option)}
+        response = requests.get(url, params=querystring)
+        return response
+    
     #*******************************************
     #Media Management
     #*******************************************

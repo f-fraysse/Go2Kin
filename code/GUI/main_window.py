@@ -21,6 +21,10 @@ from PIL import Image, ImageTk
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'goproUSB'))
 from goproUSB import GPcam
 
+# Add code directory to path for camera_profiles
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from camera_profiles import get_profile_manager
+
 class LivePreviewCapture:
     """Simplified video capture class for live preview with threading optimization"""
     
@@ -118,6 +122,8 @@ class Go2KinMainWindow:
         # Camera instances
         self.cameras = {}
         self.camera_status = {}
+        self.camera_references = {}  # Store settings reference per camera
+        self.camera_profiles = {}     # Store profile per camera
         
         # Recording state
         self.recording = False
@@ -275,6 +281,7 @@ class Go2KinMainWindow:
                                 state="readonly", width=15)
         res_combo.pack(side=tk.RIGHT)
         frame.res_var = res_var
+        frame.res_combo = res_combo  # Store reference to combobox
         
         # FPS setting
         fps_frame = ttk.Frame(frame)
@@ -286,6 +293,7 @@ class Go2KinMainWindow:
                                 state="readonly", width=15)
         fps_combo.pack(side=tk.RIGHT)
         frame.fps_var = fps_var
+        frame.fps_combo = fps_combo  # Store reference to combobox
         
         # Connect/Disconnect buttons
         button_frame = ttk.Frame(frame)
@@ -475,7 +483,7 @@ class Go2KinMainWindow:
         self.save_config()
     
     def connect_camera(self, camera_num):
-        """Connect to a specific camera"""
+        """Connect to a specific camera with profile management"""
         try:
             panel = self.camera_panels[camera_num]
             serial = panel.serial_var.get()
@@ -489,24 +497,256 @@ class Go2KinMainWindow:
             # Create camera instance
             camera = GPcam(serial)
             
-            # Test connection
+            # Enable USB control
             response = camera.USBenable()
-            if response.status_code == 200:
-                # time.sleep(1)
-                response = camera.keepAlive()
-                if response.status_code == 200:
-                    self.cameras[camera_num] = camera
-                    self.camera_status[camera_num] = True
-                    self.update_camera_status(camera_num, True)
-                    self.log_progress(f"✓ GoPro {camera_num} connected successfully")
-                else:
-                    raise Exception("Camera not responding to keep-alive")
-            else:
+            if response.status_code != 200:
                 raise Exception("Failed to enable USB control")
+            
+            time.sleep(1)
+            
+            # Verify connection
+            response = camera.keepAlive()
+            if response.status_code != 200:
+                raise Exception("Camera not responding to keep-alive")
+            
+            self.log_progress(f"✓ Camera connected, querying camera info...")
+            
+            # Get camera info (model, firmware, serial)
+            info_response = camera.getCameraInfo()
+            if info_response.status_code != 200:
+                raise Exception("Failed to get camera info")
+            
+            camera_info = info_response.json()
+            model = camera_info['model_name']
+            firmware = camera_info['firmware_version']
+            
+            self.log_progress(f"  Model: {model}, Firmware: {firmware}")
+            
+            # Get profile manager
+            profile_mgr = get_profile_manager()
+            
+            # Check if we have a settings reference for this model/firmware
+            reference = profile_mgr.load_settings_reference(model, firmware)
+            
+            if reference is None:
+                self.log_progress(f"⚠ No settings reference found for {model} {firmware}")
+                self.log_progress(f"  Run: python tools/discover_camera_settings.py {serial}")
+                messagebox.showwarning(
+                    "Settings Reference Missing",
+                    f"No settings reference found for {model} (firmware {firmware}).\n\n"
+                    f"To enable full settings management, run:\n"
+                    f"python tools/discover_camera_settings.py {serial}\n\n"
+                    f"Camera will still connect, but settings display will be limited."
+                )
+                # Continue without reference - basic functionality still works
+            else:
+                self.log_progress(f"✓ Loaded settings reference for {model} {firmware}")
+            
+            # Force video mode to ensure video settings are available
+            self.log_progress(f"  Setting camera to video mode...")
+            camera.modeVideo()
+            time.sleep(1)
+            
+            # Get current camera state
+            state_response = camera.getState()
+            if state_response.status_code != 200:
+                raise Exception("Failed to get camera state")
+            
+            state = state_response.json()
+            
+            # Create or update camera profile
+            profile = None
+            if reference:
+                profile = profile_mgr.create_or_update_profile(camera_info, state, reference)
+                self.log_progress(f"✓ Camera profile updated")
+                
+                # Store reference and profile for this camera
+                self.camera_references[camera_num] = reference
+                self.camera_profiles[camera_num] = profile
+                
+                # Log some current settings
+                if '2' in profile['current_settings']:  # Video Resolution
+                    res_setting = profile['current_settings']['2']
+                    self.log_progress(f"  Current resolution: {res_setting['value_name']}")
+                if '3' in profile['current_settings']:  # FPS
+                    fps_setting = profile['current_settings']['3']
+                    self.log_progress(f"  Current FPS: {fps_setting['value_name']}")
+                
+                # Populate dropdowns from profile
+                self.populate_dropdowns_from_profile(camera_num, profile, reference)
+            
+            # Store camera instance
+            self.cameras[camera_num] = camera
+            self.camera_status[camera_num] = True
+            self.update_camera_status(camera_num, True)
+            
+            self.log_progress(f"✓ GoPro {camera_num} connected successfully")
                 
         except Exception as e:
             self.log_progress(f"✗ Failed to connect GoPro {camera_num}: {e}")
             messagebox.showerror("Connection Error", f"Failed to connect GoPro {camera_num}:\n{e}")
+    
+    def populate_dropdowns_from_profile(self, camera_num, profile, reference):
+        """Populate dropdown menus from camera profile and settings reference"""
+        panel = self.camera_panels[camera_num]
+        
+        try:
+            # Populate Resolution dropdown
+            if '2' in reference['settings']:  # Setting ID 2 = Video Resolution
+                res_options = reference['settings']['2']['available_options']
+                # Get list of display names (e.g., ["1080", "4K", "2.7K", ...])
+                display_names = sorted(set(res_options.values()))
+                panel.res_combo['values'] = display_names
+                
+                # Set current value from profile
+                if '2' in profile['current_settings']:
+                    current_res = profile['current_settings']['2']['value_name']
+                    panel.res_var.set(current_res)
+                    self.log_progress(f"  Resolution dropdown set to: {current_res}")
+                
+                # Bind change handler
+                panel.res_combo.bind('<<ComboboxSelected>>', 
+                                    lambda e, cn=camera_num: self.on_resolution_change(cn))
+            
+            # Populate FPS dropdown
+            if '3' in reference['settings']:  # Setting ID 3 = FPS
+                fps_options = reference['settings']['3']['available_options']
+                # Get list of display names (e.g., ["24", "30", "60", ...])
+                display_names = sorted(set(fps_options.values()), key=lambda x: int(x))
+                panel.fps_combo['values'] = display_names
+                
+                # Set current value from profile
+                if '3' in profile['current_settings']:
+                    current_fps = profile['current_settings']['3']['value_name']
+                    panel.fps_var.set(current_fps)
+                    self.log_progress(f"  FPS dropdown set to: {current_fps}")
+                
+                # Bind change handler
+                panel.fps_combo.bind('<<ComboboxSelected>>', 
+                                    lambda e, cn=camera_num: self.on_fps_change(cn))
+            
+            self.log_progress(f"✓ Dropdowns populated from camera settings")
+            
+        except Exception as e:
+            self.log_progress(f"⚠ Error populating dropdowns: {e}")
+    
+    def on_resolution_change(self, camera_num):
+        """Handle resolution dropdown change"""
+        if camera_num not in self.cameras or camera_num not in self.camera_references:
+            return
+        
+        panel = self.camera_panels[camera_num]
+        new_value = panel.res_var.get()
+        
+        self.log_progress(f"Applying resolution change: {new_value}")
+        self.apply_setting_to_camera(camera_num, 2, new_value, "Video Resolution")
+    
+    def on_fps_change(self, camera_num):
+        """Handle FPS dropdown change"""
+        if camera_num not in self.cameras or camera_num not in self.camera_references:
+            return
+        
+        panel = self.camera_panels[camera_num]
+        new_value = panel.fps_var.get()
+        
+        self.log_progress(f"Applying FPS change: {new_value}")
+        self.apply_setting_to_camera(camera_num, 3, new_value, "Frames Per Second")
+    
+    def apply_setting_to_camera(self, camera_num, setting_id, display_name, setting_name):
+        """Apply a setting change to the camera with validation"""
+        try:
+            camera = self.cameras[camera_num]
+            reference = self.camera_references[camera_num]
+            
+            # Find option_id for this display name (reverse lookup)
+            setting_id_str = str(setting_id)
+            if setting_id_str not in reference['settings']:
+                raise Exception(f"Setting {setting_id} not found in reference")
+            
+            options = reference['settings'][setting_id_str]['available_options']
+            option_id = None
+            for opt_id, opt_name in options.items():
+                if opt_name == display_name:
+                    option_id = int(opt_id)
+                    break
+            
+            if option_id is None:
+                raise Exception(f"Option '{display_name}' not found for {setting_name}")
+            
+            # Apply setting to camera
+            response = camera.setSetting(setting_id, option_id)
+            
+            if response.status_code == 200:
+                # Success! Update profile
+                self.update_camera_profile_setting(camera_num, setting_id, option_id, display_name)
+                self.log_progress(f"✓ {setting_name} set to: {display_name}")
+                
+            elif response.status_code == 403:
+                # Invalid option - show available options
+                try:
+                    error_data = response.json()
+                    available_options = error_data.get('supported_options', [])
+                    self.show_invalid_setting_dialog(setting_name, available_options)
+                except:
+                    messagebox.showerror("Setting Error", 
+                                       f"Cannot set {setting_name} to '{display_name}' with current camera state")
+                
+                # Revert dropdown to previous value
+                if camera_num in self.camera_profiles:
+                    profile = self.camera_profiles[camera_num]
+                    if setting_id_str in profile['current_settings']:
+                        old_value = profile['current_settings'][setting_id_str]['value_name']
+                        panel = self.camera_panels[camera_num]
+                        if setting_id == 2:
+                            panel.res_var.set(old_value)
+                        elif setting_id == 3:
+                            panel.fps_var.set(old_value)
+                
+            else:
+                raise Exception(f"Unexpected response: {response.status_code}")
+                
+        except Exception as e:
+            self.log_progress(f"✗ Failed to apply {setting_name}: {e}")
+            messagebox.showerror("Setting Error", f"Failed to apply {setting_name}:\n{e}")
+    
+    def update_camera_profile_setting(self, camera_num, setting_id, option_id, display_name):
+        """Update camera profile after successful setting change"""
+        try:
+            if camera_num not in self.camera_profiles:
+                return
+            
+            profile = self.camera_profiles[camera_num]
+            setting_id_str = str(setting_id)
+            
+            # Update in-memory profile
+            if setting_id_str in profile['current_settings']:
+                profile['current_settings'][setting_id_str]['value'] = option_id
+                profile['current_settings'][setting_id_str]['value_name'] = display_name
+            
+            # Save profile to disk
+            profile_mgr = get_profile_manager()
+            serial = profile['serial_number']
+            profile_mgr.save_camera_profile(serial, profile)
+            
+        except Exception as e:
+            self.log_progress(f"⚠ Error updating profile: {e}")
+    
+    def show_invalid_setting_dialog(self, setting_name, available_options):
+        """Show dialog with available options when setting is invalid"""
+        if not available_options:
+            messagebox.showerror("Invalid Setting", 
+                               f"Cannot change {setting_name} with current camera state.\n\n"
+                               f"No available options returned by camera.")
+            return
+        
+        # Format available options
+        options_text = "\n".join([f"  • {opt.get('display_name', 'Unknown')}" 
+                                 for opt in available_options])
+        
+        messagebox.showwarning("Invalid Setting", 
+                              f"Cannot set {setting_name} to the selected value.\n\n"
+                              f"Available options with current camera state:\n{options_text}\n\n"
+                              f"Try changing other settings first (e.g., aspect ratio, lens mode).")
     
     def disconnect_camera(self, camera_num):
         """Disconnect from a specific camera"""
@@ -517,6 +757,13 @@ class Go2KinMainWindow:
                 del self.cameras[camera_num]
                 self.camera_status[camera_num] = False
                 self.update_camera_status(camera_num, False)
+                
+                # Clear stored reference and profile
+                if camera_num in self.camera_references:
+                    del self.camera_references[camera_num]
+                if camera_num in self.camera_profiles:
+                    del self.camera_profiles[camera_num]
+                
                 self.log_progress(f"✓ GoPro {camera_num} disconnected")
         except Exception as e:
             self.log_progress(f"✗ Error disconnecting GoPro {camera_num}: {e}")
@@ -815,62 +1062,13 @@ class Go2KinMainWindow:
             self.root.after(0, self.reset_recording_ui)
     
     def start_camera_recording(self, camera_num, camera):
-        """Start recording on a single camera"""
-        # Apply settings
-        panel = self.camera_panels[camera_num]
+        """Start recording on a single camera
         
-        # Set video mode
-        camera.modeVideo()
-        # time.sleep(1)
-        
-        # Apply lens setting
-        lens = panel.lens_var.get()
-        if lens == "Narrow":
-            camera.setVideoLensesNarrow()
-        elif lens == "Linear":
-            camera.setVideoLensesLinear()
-        elif lens == "Wide":
-            camera.setVideoLensesWide()
-        elif lens == "SuperView":
-            camera.setVideoLensesSuperview()
-        
-        # time.sleep(0.5)
-        
-        # Apply resolution
-        resolution = panel.res_var.get()
-        if resolution == "1080p":
-            camera.setVideoResolution1080()
-        elif resolution == "1440p":
-            camera.setVideoResolution1440()
-        elif resolution == "2.7K":
-            camera.setVideoResolution2p7k()
-        elif resolution == "4K":
-            camera.setVideoResolution4k()
-        elif resolution == "5K":
-            camera.setVideoResolution5k()
-        
-        # time.sleep(0.5)
-        
-        # Apply FPS
-        fps = int(panel.fps_var.get())
-        if fps == 24:
-            camera.setFPS24()
-        elif fps == 25:
-            camera.setFPS25()
-        elif fps == 30:
-            camera.setFPS30()
-        elif fps == 50:
-            camera.setFPS50()
-        elif fps == 60:
-            camera.setFPS60()
-        elif fps == 120:
-            camera.setFPS120()
-        elif fps == 240:
-            camera.setFPS240()
-        
-        # time.sleep(1)
-        
-        # Start recording
+        Note: Settings are already applied via dropdowns, so we just start recording.
+        The camera is already in video mode and has the correct resolution/FPS from
+        the dropdown change handlers.
+        """
+        # Start recording immediately - settings already applied
         camera.shutterStart()
     
     def stop_and_download(self, camera_num, camera, trial_dir, trial_name):

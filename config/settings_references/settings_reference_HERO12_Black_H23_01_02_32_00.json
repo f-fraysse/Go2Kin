@@ -1,0 +1,448 @@
+{
+  "metadata": {
+    "camera_model": "HERO12 Black",
+    "firmware_version": "H23.01.02.32.00",
+    "discovery_date": "2025-11-19T14:42:23.641449",
+    "discovered_by": "Go2Kin Settings Discovery Tool",
+    "total_settings": 35
+  },
+  "settings": {
+    "2": {
+      "name": "Video Resolution",
+      "available_options": {
+        "100": "5.3K",
+        "107": "5.3K 8:7 V2",
+        "1": "4K",
+        "18": "4K 4:3",
+        "108": "4K 8:7 V2",
+        "4": "2.7K",
+        "111": "2.7K 4:3 V2",
+        "9": "1080",
+        "109": "4K 9:16 V2",
+        "110": "1080 9:16 V2"
+      }
+    },
+    "3": {
+      "name": "Frames Per Second",
+      "available_options": {
+        "0": "240",
+        "13": "200",
+        "1": "120",
+        "2": "100",
+        "5": "60",
+        "6": "50",
+        "8": "30",
+        "9": "25",
+        "10": "24"
+      }
+    },
+    "5": {
+      "name": "Video Timelapse Rate",
+      "available_options": {
+        "10": "60 Minutes",
+        "9": "30 Minutes",
+        "8": "5 Minutes",
+        "7": "2 Minutes",
+        "6": "60 Seconds",
+        "5": "30 Seconds",
+        "4": "10 Seconds",
+        "3": "5 Seconds",
+        "11": "3 Seconds",
+        "2": "2 Seconds",
+        "1": "1 Second",
+        "0": "0.5 Seconds"
+      }
+    },
+    "30": {
+      "name": "Photo Timelapse Rate",
+      "available_options": {
+        "100": "60 Minutes",
+        "101": "30 Minutes",
+        "102": "5 Minutes",
+        "103": "2 Minutes",
+        "104": "60 Seconds",
+        "105": "30 Seconds",
+        "106": "10 Seconds",
+        "107": "5 Seconds",
+        "11": "3 Seconds",
+        "108": "2 Seconds",
+        "109": "1 Second",
+        "110": "0.5 Seconds"
+      }
+    },
+    "32": {
+      "name": "Nightlapse Rate",
+      "available_options": {
+        "3600": "60 Minutes",
+        "1800": "30 Minutes",
+        "300": "5 Minutes",
+        "120": "2 Minutes",
+        "100": "60 Seconds",
+        "30": "30 Seconds",
+        "20": "20 Seconds",
+        "15": "15 Seconds",
+        "10": "10 Seconds",
+        "5": "5 Seconds",
+        "4": "4 Seconds",
+        "3601": "Auto"
+      }
+    },
+    "43": {
+      "name": "Webcam Digital Lenses",
+      "available_options": {
+        "3": "Superview",
+        "0": "Wide",
+        "4": "Linear",
+        "2": "Narrow"
+      }
+    },
+    "59": {
+      "name": "Auto Power Down",
+      "available_options": {
+        "1": "1 Min",
+        "4": "5 Min",
+        "6": "15 Min",
+        "7": "30 Min",
+        "0": "Never"
+      }
+    },
+    "88": {
+      "name": "LCD Brightness",
+      "available_options": {
+        "10": "10%",
+        "20": "20%",
+        "30": "30%",
+        "40": "40%",
+        "50": "50%",
+        "60": "60%",
+        "70": "70%",
+        "80": "80%",
+        "90": "90%",
+        "100": "100%"
+      }
+    },
+    "108": {
+      "name": "Video Aspect Ratio",
+      "available_options": {
+        "0": "4:3",
+        "1": "16:9",
+        "3": "8:7",
+        "4": "9:16"
+      }
+    },
+    "121": {
+      "name": "Video Lens",
+      "available_options": {
+        "10": "Linear + Horizon Lock",
+        "8": "Linear + Horizon Leveling",
+        "4": "Linear",
+        "0": "Wide",
+        "3": "Superview",
+        "9": "HyperView",
+        "7": "Max SuperView",
+        "11": "Max HyperView"
+      }
+    },
+    "122": {
+      "name": "Photo Lens",
+      "available_options": {
+        "100": "Max SuperView",
+        "101": "Wide",
+        "102": "Linear"
+      }
+    },
+    "123": {
+      "name": "Time Lapse Digital Lenses",
+      "available_options": {
+        "101": "Wide",
+        "102": "Linear"
+      }
+    },
+    "125": {
+      "name": "Photo Output",
+      "available_options": {
+        "3": "SuperPhoto",
+        "2": "HDR",
+        "0": "Standard",
+        "1": "Raw"
+      }
+    },
+    "128": {
+      "name": "Media Format",
+      "available_options": {
+        "13": "Video",
+        "20": "Photo",
+        "21": "Photo",
+        "26": "Video"
+      }
+    },
+    "134": {
+      "name": "Anti-Flicker",
+      "available_options": {
+        "2": "60Hz",
+        "3": "50Hz"
+      }
+    },
+    "135": {
+      "name": "Hypersmooth",
+      "available_options": {
+        "4": "Auto Boost",
+        "1": "On",
+        "0": "Off"
+      }
+    },
+    "156": {
+      "name": "Video Duration",
+      "available_options": {
+        "9": "3 Hours",
+        "8": "2 Hours",
+        "7": "1 Hour",
+        "6": "30 Minutes",
+        "5": "15 Minutes",
+        "4": "5 Minutes",
+        "3": "1 Minute",
+        "2": "30 Seconds",
+        "1": "15 Seconds",
+        "100": "No Limit"
+      }
+    },
+    "157": {
+      "name": "Multi Shot Duration",
+      "available_options": {
+        "9": "3 Hours",
+        "8": "2 Hours",
+        "7": "1 Hour",
+        "6": "30 Minutes",
+        "5": "15 Minutes",
+        "4": "5 Minutes",
+        "3": "1 Minute",
+        "2": "30 Seconds",
+        "1": "15 Seconds",
+        "100": "No Limit"
+      }
+    },
+    "167": {
+      "name": "HindSight",
+      "available_options": {
+        "2": "15 Seconds",
+        "3": "30 Seconds",
+        "4": "Off"
+      }
+    },
+    "171": {
+      "name": "Photo Single Interval",
+      "available_options": {
+        "0": "Off",
+        "2": "0.5s",
+        "3": "1s",
+        "4": "2s",
+        "10": "3s",
+        "5": "5s",
+        "6": "10s",
+        "7": "30s",
+        "8": "60s",
+        "9": "120s"
+      }
+    },
+    "172": {
+      "name": "Photo Interval Duration",
+      "available_options": {
+        "0": "Off",
+        "1": "15 Seconds",
+        "2": "30 Seconds",
+        "3": "1 Minute",
+        "4": "5 Minutes",
+        "5": "15 Minutes",
+        "6": "30 Minutes",
+        "7": "1 Hour",
+        "8": "2 Hours",
+        "9": "3 Hours"
+      }
+    },
+    "175": {
+      "name": "Control Mode",
+      "available_options": {
+        "0": "Easy",
+        "1": "Pro"
+      }
+    },
+    "176": {
+      "name": "Easy Mode Speed",
+      "available_options": {
+        "103": "1X Speed / Low Light",
+        "126": "1X Speed / Low Light",
+        "128": "1X Speed / Low Light",
+        "116": "2X Slo-Mo",
+        "130": "2X Slo-Mo",
+        "102": "2X Slo-Mo",
+        "101": "4X Super Slo-Mo",
+        "100": "8X Ultra Slo-Mo",
+        "107": "1X Speed / Low Light",
+        "127": "1X Speed / Low Light",
+        "129": "1X Speed / Low Light",
+        "117": "2X Slo-Mo",
+        "131": "2X Slo-Mo",
+        "106": "2X Slo-Mo",
+        "105": "4X Super Slo-Mo",
+        "104": "8X Ultra Slo-Mo",
+        "118": "1X Speed / Low Light",
+        "119": "1X Speed / Low Light",
+        "120": "2X Slo-Mo",
+        "121": "2X Slo-Mo",
+        "122": "1X Speed / Low Light",
+        "123": "1X Speed / Low Light",
+        "136": "1X Speed / Low Light",
+        "137": "1X Speed / Low Light",
+        "124": "2X Slo-Mo",
+        "125": "2X Slo-Mo",
+        "111": "1X Speed / Low Light",
+        "110": "2X Slo-Mo",
+        "109": "4X Super Slo-Mo",
+        "108": "8X Ultra Slo-Mo",
+        "115": "1X Speed / Low Light",
+        "114": "2X Slo-Mo",
+        "113": "4X Super Slo-Mo",
+        "112": "8X Ultra Slo-Mo",
+        "134": "1X Speed / Low Light",
+        "135": "1X Speed / Low Light",
+        "132": "2X Slo-Mo",
+        "133": "2X Slo-Mo"
+      }
+    },
+    "178": {
+      "name": "Wireless Band",
+      "available_options": {
+        "0": "2.4GHz",
+        "1": "5GHz"
+      }
+    },
+    "179": {
+      "name": "Star Trails Length",
+      "available_options": {
+        "3": "Max",
+        "2": "Long",
+        "1": "Short"
+      }
+    },
+    "182": {
+      "name": "Video Bit Rate",
+      "available_options": {
+        "1": "High",
+        "0": "Standard"
+      }
+    },
+    "183": {
+      "name": "Bit Depth",
+      "available_options": {
+        "0": "8-Bit",
+        "2": "10-Bit"
+      }
+    },
+    "184": {
+      "name": "Profiles",
+      "available_options": {
+        "0": "Standard",
+        "1": "HDR",
+        "2": "Log"
+      }
+    },
+    "186": {
+      "name": "Video Easy Mode",
+      "available_options": {
+        "0": "Highest Quality",
+        "1": "Standard Quality",
+        "2": "Basic Quality"
+      }
+    },
+    "187": {
+      "name": "Lapse Mode",
+      "available_options": {
+        "0": "TimeWarp",
+        "1": "Star Trails",
+        "2": "Light Painting",
+        "3": "Vehicle Lights",
+        "4": "Max TimeWarp",
+        "5": "Max Star Trails",
+        "6": "Max Light Painting",
+        "7": "Max Vehicle Lights"
+      }
+    },
+    "189": {
+      "name": "Max Lens Mod",
+      "available_options": {
+        "0": "None",
+        "1": "Max Lens 1.0",
+        "2": "Max Lens 2.0"
+      }
+    },
+    "190": {
+      "name": "Max Lens Mod Enable",
+      "available_options": {
+        "0": "Off",
+        "1": "On"
+      }
+    },
+    "191": {
+      "name": "Easy Night Photo",
+      "available_options": {
+        "0": "Super Photo",
+        "1": "Night Photo"
+      }
+    },
+    "192": {
+      "name": "Multi Shot Aspect Ratio",
+      "available_options": {
+        "0": "4:3",
+        "1": "16:9",
+        "3": "8:7"
+      }
+    },
+    "193": {
+      "name": "Framing",
+      "available_options": {
+        "0": "Widescreen",
+        "1": "Vertical",
+        "2": "Full Frame"
+      }
+    }
+  },
+  "status_names": {
+    "1": "Battery Present",
+    "2": "Internal Battery Bars",
+    "6": "Overheating",
+    "8": "Busy",
+    "9": "Quick Capture",
+    "10": "Encoding",
+    "11": "LCD Lock",
+    "79": "FTU",
+    "81": "5GHz Available",
+    "82": "Ready",
+    "83": "OTA Charged",
+    "93": "Video Preset",
+    "94": "Photo Preset",
+    "95": "Timelapse Preset",
+    "96": "Preset Group",
+    "97": "Preset",
+    "98": "Preset Modified",
+    "99": "Remaining Live Bursts",
+    "100": "Live Bursts",
+    "101": "Capture Delay Active",
+    "102": "Media Mod State",
+    "103": "Time Warp Speed",
+    "104": "Linux Core",
+    "105": "Lens Type",
+    "106": "Hindsight",
+    "107": "Scheduled Capture Preset ID",
+    "108": "Scheduled Capture",
+    "110": "Display Mod Status",
+    "111": "SD Card Write Speed Error",
+    "112": "SD Card Errors",
+    "113": "Turbo Transfer",
+    "114": "Camera Control ID",
+    "115": "USB Connected",
+    "116": "USB Controlled",
+    "117": "SD Card Capacity",
+    "118": "Photo Interval Capture Count",
+    "122": "Camera Name"
+  }
+}

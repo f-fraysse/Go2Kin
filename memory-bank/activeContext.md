@@ -3,14 +3,18 @@
 ## Current Work Focus
 
 ### Immediate Objective
-Implementing Go2Kin multi-camera GoPro control GUI following the established 4-phase development plan:
+Go2Kin multi-camera GoPro control system with profile-driven settings management - FULLY OPERATIONAL ✅
 
-1. **Phase 1**: Extend goproUSB class with missing functionality (CURRENT)
-2. **Phase 2**: Create live preview prototype and test UDP streaming
-3. **Phase 3**: Implement 3-tab GUI (Settings → Recording → Live Preview)
-4. **Phase 4**: Integration, testing, and error handling
+### Current Phase: Profile-Driven Settings Management - COMPLETE ✅
 
-### Current Phase: Project Core Complete - Testing & Refinement Phase
+**Major Achievement: Intelligent Camera Settings System**
+- ✅ Automatic settings discovery and reference generation
+- ✅ Profile-based settings management per camera
+- ✅ Real-time dropdown population from camera capabilities
+- ✅ Interactive settings changes with immediate application
+- ✅ Validation and error handling with user guidance
+- ✅ Persistent profiles across sessions
+- ✅ Simplified recording workflow (settings pre-applied)
 
 **Phase 1 Complete - goproUSB Extensions:**
 - ✅ `previewStreamStart(port=8554)` - Start UDP preview stream
@@ -77,6 +81,53 @@ Complete multi-camera recording system ready for production use. Trial name work
 
 ## Recent Changes
 
+### Profile-Driven Settings Management System - COMPLETE ✅ (Nov 19, 2025)
+
+**Architecture Implemented:**
+1. **Settings Discovery Tool** (`tools/discover_camera_settings.py`)
+   - Automatically queries camera for all available settings
+   - Generates settings reference files per model/firmware
+   - Stores in `config/settings_references/`
+   - Known issue: Camera truncates some display names (documented in README)
+
+2. **Camera Profile System** (`code/camera_profiles.py`)
+   - ProfileManager singleton for centralized management
+   - Per-camera profiles stored in `config/camera_profiles/`
+   - Tracks current settings with both IDs and human-readable names
+   - Automatic profile creation/update on camera connect
+
+3. **Interactive GUI Integration** (`code/GUI/main_window.py`)
+   - Dropdowns populate dynamically from camera's actual capabilities
+   - Resolution dropdown shows all 10 options (5.3K, 4K variants, 2.7K, 1080)
+   - FPS dropdown shows camera-specific available framerates
+   - Settings apply immediately on dropdown change (no Apply button)
+   - Real-time validation with error popups showing available options
+   - Profile updates automatically on successful setting change
+   - Recording simplified - settings already applied via dropdowns
+
+**Key Files Created/Modified:**
+- `tools/discover_camera_settings.py` - Settings discovery tool
+- `code/camera_profiles.py` - Profile management system
+- `config/settings_references/README.md` - Documentation for manual corrections
+- `config/settings_references/settings_reference_HERO12_Black_H23_01_02_32_00.json` - Hero 12 reference
+- `config/camera_profiles/profile_C3501326042700.json` - Example camera profile
+- `code/GUI/main_window.py` - Enhanced with profile-driven dropdowns
+
+**Benefits Achieved:**
+- ✅ Settings display with camera's actual names (not generic labels)
+- ✅ Automatic validation prevents invalid setting combinations
+- ✅ Profile system ensures settings persist across sessions
+- ✅ Recording starts 2-3 seconds faster (no redundant setting application)
+- ✅ Clear user feedback when settings can't be applied
+- ✅ Single source of truth for camera state
+
+**Testing Results:**
+- ✅ Dropdowns populate correctly with 10 resolution options
+- ✅ FPS dropdown shows correct framerates
+- ✅ Settings changes visible on physical camera
+- ✅ Profile updates persist across disconnect/reconnect
+- ✅ Error handling works (reverts dropdown on invalid setting)
+
 ### Memory Bank Creation
 - Established comprehensive project documentation
 - Captured all requirements, architecture, and technical constraints
@@ -121,24 +172,52 @@ Complete multi-camera recording system ready for production use. Trial name work
 
 ## Next Steps
 
-### Current Priority: Live Preview Enhancement (Phase 5)
-**Status**: Live preview GUI integration COMPLETE ✅ - Now focusing on control enhancements
+### Current Priority: Fixed Settings Configuration (Phase 6)
+**Status**: Profile-driven settings management COMPLETE ✅ - Now implementing fixed settings system
 
 **Immediate Next Steps**:
 
-1. **Add Zoom Controls to Live Preview GUI**
+1. **Define Fixed Settings List**
+   - Review all 35 settings in Hero 12 settings reference
+   - Identify settings that should be silently applied on camera connect
+   - Create configuration structure for fixed settings per camera model
+   - Document rationale for each fixed setting choice
+
+2. **Implement Fixed Settings Application**
+   - Extend `connect_camera()` to apply fixed settings after video mode
+   - Apply settings silently (no user interaction required)
+   - Log fixed settings application in progress log
+   - Handle errors gracefully if fixed setting fails
+
+3. **Fixed Settings Configuration File**
+   - Create `config/fixed_settings.json` or similar
+   - Structure: `{model: {firmware: {setting_id: option_id}}}`
+   - Allow per-model/firmware customization
+   - Document each fixed setting with comments
+
+**Example Fixed Settings to Consider: (tentative, needs review)**
+- Lens Mode: Linear (already implemented)
+- Video Bit Rate: High (for quality)
+- Hypersmooth: On or Auto Boost (for stability)
+- Anti-Flicker: 50Hz or 60Hz (based on region)
+- Media Format: Video (ensure video mode)
+- Profiles: Standard (consistent color)
+
+**Future Enhancements:**
+
+4. **Add Zoom Controls to Live Preview GUI**
    - Integrate zoom slider widget (0-100% range) into Preview tab
    - Add zoom +/- buttons for precise control
    - Display current zoom level indicator
    - Use `opencv_settings_test.py` as reference implementation
 
-2. **Add ISO/Exposure Controls to Live Preview**
+5. **Add ISO/Exposure Controls to Live Preview**
    - Implement "Liveview Exposure Select Mode" controls found in API specs
    - Add ISO lock functionality during streaming
    - Exposure compensation controls
    - Auto/manual exposure mode switching
 
-3. **GUI Sizing and Layout Improvements**
+6. **GUI Sizing and Layout Improvements**
    - Optimize Preview tab layout for better video display
    - Improve control panel organization
    - Better responsive design for different screen sizes

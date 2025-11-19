@@ -2,6 +2,16 @@
 
 ## What Works
 
+### Profile-Driven Settings Management System ✅ (Nov 19, 2025)
+- **Automatic Settings Discovery**: Tool queries camera for all available settings
+- **Settings Reference Files**: Per-model/firmware reference generation
+- **Camera Profiles**: Per-camera profiles with current settings tracking
+- **Dynamic Dropdowns**: Populate from camera's actual capabilities
+- **Interactive Settings**: Apply immediately on dropdown change
+- **Validation & Error Handling**: Clear feedback when settings can't be applied
+- **Profile Persistence**: Settings persist across sessions
+- **Simplified Recording**: Settings pre-applied, faster recording start
+
 ### Existing Functionality
 - **goproUSB.py Class**: Core camera control implementation complete
   - HTTP API communication with GoPro cameras
@@ -10,6 +20,7 @@
   - Settings configuration (lens, resolution, FPS)
   - Media download capabilities
   - Status monitoring (camBusy, encodingActive)
+  - **NEW**: `setSetting(setting_id, option_id)` for generic setting changes
 
 - **Multi-Camera Recording**: Tested and verified working
   - `goproRecordVideo_threeCameras.py` example functional
