@@ -29,13 +29,88 @@ from datetime import datetime
 
 # Add goproUSB to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'code' / 'goproUSB'))
-from goproUSB import GPcam
+from goproUSB import GPcam # type: ignore
 
-# Import setting name mappings
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'project docs'))
-from settings_name_value_pairs import SETTING_ID_TO_NAME
-from status_name_value_pairs import STATUS_ID_TO_NAME
+# Setting IDs to query (from GoPro Hero 12 Black)
+# These are the known settings that the discovery tool will query
+SETTING_ID_TO_NAME = {
+    2: "Video Resolution",
+    3: "Frames Per Second",
+    5: "Video Timelapse Rate",
+    30: "Photo Timelapse Rate",
+    32: "Nightlapse Rate",
+    43: "Webcam Digital Lenses",
+    59: "Auto Power Down",
+    88: "LCD Brightness",
+    108: "Video Aspect Ratio",
+    121: "Video Lens",
+    122: "Photo Lens",
+    123: "Time Lapse Digital Lenses",
+    125: "Photo Output",
+    128: "Media Format",
+    134: "Anti-Flicker",
+    135: "Hypersmooth",
+    156: "Video Duration",
+    157: "Multi Shot Duration",
+    167: "HindSight",
+    171: "Photo Single Interval",
+    172: "Photo Interval Duration",
+    175: "Control Mode",
+    176: "Easy Mode Speed",
+    178: "Wireless Band",
+    179: "Star Trails Length",
+    182: "Video Bit Rate",
+    183: "Bit Depth",
+    184: "Profiles",
+    186: "Video Easy Mode",
+    187: "Lapse Mode",
+    189: "Max Lens Mod",
+    190: "Max Lens Mod Enable",
+    191: "Easy Night Photo",
+    192: "Multi Shot Aspect Ratio",
+    193: "Framing"
+}
 
+# Status IDs for reference (from GoPro Hero 12 Black)
+STATUS_ID_TO_NAME = {
+    1: "Battery Present",
+    2: "Internal Battery Bars",
+    6: "Overheating",
+    8: "Busy",
+    9: "Quick Capture",
+    10: "Encoding",
+    11: "LCD Lock",
+    79: "FTU",
+    81: "5GHz Available",
+    82: "Ready",
+    83: "OTA Charged",
+    93: "Video Preset",
+    94: "Photo Preset",
+    95: "Timelapse Preset",
+    96: "Preset Group",
+    97: "Preset",
+    98: "Preset Modified",
+    99: "Remaining Live Bursts",
+    100: "Live Bursts",
+    101: "Capture Delay Active",
+    102: "Media Mod State",
+    103: "Time Warp Speed",
+    104: "Linux Core",
+    105: "Lens Type",
+    106: "Hindsight",
+    107: "Scheduled Capture Preset ID",
+    108: "Scheduled Capture",
+    110: "Display Mod Status",
+    111: "SD Card Write Speed Error",
+    112: "SD Card Errors",
+    113: "Turbo Transfer",
+    114: "Camera Control ID",
+    115: "USB Connected",
+    116: "USB Controlled",
+    117: "SD Card Capacity",
+    118: "Photo Interval Capture Count",
+    122: "Camera Name"
+}
 
 def discover_camera_settings(camera):
     """
@@ -85,7 +160,7 @@ def discover_camera_settings(camera):
         return None
     
     # 3. Discover available options for each setting
-    print(f"\n[3/4] Discovering available options for {len(SETTING_ID_TO_NAME)} settings...")
+    print(f"\n[3/4] Discovering available options...")
     print("This may take 2-3 minutes...\n")
     
     settings_reference = {}
