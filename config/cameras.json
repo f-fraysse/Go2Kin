@@ -4,13 +4,13 @@
       "serial": "C3501326042700",
       "lens": "Narrow",
       "resolution": "1080p",
-      "fps": 24
+      "fps": 30
     },
     "2": {
       "serial": "C3501326054100",
       "lens": "Narrow",
       "resolution": "1080p",
-      "fps": 24
+      "fps": 30
     },
     "3": {
       "serial": "C3501326054460",
@@ -27,6 +27,6 @@
   },
   "recording": {
     "output_directory": "D:\\PythonProjects\\Go2Kin\\output",
-    "last_trial_name": "testflow_007"
+    "last_trial_name": "testflow_010"
   }
 }

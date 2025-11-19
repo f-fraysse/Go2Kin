@@ -134,6 +134,9 @@ class Go2KinMainWindow:
         self.create_widgets()
         self.load_camera_settings()
         
+        # Bind window close event
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
         # Start status monitoring
         self.start_status_monitoring()
     
@@ -955,3 +958,32 @@ class Go2KinMainWindow:
             subprocess.Popen(f'explorer "{output_dir}"')
         else:
             messagebox.showerror("Error", "Output directory does not exist")
+    
+    def on_closing(self):
+        """Handle window close event with graceful cleanup"""
+        
+        # 1. Stop preview if active
+        if self.preview_active:
+            print("Closing window: Stopping active preview...")
+            self.cleanup_preview()
+        
+        # 2. Stop recording if active (no user confirmation)
+        if self.recording:
+            print("Closing window: Stopping active recording...")
+            self.recording = False
+            # Wait briefly for recording thread to finish
+            if self.recording_thread and self.recording_thread.is_alive():
+                self.recording_thread.join(timeout=2.0)
+        
+        # 3. Disconnect all cameras
+        if self.cameras:
+            camera_list = list(self.cameras.keys())
+            print(f"Closing window: Disconnecting cameras: {camera_list}")
+            for camera_num in camera_list:
+                self.disconnect_camera(camera_num)
+        
+        # 4. Save configuration
+        self.save_camera_settings()
+        
+        # 5. Destroy window
+        self.root.destroy()
