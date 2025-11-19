@@ -298,6 +298,22 @@ def main():
         # Save reference file
         filepath = save_reference(reference, model, firmware)
         
+        # Warning about potential duplicate resolution names
+        print("\n" + "⚠️  IMPORTANT: Review Resolution Settings")
+        print("━" * 70)
+        print("The camera may return truncated display names for some settings,")
+        print("particularly Video Resolution (Setting ID 2).")
+        print()
+        print("Please review the generated reference file and check for duplicate")
+        print("resolution names (e.g., multiple \"4K\" entries).")
+        print()
+        print("If duplicates exist, manually edit the reference file to add")
+        print("distinguishing information (e.g., \"4K 16:9\", \"4K 4:3\", \"4K 8:7\").")
+        print()
+        print("Reference the official API documentation for correct names:")
+        print("https://gopro.github.io/OpenGoPro/http#tag/settings/operation/GPCAMERA_CHANGE_SETTING::2")
+        print("━" * 70)
+        
         print("\n" + "="*70)
         print("✓ Discovery Complete!")
         print("="*70)
