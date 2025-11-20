@@ -355,6 +355,60 @@ class Go2KinMainWindow:
                                font=("Arial", 10))
         status_label.pack(side=tk.LEFT, padx=(10, 0))
         
+        # Digital Zoom Controls
+        zoom_frame = ttk.LabelFrame(self.preview_frame, text="Digital Zoom Controls", padding=15)
+        zoom_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        # Zoom level display
+        zoom_display_frame = ttk.Frame(zoom_frame)
+        zoom_display_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        self.zoom_label_var = tk.StringVar(value="Zoom: 0%")
+        zoom_label = ttk.Label(zoom_display_frame, textvariable=self.zoom_label_var,
+                              font=("Arial", 11, "bold"))
+        zoom_label.pack()
+        
+        # Slider with +/- buttons
+        slider_frame = ttk.Frame(zoom_frame)
+        slider_frame.pack(fill=tk.X, pady=5)
+        
+        # Minus button
+        self.zoom_minus_btn = ttk.Button(slider_frame, text="−", width=3,
+                                        command=self.zoom_decrement, state="disabled")
+        self.zoom_minus_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Slider
+        self.zoom_slider = tk.Scale(slider_frame, from_=0, to=100, orient=tk.HORIZONTAL,
+                                   showvalue=False, state="disabled")
+        self.zoom_slider.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.zoom_slider.bind("<ButtonRelease-1>", self.on_zoom_slider_release)
+        
+        # Plus button
+        self.zoom_plus_btn = ttk.Button(slider_frame, text="+", width=3,
+                                       command=self.zoom_increment, state="disabled")
+        self.zoom_plus_btn.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Scale labels
+        scale_label_frame = ttk.Frame(zoom_frame)
+        scale_label_frame.pack(fill=tk.X)
+        ttk.Label(scale_label_frame, text="0", font=("Arial", 8)).pack(side=tk.LEFT, padx=(45, 0))
+        ttk.Label(scale_label_frame, text="50", font=("Arial", 8)).pack(side=tk.LEFT, expand=True)
+        ttk.Label(scale_label_frame, text="100", font=("Arial", 8)).pack(side=tk.RIGHT, padx=(0, 45))
+        
+        # Direct input
+        input_frame = ttk.Frame(zoom_frame)
+        input_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        ttk.Label(input_frame, text="Direct Input:", font=("Arial", 10)).pack(side=tk.LEFT, padx=(0, 10))
+        self.zoom_entry_var = tk.StringVar(value="0")
+        self.zoom_entry = ttk.Entry(input_frame, textvariable=self.zoom_entry_var,
+                                    width=8, state="disabled")
+        self.zoom_entry.pack(side=tk.LEFT, padx=(0, 5))
+        self.zoom_entry.bind("<Return>", self.on_zoom_entry_enter)
+        
+        ttk.Label(input_frame, text="(0-100, press Enter)", font=("Arial", 9),
+                 foreground="gray").pack(side=tk.LEFT)
+        
         # Video display area
         video_frame = ttk.LabelFrame(self.preview_frame, text="Video Display", padding=10)
         video_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
@@ -554,10 +608,18 @@ class Go2KinMainWindow:
             
             state = state_response.json()
             
+            # Query current zoom level (status ID 75)
+            current_zoom = state['status'].get('75', 0)  # Default to 0 if not found
+            self.log_progress(f"  Current zoom: {current_zoom}%")
+            
             # Create or update camera profile
             profile = None
             if reference:
                 profile = profile_mgr.create_or_update_profile(camera_info, state, reference)
+                
+                # Add zoom level to profile
+                profile['current_zoom'] = current_zoom
+                
                 self.log_progress(f"✓ Camera profile updated")
                 
                 # Store reference and profile for this camera
@@ -574,6 +636,9 @@ class Go2KinMainWindow:
                 
                 # Populate dropdowns from profile
                 self.populate_dropdowns_from_profile(camera_num, profile, reference)
+                
+                # Save profile with zoom level
+                profile_mgr.save_camera_profile(serial, profile)
             
             # Store camera instance
             self.cameras[camera_num] = camera
@@ -798,6 +863,120 @@ class Go2KinMainWindow:
             self.start_preview_btn.config(state="disabled")
             self.preview_status_var.set("No cameras connected")
     
+    def on_zoom_slider_release(self, event):
+        """Apply zoom when user releases slider"""
+        if not self.preview_active or self.preview_camera_num is None:
+            return
+        
+        zoom_value = int(self.zoom_slider.get())
+        self.apply_zoom_to_camera(zoom_value)
+    
+    def zoom_increment(self):
+        """Increment zoom by 1%"""
+        if not self.preview_active or self.preview_camera_num is None:
+            return
+        
+        current = int(self.zoom_slider.get())
+        new_value = min(100, current + 1)
+        self.zoom_slider.set(new_value)
+        self.apply_zoom_to_camera(new_value)
+    
+    def zoom_decrement(self):
+        """Decrement zoom by 1%"""
+        if not self.preview_active or self.preview_camera_num is None:
+            return
+        
+        current = int(self.zoom_slider.get())
+        new_value = max(0, current - 1)
+        self.zoom_slider.set(new_value)
+        self.apply_zoom_to_camera(new_value)
+    
+    def on_zoom_entry_enter(self, event):
+        """Validate and apply zoom on Enter key"""
+        if not self.preview_active or self.preview_camera_num is None:
+            return
+        
+        value_str = self.zoom_entry_var.get()
+        if self.validate_zoom_input(value_str):
+            zoom_value = int(value_str)
+            self.apply_zoom_to_camera(zoom_value)
+        else:
+            # Show error and revert to current camera zoom
+            messagebox.showerror("Invalid Input", 
+                               "Zoom must be a number between 0 and 100")
+            self.sync_zoom_controls_from_camera()
+    
+    def validate_zoom_input(self, value_str):
+        """Validate zoom input string"""
+        try:
+            value = int(value_str)
+            return 0 <= value <= 100
+        except ValueError:
+            return False
+    
+    def apply_zoom_to_camera(self, zoom_value):
+        """Apply zoom value to camera and update all controls"""
+        if self.preview_camera_num is None or self.preview_camera_num not in self.cameras:
+            return
+        
+        try:
+            camera = self.cameras[self.preview_camera_num]
+            response = camera.setDigitalZoom(zoom_value)
+            
+            if response.status_code == 200:
+                # Success - update all controls
+                self.update_zoom_display(zoom_value)
+                
+                # Update profile if available
+                if self.preview_camera_num in self.camera_profiles:
+                    profile = self.camera_profiles[self.preview_camera_num]
+                    profile['current_zoom'] = zoom_value
+                    
+                    # Save profile to disk
+                    profile_mgr = get_profile_manager()
+                    serial = profile['serial_number']
+                    profile_mgr.save_camera_profile(serial, profile)
+            else:
+                raise Exception(f"Camera returned status {response.status_code}")
+                
+        except Exception as e:
+            messagebox.showerror("Zoom Error", f"Failed to set zoom:\n{e}")
+            self.sync_zoom_controls_from_camera()
+    
+    def update_zoom_display(self, zoom_value):
+        """Update all zoom controls to show the same value"""
+        self.zoom_slider.set(zoom_value)
+        self.zoom_entry_var.set(str(zoom_value))
+        self.zoom_label_var.set(f"Zoom: {zoom_value}%")
+    
+    def sync_zoom_controls_from_camera(self):
+        """Query camera and sync all zoom controls"""
+        if self.preview_camera_num is None or self.preview_camera_num not in self.cameras:
+            return
+        
+        try:
+            camera = self.cameras[self.preview_camera_num]
+            current_zoom = camera.getZoomLevel()
+            
+            if current_zoom is not None:
+                self.update_zoom_display(current_zoom)
+        except Exception as e:
+            print(f"Error syncing zoom from camera: {e}")
+    
+    def enable_zoom_controls(self):
+        """Enable zoom controls when preview is active"""
+        self.zoom_slider.config(state="normal")
+        self.zoom_minus_btn.config(state="normal")
+        self.zoom_plus_btn.config(state="normal")
+        self.zoom_entry.config(state="normal")
+    
+    def disable_zoom_controls(self):
+        """Disable zoom controls when preview is not active"""
+        self.zoom_slider.config(state="disabled")
+        self.zoom_minus_btn.config(state="disabled")
+        self.zoom_plus_btn.config(state="disabled")
+        self.zoom_entry.config(state="disabled")
+    
     def start_preview(self):
         """Start live preview for the selected camera"""
         if self.preview_active:
@@ -841,6 +1020,18 @@ class Go2KinMainWindow:
             if self.preview_capture.start_capture():
                 self.preview_active = True
                 self.preview_camera_num = camera_num
+                
+                # Initialize zoom controls from camera profile
+                if camera_num in self.camera_profiles:
+                    profile = self.camera_profiles[camera_num]
+                    current_zoom = profile.get('current_zoom', 0)
+                    self.update_zoom_display(current_zoom)
+                else:
+                    # No profile, query camera directly
+                    self.sync_zoom_controls_from_camera()
+                
+                # Enable zoom controls
+                self.enable_zoom_controls()
                 
                 # Update UI
                 self.start_preview_btn.config(state="disabled")
@@ -891,6 +1082,12 @@ class Go2KinMainWindow:
                 print(f"Error stopping camera stream: {e}")
         
         self.preview_camera_num = None
+        
+        # Disable zoom controls
+        self.disable_zoom_controls()
+        
+        # Reset zoom display
+        self.update_zoom_display(0)
         
         # Reset UI
         self.start_preview_btn.config(state="normal")
