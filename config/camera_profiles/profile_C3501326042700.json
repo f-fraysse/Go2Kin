@@ -2,7 +2,7 @@
   "serial_number": "C3501326042700",
   "model": "HERO12 Black",
   "firmware": "H23.01.02.32.00",
-  "last_connected": "2025-12-03T12:24:34.542237",
+  "last_connected": "2025-12-03T14:08:01.667279",
   "settings_reference_file": "settings_reference_HERO12_Black_H23_01_02_32_00.json",
   "current_settings": {
     "2": {
@@ -41,9 +41,9 @@
       "value_name": "Never"
     },
     "88": {
-      "value": 50,
+      "value": 30,
       "name": "LCD Brightness",
-      "value_name": "50%"
+      "value_name": "30%"
     },
     "108": {
       "value": 1,
@@ -81,9 +81,9 @@
       "value_name": "60Hz"
     },
     "135": {
-      "value": 1,
+      "value": 0,
       "name": "Hypersmooth",
-      "value_name": "On"
+      "value_name": "Off"
     },
     "156": {
       "value": 100,
@@ -116,9 +116,9 @@
       "value_name": "Pro"
     },
     "176": {
-      "value": 111,
+      "value": 110,
       "name": "Easy Mode Speed",
-      "value_name": "1X Speed / Low Light"
+      "value_name": "2X Slo-Mo"
     },
     "178": {
       "value": 0,
@@ -243,7 +243,7 @@
       "name": "Preset"
     },
     "98": {
-      "value": 100663303,
+      "value": 16777223,
       "name": "Preset Modified"
     },
     "101": {
@@ -311,5 +311,5 @@
       "name": "Photo Interval Capture Count"
     }
   },
-  "current_zoom": 31
+  "current_zoom": 0
 }

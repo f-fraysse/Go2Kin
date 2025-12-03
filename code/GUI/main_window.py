@@ -569,29 +569,31 @@ class Go2KinMainWindow:
             camera.modeVideo()
             time.sleep(1)
             
-            # Check and apply Pro control mode if not already set
-            # Setting ID 175 = Control Mode, Option 0 = Easy, Option 1 = Pro
-            state_check = camera.getState()
-            if state_check.status_code == 200:
-                current_control_mode = state_check.json()['settings'].get('175', None)
-                if current_control_mode != 1:  # 1 = Pro
-                    self.log_progress(f"  Switching to Pro control mode...")
-                    camera.setSetting(175, 1)  # Set to Pro mode
-                    time.sleep(0.5)
-                else:
-                    self.log_progress(f"  Control mode already Pro")
+            # Apply settings on connect (only if not already set)
+            # These settings ensure consistent camera configuration for research use
+            # Format: (setting_id, option_id, name, value_description)
+            settings_on_connect = [
+                (175, 1, "Control Mode", "Pro"),              # Pro control mode
+                (121, 4, "Lens", "Linear"),                   # Linear lens mode
+                (83, 0, "GPS", "Off"),                        # GPS off
+                (167, 4, "Hindsight", "Off"),                 # Hindsight off
+                (135, 0, "Hypersmooth", "Off"),               # Hypersmooth off
+                (88, 30, "LCD Brightness", "30%"),            # LCD brightness 30%
+                (180, 0, "System Video Mode", "Highest Quality"),  # Highest quality
+                (236, 0, "Auto WiFi AP", "Off"),              # Auto WiFi AP off
+            ]
             
-            # Check and apply Linear lens mode if not already set
-            # Setting ID 121 = Video Lens, Option ID 4 = Linear
             state_check = camera.getState()
             if state_check.status_code == 200:
-                current_lens = state_check.json()['settings'].get('121', None)
-                if current_lens != 4:  # 4 = Linear
-                    self.log_progress(f"  Setting lens mode to Linear...")
-                    camera.setVideoLensesLinear()
-                    time.sleep(0.5)
-                else:
-                    self.log_progress(f"  Lens mode already Linear")
+                current_settings = state_check.json()['settings']
+                for setting_id, option_id, name, value_desc in settings_on_connect:
+                    current_value = current_settings.get(str(setting_id), None)
+                    if current_value != option_id:
+                        self.log_progress(f"  Setting {name} to {value_desc}...")
+                        camera.setSetting(setting_id, option_id)
+                        time.sleep(0.3)
+                    else:
+                        self.log_progress(f"  {name} already {value_desc}")
             
             # Get current camera state
             state_response = camera.getState()

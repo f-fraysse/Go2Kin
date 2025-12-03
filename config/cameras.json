@@ -22,11 +22,11 @@
       "serial": "C3501326062418",
       "lens": "Linear",
       "resolution": "1080",
-      "fps": 120
+      "fps": 60
     }
   },
   "recording": {
     "output_directory": "D:\\PythonProjects\\Go2Kin\\output",
-    "last_trial_name": "testflow_016"
+    "last_trial_name": "test_kent_standing_002"
   }
 }
