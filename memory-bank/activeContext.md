@@ -92,6 +92,33 @@ Complete multi-camera recording system ready for production use. Trial name work
 
 ## Recent Changes
 
+### Zoom Level Persistence on Camera Reconnection - COMPLETE ✅ (Dec 3, 2025)
+
+**Issue Identified:**
+- Zoom level was being saved to camera profile when changed in Preview tab
+- However, on camera reconnection, the saved zoom was being overwritten by the camera's current zoom (which resets to 0 on power cycle)
+
+**Solution Implemented:**
+1. **Load existing profile first** in `connect_camera()` to retrieve saved zoom level
+2. **Apply saved zoom** to camera after connection setup (if saved zoom > 0 and different from current)
+3. **Update profile** with restored zoom value for consistency
+
+**Code Changes in `main_window.py`:**
+- Added `existing_profile = profile_mgr.load_camera_profile(serial)` early in connect flow
+- Added zoom restoration logic after settings are applied:
+  ```python
+  if saved_zoom is not None and saved_zoom > 0 and saved_zoom != current_zoom:
+      response = camera.setDigitalZoom(saved_zoom)
+      if response.status_code == 200:
+          current_zoom = saved_zoom  # Update to restored value
+  ```
+- Progress log shows zoom restoration status
+
+**Behavior:**
+- On camera connect: "Found saved zoom level: X%" appears if profile has saved zoom
+- After connection: "Restoring saved zoom level: X%..." followed by success/failure
+- Zoom level persists across camera power cycles and reconnections
+
 ### Profile-Driven Settings Management System - COMPLETE ✅ (Nov 19, 2025)
 
 **Architecture Implemented:**

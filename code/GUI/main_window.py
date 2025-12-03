@@ -547,6 +547,14 @@ class Go2KinMainWindow:
             # Get profile manager
             profile_mgr = get_profile_manager()
             
+            # Load existing profile to check for saved zoom level
+            existing_profile = profile_mgr.load_camera_profile(serial)
+            saved_zoom = None
+            if existing_profile and 'current_zoom' in existing_profile:
+                saved_zoom = existing_profile.get('current_zoom', 0)
+                if saved_zoom > 0:
+                    self.log_progress(f"  Found saved zoom level: {saved_zoom}%")
+            
             # Check if we have a settings reference for this model/firmware
             reference = profile_mgr.load_settings_reference(model, firmware)
             
@@ -605,6 +613,19 @@ class Go2KinMainWindow:
             # Query current zoom level (status ID 75)
             current_zoom = state['status'].get('75', 0)  # Default to 0 if not found
             self.log_progress(f"  Current zoom: {current_zoom}%")
+            
+            # Restore saved zoom level if available and different from current
+            if saved_zoom is not None and saved_zoom > 0 and saved_zoom != current_zoom:
+                self.log_progress(f"  Restoring saved zoom level: {saved_zoom}%...")
+                try:
+                    response = camera.setDigitalZoom(saved_zoom)
+                    if response.status_code == 200:
+                        current_zoom = saved_zoom  # Update to restored value
+                        self.log_progress(f"  ✓ Zoom restored to {saved_zoom}%")
+                    else:
+                        self.log_progress(f"  ⚠ Failed to restore zoom (status: {response.status_code})")
+                except Exception as zoom_err:
+                    self.log_progress(f"  ⚠ Failed to restore zoom: {zoom_err}")
             
             # Create or update camera profile
             profile = None
