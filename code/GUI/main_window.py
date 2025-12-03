@@ -313,110 +313,78 @@ class Go2KinMainWindow:
         return frame
     
     def create_live_preview_tab(self):
-        """Create the functional live preview tab"""
+        """Create the functional live preview tab with maximized video display"""
         self.preview_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.preview_frame, text="Live Preview")
         
-        # Title
-        title_label = ttk.Label(self.preview_frame, text="Live Preview", 
-                               font=("Arial", 16, "bold"))
-        title_label.pack(pady=15)
+        # Compact control bar - all controls on one line
+        control_bar = ttk.Frame(self.preview_frame)
+        control_bar.pack(fill=tk.X, padx=10, pady=5)
         
-        # Control panel
-        control_frame = ttk.LabelFrame(self.preview_frame, text="Preview Controls", padding=15)
-        control_frame.pack(fill=tk.X, padx=20, pady=10)
+        # Left side: Preview controls
+        preview_controls = ttk.Frame(control_bar)
+        preview_controls.pack(side=tk.LEFT)
         
-        # Camera selector
-        selector_frame = ttk.Frame(control_frame)
-        selector_frame.pack(fill=tk.X, pady=5)
-        
-        ttk.Label(selector_frame, text="Camera:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Label(preview_controls, text="Camera:", font=("Arial", 9)).pack(side=tk.LEFT, padx=(0, 5))
         self.preview_camera_var = tk.StringVar()
-        self.preview_combo = ttk.Combobox(selector_frame, textvariable=self.preview_camera_var,
-                                         state="readonly", width=15)
-        self.preview_combo.pack(side=tk.LEFT, padx=(0, 20))
+        self.preview_combo = ttk.Combobox(preview_controls, textvariable=self.preview_camera_var,
+                                         state="readonly", width=10)
+        self.preview_combo.pack(side=tk.LEFT, padx=(0, 8))
         
-        # Preview buttons
-        self.start_preview_btn = ttk.Button(selector_frame, text="▶ Start Preview", 
+        self.start_preview_btn = ttk.Button(preview_controls, text="▶ Start", 
                                           command=self.start_preview)
-        self.start_preview_btn.pack(side=tk.LEFT, padx=(0, 8))
+        self.start_preview_btn.pack(side=tk.LEFT, padx=(0, 4))
         
-        self.stop_preview_btn = ttk.Button(selector_frame, text="⏹ Stop Preview", 
+        self.stop_preview_btn = ttk.Button(preview_controls, text="⏹ Stop", 
                                          command=self.stop_preview, state="disabled")
-        self.stop_preview_btn.pack(side=tk.LEFT)
+        self.stop_preview_btn.pack(side=tk.LEFT, padx=(0, 10))
         
-        # Status indicator
-        status_frame = ttk.Frame(control_frame)
-        status_frame.pack(fill=tk.X, pady=(10, 0))
-        
-        ttk.Label(status_frame, text="Status:", font=("Arial", 10, "bold")).pack(side=tk.LEFT)
+        # Status indicator (compact)
         self.preview_status_var = tk.StringVar(value="Ready")
-        status_label = ttk.Label(status_frame, textvariable=self.preview_status_var, 
-                               font=("Arial", 10))
-        status_label.pack(side=tk.LEFT, padx=(10, 0))
+        status_label = ttk.Label(preview_controls, textvariable=self.preview_status_var, 
+                               font=("Arial", 9), foreground="gray")
+        status_label.pack(side=tk.LEFT)
         
-        # Digital Zoom Controls
-        zoom_frame = ttk.LabelFrame(self.preview_frame, text="Digital Zoom Controls", padding=15)
-        zoom_frame.pack(fill=tk.X, padx=20, pady=10)
-        
-        # Zoom level display
-        zoom_display_frame = ttk.Frame(zoom_frame)
-        zoom_display_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        self.zoom_label_var = tk.StringVar(value="Zoom: 0%")
-        zoom_label = ttk.Label(zoom_display_frame, textvariable=self.zoom_label_var,
-                              font=("Arial", 11, "bold"))
-        zoom_label.pack()
-        
-        # Slider with +/- buttons
-        slider_frame = ttk.Frame(zoom_frame)
-        slider_frame.pack(fill=tk.X, pady=5)
+        # Right side: Zoom controls
+        zoom_controls = ttk.Frame(control_bar)
+        zoom_controls.pack(side=tk.RIGHT)
         
         # Minus button
-        self.zoom_minus_btn = ttk.Button(slider_frame, text="−", width=3,
+        self.zoom_minus_btn = ttk.Button(zoom_controls, text="−", width=2,
                                         command=self.zoom_decrement, state="disabled")
-        self.zoom_minus_btn.pack(side=tk.LEFT, padx=(0, 10))
+        self.zoom_minus_btn.pack(side=tk.LEFT, padx=(0, 3))
         
-        # Slider
-        self.zoom_slider = tk.Scale(slider_frame, from_=0, to=100, orient=tk.HORIZONTAL,
-                                   showvalue=False, state="disabled")
-        self.zoom_slider.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        # Slider (compact)
+        self.zoom_slider = tk.Scale(zoom_controls, from_=0, to=100, orient=tk.HORIZONTAL,
+                                   showvalue=False, state="disabled", length=150)
+        self.zoom_slider.pack(side=tk.LEFT)
         self.zoom_slider.bind("<ButtonRelease-1>", self.on_zoom_slider_release)
         
         # Plus button
-        self.zoom_plus_btn = ttk.Button(slider_frame, text="+", width=3,
+        self.zoom_plus_btn = ttk.Button(zoom_controls, text="+", width=2,
                                        command=self.zoom_increment, state="disabled")
-        self.zoom_plus_btn.pack(side=tk.LEFT, padx=(10, 0))
+        self.zoom_plus_btn.pack(side=tk.LEFT, padx=(3, 8))
         
-        # Scale labels
-        scale_label_frame = ttk.Frame(zoom_frame)
-        scale_label_frame.pack(fill=tk.X)
-        ttk.Label(scale_label_frame, text="0", font=("Arial", 8)).pack(side=tk.LEFT, padx=(45, 0))
-        ttk.Label(scale_label_frame, text="50", font=("Arial", 8)).pack(side=tk.LEFT, expand=True)
-        ttk.Label(scale_label_frame, text="100", font=("Arial", 8)).pack(side=tk.RIGHT, padx=(0, 45))
+        # Zoom label
+        self.zoom_label_var = tk.StringVar(value="Zoom: 0%")
+        zoom_label = ttk.Label(zoom_controls, textvariable=self.zoom_label_var,
+                              font=("Arial", 9), width=10)
+        zoom_label.pack(side=tk.LEFT, padx=(0, 5))
         
-        # Direct input
-        input_frame = ttk.Frame(zoom_frame)
-        input_frame.pack(fill=tk.X, pady=(10, 0))
-        
-        ttk.Label(input_frame, text="Direct Input:", font=("Arial", 10)).pack(side=tk.LEFT, padx=(0, 10))
+        # Direct input (compact)
         self.zoom_entry_var = tk.StringVar(value="0")
-        self.zoom_entry = ttk.Entry(input_frame, textvariable=self.zoom_entry_var,
-                                    width=8, state="disabled")
-        self.zoom_entry.pack(side=tk.LEFT, padx=(0, 5))
+        self.zoom_entry = ttk.Entry(zoom_controls, textvariable=self.zoom_entry_var,
+                                    width=4, state="disabled")
+        self.zoom_entry.pack(side=tk.LEFT)
         self.zoom_entry.bind("<Return>", self.on_zoom_entry_enter)
         
-        ttk.Label(input_frame, text="(0-100, press Enter)", font=("Arial", 9),
-                 foreground="gray").pack(side=tk.LEFT)
+        # Video display area - maximized with 16:9 aspect ratio
+        video_container = ttk.Frame(self.preview_frame)
+        video_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Video display area
-        video_frame = ttk.LabelFrame(self.preview_frame, text="Video Display", padding=10)
-        video_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
-        
-        # Video label for displaying frames
-        self.video_label = tk.Label(video_frame, text="Select a connected camera and click Start Preview",
-                                   bg="black", fg="white", font=("Arial", 14),
-                                   width=80, height=30)
+        # Video label for displaying frames (16:9 ratio maintained in update_video_display)
+        self.video_label = tk.Label(video_container, text="Select a connected camera and click Start",
+                                   bg="black", fg="white", font=("Arial", 12))
         self.video_label.pack(expand=True, fill=tk.BOTH)
         
         # Update camera dropdown initially
@@ -1101,7 +1069,7 @@ class Go2KinMainWindow:
         self.update_preview_camera_dropdown()
     
     def update_video_display(self):
-        """Update the video display with the latest frame"""
+        """Update the video display with the latest frame (16:9 aspect ratio)"""
         if not self.preview_active or not self.preview_capture:
             return
         
@@ -1113,11 +1081,32 @@ class Go2KinMainWindow:
                 # Convert BGR to RGB (OpenCV uses BGR, tkinter expects RGB)
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 
-                # Resize frame to fit display area (maintain aspect ratio)
-                display_height = 400  # Target height
-                height, width = frame_rgb.shape[:2]
-                aspect_ratio = width / height
-                display_width = int(display_height * aspect_ratio)
+                # Get available display area size
+                self.video_label.update_idletasks()
+                available_width = self.video_label.winfo_width()
+                available_height = self.video_label.winfo_height()
+                
+                # Use minimum reasonable size if widget not yet sized
+                if available_width < 100:
+                    available_width = 800
+                if available_height < 100:
+                    available_height = 450
+                
+                # Calculate 16:9 display size that fits within available space
+                target_ratio = 16 / 9
+                
+                # Try fitting by width first
+                display_width = available_width
+                display_height = int(display_width / target_ratio)
+                
+                # If too tall, fit by height instead
+                if display_height > available_height:
+                    display_height = available_height
+                    display_width = int(display_height * target_ratio)
+                
+                # Ensure minimum size
+                display_width = max(320, display_width)
+                display_height = max(180, display_height)
                 
                 frame_resized = cv2.resize(frame_rgb, (display_width, display_height))
                 
