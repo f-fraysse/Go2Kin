@@ -1,8 +1,8 @@
 {
-  "serial_number": "C3501326042700",
+  "serial_number": "C3501326054100",
   "model": "HERO12 Black",
   "firmware": "H23.01.02.32.00",
-  "last_connected": "2025-12-03T12:24:34.542237",
+  "last_connected": "2025-12-03T12:24:58.572613",
   "settings_reference_file": "settings_reference_HERO12_Black_H23_01_02_32_00.json",
   "current_settings": {
     "2": {
@@ -11,9 +11,9 @@
       "value_name": "1080"
     },
     "3": {
-      "value": 5,
+      "value": 8,
       "name": "Frames Per Second",
-      "value_name": "60"
+      "value_name": "30"
     },
     "5": {
       "value": 0,
@@ -36,9 +36,9 @@
       "value_name": "Wide"
     },
     "59": {
-      "value": 0,
+      "value": 4,
       "name": "Auto Power Down",
-      "value_name": "Never"
+      "value_name": "5 Min"
     },
     "88": {
       "value": 50,
@@ -223,7 +223,7 @@
       "name": "OTA Charged"
     },
     "93": {
-      "value": 7,
+      "value": 0,
       "name": "Video Preset"
     },
     "94": {
@@ -239,11 +239,11 @@
       "name": "Preset Group"
     },
     "97": {
-      "value": 7,
+      "value": 0,
       "name": "Preset"
     },
     "98": {
-      "value": 100663303,
+      "value": 100663296,
       "name": "Preset Modified"
     },
     "101": {
@@ -311,5 +311,5 @@
       "name": "Photo Interval Capture Count"
     }
   },
-  "current_zoom": 31
+  "current_zoom": 53
 }

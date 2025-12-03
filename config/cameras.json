@@ -2,31 +2,31 @@
   "cameras": {
     "1": {
       "serial": "C3501326042700",
-      "lens": "Narrow",
+      "lens": "Linear",
       "resolution": "1080",
       "fps": 60
     },
     "2": {
       "serial": "C3501326054100",
-      "lens": "Narrow",
-      "resolution": "1080p",
-      "fps": 30
+      "lens": "Linear",
+      "resolution": "1080",
+      "fps": 60
     },
     "3": {
       "serial": "C3501326054460",
-      "lens": "Narrow",
+      "lens": "Linear",
       "resolution": "1080p",
       "fps": 30
     },
     "4": {
       "serial": "C3501326062418",
-      "lens": "Narrow",
-      "resolution": "1080p",
-      "fps": 30
+      "lens": "Linear",
+      "resolution": "1080",
+      "fps": 120
     }
   },
   "recording": {
     "output_directory": "D:\\PythonProjects\\Go2Kin\\output",
-    "last_trial_name": "testflow_010"
+    "last_trial_name": "testflow_016"
   }
 }

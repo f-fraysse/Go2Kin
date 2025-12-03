@@ -150,10 +150,10 @@ class Go2KinMainWindow:
         """Load configuration from JSON file"""
         default_config = {
             "cameras": {
-                "1": {"serial": "C3501326042700", "lens": "Narrow", "resolution": "1080p", "fps": 30},
-                "2": {"serial": "C3501326054100", "lens": "Narrow", "resolution": "1080p", "fps": 30},
-                "3": {"serial": "C3501326054460", "lens": "Narrow", "resolution": "1080p", "fps": 30},
-                "4": {"serial": "C3501326062418", "lens": "Narrow", "resolution": "1080p", "fps": 30}
+                "1": {"serial": "C3501326042700", "lens": "Linear", "resolution": "1080p", "fps": 30},
+                "2": {"serial": "C3501326054100", "lens": "Linear", "resolution": "1080p", "fps": 30},
+                "3": {"serial": "C3501326054460", "lens": "Linear", "resolution": "1080p", "fps": 30},
+                "4": {"serial": "C3501326062418", "lens": "Linear", "resolution": "1080p", "fps": 30}
             },
             "recording": {
                 "output_directory": str(Path.cwd() / "output"),
@@ -569,6 +569,30 @@ class Go2KinMainWindow:
             camera.modeVideo()
             time.sleep(1)
             
+            # Check and apply Pro control mode if not already set
+            # Setting ID 175 = Control Mode, Option 0 = Easy, Option 1 = Pro
+            state_check = camera.getState()
+            if state_check.status_code == 200:
+                current_control_mode = state_check.json()['settings'].get('175', None)
+                if current_control_mode != 1:  # 1 = Pro
+                    self.log_progress(f"  Switching to Pro control mode...")
+                    camera.setSetting(175, 1)  # Set to Pro mode
+                    time.sleep(0.5)
+                else:
+                    self.log_progress(f"  Control mode already Pro")
+            
+            # Check and apply Linear lens mode if not already set
+            # Setting ID 121 = Video Lens, Option ID 4 = Linear
+            state_check = camera.getState()
+            if state_check.status_code == 200:
+                current_lens = state_check.json()['settings'].get('121', None)
+                if current_lens != 4:  # 4 = Linear
+                    self.log_progress(f"  Setting lens mode to Linear...")
+                    camera.setVideoLensesLinear()
+                    time.sleep(0.5)
+                else:
+                    self.log_progress(f"  Lens mode already Linear")
+            
             # Get current camera state
             state_response = camera.getState()
             if state_response.status_code != 200:
@@ -786,6 +810,14 @@ class Go2KinMainWindow:
         try:
             if camera_num in self.cameras:
                 camera = self.cameras[camera_num]
+                
+                # Stop preview stream if this camera is currently streaming
+                # This prevents 409 errors on next connection
+                try:
+                    camera.previewStreamStop()
+                except Exception:
+                    pass  # Ignore errors - stream may not be active
+                
                 camera.USBdisable()
                 del self.cameras[camera_num]
                 self.camera_status[camera_num] = False
