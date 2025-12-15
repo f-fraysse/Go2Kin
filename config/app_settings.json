@@ -1,0 +1,12 @@
+{
+  "recording": {
+    "output_directory": "D:\\PythonProjects\\Go2Kin\\output",
+    "last_trial_name": "test_board_008"
+  },
+  "camera_serials": {
+    "1": "C3501326042700",
+    "2": "C3501326054100",
+    "3": "C3501326054460",
+    "4": "C3501326062418"
+  }
+}

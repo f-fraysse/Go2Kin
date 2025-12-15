@@ -761,6 +761,16 @@ class Go2KinMainWindow:
                 self.update_camera_profile_setting(camera_num, setting_id, option_id, display_name)
                 self.log_progress(f"✓ {setting_name} set to: {display_name}")
                 
+                # Re-apply zoom in case the setting change reset it
+                if camera_num in self.camera_profiles:
+                    saved_zoom = self.camera_profiles[camera_num].get('current_zoom', 0)
+                    if saved_zoom > 0:
+                        try:
+                            camera.setDigitalZoom(saved_zoom)
+                            time.sleep(0.2)
+                        except Exception as e:
+                            self.log_progress(f"  ⚠ Note: Zoom may have been reset by setting change")
+                
             elif response.status_code == 403:
                 # Invalid option - show available options
                 try:
@@ -1027,6 +1037,13 @@ class Go2KinMainWindow:
             camera.setVideoLensesLinear()  # Always Linear
             camera.setVideoResolution1080()  # Always 1080p
             camera.setFPS30()  # Always 30fps
+            
+            # Apply saved zoom level from profile (after settings that might reset it)
+            if camera_num in self.camera_profiles:
+                saved_zoom = self.camera_profiles[camera_num].get('current_zoom', 0)
+                if saved_zoom > 0:
+                    camera.setDigitalZoom(saved_zoom)
+                    time.sleep(0.3)
             
             # Start UDP stream
             response = camera.previewStreamStart(port=8554)
@@ -1303,13 +1320,44 @@ class Go2KinMainWindow:
             self.root.after(0, self.reset_recording_ui)
     
     def start_camera_recording(self, camera_num, camera):
-        """Start recording on a single camera
+        """Start recording on a single camera with settings from profile"""
         
-        Note: Settings are already applied via dropdowns, so we just start recording.
-        The camera is already in video mode and has the correct resolution/FPS from
-        the dropdown change handlers.
-        """
-        # Start recording immediately - settings already applied
+        # Get camera profile
+        if camera_num not in self.camera_profiles:
+            # No profile - just start recording with current settings
+            camera.shutterStart()
+            return
+        
+        profile = self.camera_profiles[camera_num]
+        
+        # Ensure video mode
+        camera.modeVideo()
+        time.sleep(0.5)
+        
+        # Apply resolution from profile (setting ID 2)
+        if '2' in profile['current_settings']:
+            res_setting = profile['current_settings']['2']
+            camera.setSetting(2, res_setting['value'])
+            time.sleep(0.3)
+        
+        # Apply FPS from profile (setting ID 3)
+        if '3' in profile['current_settings']:
+            fps_setting = profile['current_settings']['3']
+            camera.setSetting(3, fps_setting['value'])
+            time.sleep(0.3)
+        
+        # Apply lens from profile (setting ID 121 for video)
+        if '121' in profile['current_settings']:
+            lens_setting = profile['current_settings']['121']
+            camera.setSetting(121, lens_setting['value'])
+            time.sleep(0.3)
+        
+        # Apply zoom from profile
+        saved_zoom = profile.get('current_zoom', 0)
+        camera.setDigitalZoom(saved_zoom)
+        time.sleep(0.3)
+        
+        # Start recording
         camera.shutterStart()
     
     def stop_and_download(self, camera_num, camera, trial_dir, trial_name):
