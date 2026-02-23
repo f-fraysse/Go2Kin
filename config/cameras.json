@@ -10,7 +10,7 @@
       "serial": "C3501326054100",
       "lens": "Linear",
       "resolution": "1080",
-      "fps": 30
+      "fps": 60
     },
     "3": {
       "serial": "C3501326054460",
@@ -26,7 +26,7 @@
     }
   },
   "recording": {
-    "output_directory": "D:\\PythonProjects\\Go2Kin\\output",
-    "last_trial_name": "test_board_008"
+    "output_directory": "D:\\PythonProjects\\Go2Kin\\output\\PM",
+    "last_trial_name": "soccer_G4_left_005"
   }
 }
