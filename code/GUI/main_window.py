@@ -150,10 +150,10 @@ class Go2KinMainWindow:
         """Load configuration from JSON file"""
         default_config = {
             "cameras": {
-                "1": {"serial": "C3501326042700", "lens": "Linear", "resolution": "1080p", "fps": 30},
-                "2": {"serial": "C3501326054100", "lens": "Linear", "resolution": "1080p", "fps": 30},
-                "3": {"serial": "C3501326054460", "lens": "Linear", "resolution": "1080p", "fps": 30},
-                "4": {"serial": "C3501326062418", "lens": "Linear", "resolution": "1080p", "fps": 30}
+                "1": {"serial": "C3501326042700", "lens": "Linear", "resolution": "1080", "fps": 30},
+                "2": {"serial": "C3501326054100", "lens": "Linear", "resolution": "1080", "fps": 30},
+                "3": {"serial": "C3501326054460", "lens": "Linear", "resolution": "1080", "fps": 30},
+                "4": {"serial": "C3501326062418", "lens": "Linear", "resolution": "1080", "fps": 30}
             },
             "recording": {
                 "output_directory": str(Path.cwd() / "output"),
@@ -587,6 +587,7 @@ class Go2KinMainWindow:
                 (167, 4, "Hindsight", "Off"),                 # Hindsight off
                 (135, 0, "Hypersmooth", "Off"),               # Hypersmooth off
                 (88, 30, "LCD Brightness", "30%"),            # LCD brightness 30%
+                (134, 3, "Anti-Flicker", "50Hz"),             # 50Hz for Australia
                 (180, 0, "System Video Mode", "Highest Quality"),  # Highest quality
                 (236, 0, "Auto WiFi AP", "Off"),              # Auto WiFi AP off
             ]
@@ -847,7 +848,7 @@ class Go2KinMainWindow:
                 # Stop preview stream if this camera is currently streaming
                 # This prevents 409 errors on next connection
                 try:
-                    camera.previewStreamStop()
+                    camera.streamStop()
                 except Exception:
                     pass  # Ignore errors - stream may not be active
                 
@@ -1046,7 +1047,7 @@ class Go2KinMainWindow:
                     time.sleep(0.3)
             
             # Start UDP stream
-            response = camera.previewStreamStart(port=8554)
+            response = camera.streamStart(port=8554)
             if response.status_code != 200:
                 raise Exception(f"Failed to start preview stream (status: {response.status_code})")
             
@@ -1117,7 +1118,7 @@ class Go2KinMainWindow:
         if self.preview_camera_num and self.preview_camera_num in self.cameras:
             try:
                 camera = self.cameras[self.preview_camera_num]
-                camera.previewStreamStop()
+                camera.streamStop()
             except Exception as e:
                 print(f"Error stopping camera stream: {e}")
         

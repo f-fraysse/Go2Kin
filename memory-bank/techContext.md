@@ -13,67 +13,82 @@
 ```
 Go2Kin/
 ├── code/
+│   ├── go2kin.py              # Main entry point
+│   ├── camera_profiles.py     # CameraProfileManager (profiles + references)
+│   ├── GUI/
+│   │   ├── __init__.py        # Package init (exports Go2KinMainWindow)
+│   │   └── main_window.py     # Go2KinMainWindow + LivePreviewCapture
 │   └── goproUSB/
-│       ├── goproUSB.py          # Core camera control class
+│       ├── goproUSB.py        # GPcam class (camera control)
 │       ├── README.md
-│       └── examples/
-│           ├── goproRecordVideo.py
-│           ├── goproRecordVideo_twoCameras.py
-│           └── goproRecordVideo_threeCameras.py  # Tested working
-├── output/                      # Video files destination
-├── project docs/
-│   ├── Cline_GUI_initial_prompt.md
-│   ├── openGoPro api specs.json
-│   └── live preview specs table.md
-├── memory-bank/                 # Project documentation
-└── config/                      # Configuration files (to be created)
+│       └── examples/          # Usage examples (1-3 cameras)
+├── config/
+│   ├── cameras.json           # Main config (serials, settings, recording)
+│   ├── camera_profiles/       # Per-camera JSON profiles
+│   │   ├── profile_C3501326042700.json
+│   │   ├── profile_C3501326054100.json
+│   │   └── profile_C3501326062418.json
+│   └── settings_references/   # Per-model/firmware setting definitions
+│       ├── README.md
+│       └── settings_reference_HERO12_Black_H23_01_02_32_00.json
+├── tools/
+│   └── discover_camera_settings.py  # Settings discovery utility
+├── output/                    # Video recordings destination
+├── project docs/              # Reference documentation, API specs
+├── memory-bank/               # Project documentation (6 core files)
+├── requirements.txt           # Python dependencies
+└── .gitignore
 ```
 
 ## Technologies Used
 
-### Core Dependencies
-- **tkinter**: GUI framework (built-in with Python)
+### Core Dependencies (requirements.txt)
 - **requests**: HTTP client for GoPro API communication
-- **concurrent.futures**: Multi-threading for camera operations
-- **json**: Configuration persistence
-- **datetime**: Timestamp handling
-- **pathlib**: File system operations
+- **opencv-python**: Video stream capture and processing for live preview
+- **Pillow**: Image conversion (PIL → ImageTk for tkinter display)
 
-### Additional Dependencies (Required)
-- **opencv-python**: Video stream processing and H264 decoding
-- **numpy**: Array operations for video frames
-- **socket**: UDP server for live preview streams
+### Standard Library (no install needed)
+- **tkinter**: GUI framework (built-in with Python)
+- **concurrent.futures**: ThreadPoolExecutor for multi-camera operations
+- **threading**: Background threads (status monitoring, frame capture)
+- **queue**: Thread-safe frame queue for live preview
+- **json**: Configuration and profile persistence
+- **pathlib**: File system operations
+- **datetime**: Timestamps
+- **time**: Delays and timing
 
 ### GoPro Integration
-- **openGoPro API**: HTTP-based camera control
+- **openGoPro HTTP API**: Camera control over USB
 - **Network Control Model (NCM)**: USB communication protocol
 - **MPEG-TS**: Transport stream format for live preview
 - **AVC/H264**: Video codec (Hero 12 cameras)
 
 ## Technical Constraints
 
-### Hardware Limitations
+### Hardware
 - **USB Bandwidth**: 4 cameras simultaneously may approach USB controller limits
-- **Camera Memory**: Limited storage requires regular file cleanup
-- **Power Management**: USB power may not sustain long recording sessions
+- **Camera Memory**: Limited storage requires post-recording file cleanup
+- **Power Management**: USB power may not sustain very long recording sessions
 
-### Software Constraints
-- **Single Preview**: Only one camera can stream preview at a time. May explore multi preview at a later stage. May explore preview while recording at a later stage.
+### Software
+- **Single Preview**: Only one camera can stream preview at a time
 - **Threading Model**: GUI must remain responsive during camera operations
-- **Error Recovery**: Network timeouts and camera disconnections must be handled gracefully
+- **Error Recovery**: Network timeouts and camera disconnections handled gracefully
+- **Request Timeouts**: 5s for commands, 300s for media downloads
 
-### Performance Considerations
-- **Live Preview Latency**: ~210ms minimum (acceptable for positioning)
-- **File Download Speed**: Large video files may take significant time
-- **Memory Usage**: Video frame buffers require careful management
+### Performance
+- **Live Preview Latency**: 0.5-1s (acceptable for camera positioning)
+- **File Download Speed**: Dependent on file size and USB throughput
+- **Memory Usage**: Frame queue maxsize=2 prevents buildup
 
 ## API Integration Details
 
 ### GoPro HTTP API
 - **Base URL Pattern**: `http://172.2X.1YZ.51:8080` (X,Y,Z from serial number)
 - **Authentication**: None required for USB connections
-- **Keep-Alive**: Required every ~60 seconds to maintain connection
-- **Status Polling**: Regular checks for camera busy/encoding states
+- **Keep-Alive**: Required every ~30 seconds to maintain connection
+- **Status Polling**: Check camBusy() and encodingActive() before operations
+- **All requests**: `timeout=5` seconds (media: `timeout=300`)
 
 ### Key API Endpoints
 ```python
@@ -92,10 +107,29 @@ Go2Kin/
 /gopro/camera/stream/start?port=8554   # Start UDP stream
 /gopro/camera/stream/stop              # Stop stream
 
+# Digital Zoom
+/gopro/camera/digital_zoom?percent=X   # Set zoom (0-100%)
+
 # Media Management
 /gopro/media/list                      # Get file list
 /videos/DCIM/{dir}/{file}             # Download file
-/gopro/camera/delete/all              # Delete all files
+/gp/gpControl/command/storage/delete/all  # Delete all files (legacy endpoint)
+```
+
+### Settings on Connect
+Applied automatically when camera connects:
+```python
+settings_on_connect = [
+    (175, 1, "Control Mode", "Pro"),
+    (121, 4, "Lens", "Linear"),
+    (83, 0, "GPS", "Off"),
+    (167, 4, "Hindsight", "Off"),
+    (135, 0, "Hypersmooth", "Off"),
+    (88, 30, "LCD Brightness", "30%"),
+    (134, 3, "Anti-Flicker", "50Hz"),      # 50Hz for Australia
+    (180, 0, "System Video Mode", "Highest Quality"),
+    (236, 0, "Auto WiFi AP", "Off"),
+]
 ```
 
 ### Status Monitoring
@@ -103,56 +137,44 @@ Go2Kin/
 # Critical status flags from /gopro/camera/state
 status['8']  # System Busy (0=ready, 1=busy)
 status['10'] # Encoding Active (0=idle, 1=recording)
+status['75'] # Zoom Level (0-100%)
 ```
 
 ## Development Patterns
 
-### Error Handling Strategy
-- **Connection Timeouts**: 5-second timeout for HTTP requests
-- **Retry Logic**: 3 attempts with exponential backoff
-- **Graceful Degradation**: Continue with available cameras if some fail
-- **User Feedback**: Clear error messages and status indicators
-
 ### Threading Architecture
-```python
-# Main GUI Thread: UI updates and user interaction
-# Camera Threads: Individual camera operations (connect, record, download)
-# Status Thread: Periodic keep-alive and status polling
-# Stream Thread: UDP data reception and frame processing
+```
+Main GUI Thread:     UI updates, user interaction, video display
+Camera Threads:      Individual camera operations (connect, record, download)
+Status Thread:       Periodic keep-alive and status polling (30s cycle)
+Capture Thread:      Background frame reading from UDP stream
 ```
 
 ### Configuration Management
-```json
-{
-  "cameras": {
-    "1": {"serial": "C3501326042700", "lens": "Narrow", "resolution": "1080p", "fps": 30},
-    "2": {"serial": "C3501326054100", "lens": "Narrow", "resolution": "1080p", "fps": 30},
-    "3": {"serial": "C3501326054460", "lens": "Narrow", "resolution": "1080p", "fps": 30},
-    "4": {"serial": "C3501326062418", "lens": "Narrow", "resolution": "1080p", "fps": 30}
-  },
-  "recording": {
-    "output_directory": "D:\\PythonProjects\\Go2Kin\\output",
-    "last_trial_name": "trial_001"
-  }
-}
+- **cameras.json**: Single config file for serials, UI settings, recording preferences
+- **Camera Profiles**: Per-serial JSON files tracking full camera state
+- **Settings References**: Per-model/firmware JSON files defining available options
+- All managed through `CameraProfileManager` singleton
+
+### Import Pattern
+Currently uses `sys.path.insert()` for module resolution:
+```python
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'goproUSB'))
+from goproUSB import GPcam
 ```
+This is functional but fragile — noted as future improvement candidate.
 
 ## Tool Usage Patterns
 
 ### Development Workflow
 1. **Code in VSCode**: Primary development environment
 2. **Test in PowerShell**: Run scripts and test camera connections
-3. **Git Version Control**: Track changes and collaborate
-4. **Conda Environment**: Isolated Python dependencies
+3. **Git Version Control**: Track changes (GitHub remote)
+4. **Conda Environment**: Isolated Python 3.10 dependencies
 
-### Testing Strategy
-- **Unit Tests**: Individual camera operations
-- **Integration Tests**: Multi-camera coordination
-- **Hardware Tests**: Real camera connections and recording
-- **GUI Tests**: User interaction workflows
-
-### Debugging Approach
-- **HTTP Logging**: Capture API requests/responses
-- **Status Monitoring**: Track camera state changes
-- **Performance Profiling**: Monitor threading and memory usage
-- **Error Logging**: Detailed failure information for troubleshooting
+### Settings Discovery
+Run once per camera model/firmware combination:
+```bash
+python tools/discover_camera_settings.py C3501326042700
+```
+Generates reference file, then manually verify resolution names (known truncation issue).

@@ -17,9 +17,15 @@
 
 import requests
 import datetime
+import time
 
 
 class GPcam:
+    # Default timeout for HTTP requests (seconds)
+    REQUEST_TIMEOUT = 5
+    # Longer timeout for media operations (downloads, etc.)
+    MEDIA_TIMEOUT = 300
+    
     def __init__(self,sn):
         self.base_url = 'http://172.2'+sn[-3]+'.1'+sn[-2:]+'.51'
     #*******************************************
@@ -28,55 +34,55 @@ class GPcam:
     def getCameraInfo(self):
         """Get camera information including serial number, model, and firmware version"""
         url = self.base_url + '/gopro/camera/info'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     
     def getState(self):
         url = self.base_url + '/gopro/camera/state'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def getDateTime(self):
         url = self.base_url + '/gopro/camera/get_date_time'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setDateTime(self,y,mo,d,h,mi,s):
         url = self.base_url + f'/gopro/camera/set_date_time?date={y}_{mo}_{d}&time={h}_{mi}_{s}'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setDateTimeNow(self):
         url = self.base_url + datetime.datetime.now().strftime('/gopro/camera/set_date_time?date=%Y_%m_%d&time=%H_%M_%S')
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     #*******************************************
     #Camera control
     #*******************************************
     def keepAlive(self):
         url = self.base_url + '/gopro/camera/keep_alive'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def USBenable(self):
         url = self.base_url + '/gopro/camera/control/wired_usb?p=1'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def USBdisable(self):
         url = self.base_url + '/gopro/camera/control/wired_usb?p=0'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setControlIdle(self):
         url = self.base_url + '/gopro/camera/control/set_ui_controller?p=0'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setControlExt(self):
         url = self.base_url + '/gopro/camera/control/set_ui_controller?p=2'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def shutterStart(self):
         url = self.base_url + '/gopro/camera/shutter/start'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def shutterStop(self):
         url = self.base_url + '/gopro/camera/shutter/stop'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     #*******************************************
     #Digital Zoom Control
@@ -86,7 +92,7 @@ class GPcam:
         if not 0 <= percent <= 100:
             raise ValueError("Zoom percent must be between 0 and 100")
         url = self.base_url + f'/gopro/camera/digital_zoom?percent={percent}'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     
     def getZoomLevel(self):
@@ -119,115 +125,106 @@ class GPcam:
     #*******************************************
     def modePhoto(self):
         url = self.base_url + '/gopro/camera/presets/set_group?id=1001'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def modeVideo(self):
         url = self.base_url + '/gopro/camera/presets/set_group?id=1000'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def modeTimelapse(self):
         url = self.base_url + '/gopro/camera/presets/set_group?id=1002'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def getPresetsStatus(self):
         url = self.base_url + '/gopro/camera/presets/get'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def presetsStandard(self):
         url = self.base_url + '/gopro/camera/presets/load?id=0'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def presetsActivity(self):
         url = self.base_url + '/gopro/camera/presets/load?id=1'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def presetsCinematic(self):
         url = self.base_url + '/gopro/camera/presets/load?id=2'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def presetsUltraSloMo(self):
         url = self.base_url + '/gopro/camera/presets/load?id=4'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def presetsBasic(self):
         url = self.base_url + '/gopro/camera/presets/load?id=5'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def presetsPhoto(self):
         url = self.base_url + '/gopro/camera/presets/load?id=65536'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def presetsLiveBurst(self):
         url = self.base_url + '/gopro/camera/presets/load?id=65537'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def presetsBurstPhoto(self):
         url = self.base_url + '/gopro/camera/presets/load?id=65538'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def presetsNightPhoto(self):
         url = self.base_url + '/gopro/camera/presets/load?id=65539'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def presetsTimeWarp(self):
         url = self.base_url + '/gopro/camera/presets/load?id=131072'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def presetsTimeLapse(self):
         url = self.base_url + '/gopro/camera/presets/load?id=131073'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def presetsNightLapse(self):
         url = self.base_url + '/gopro/camera/presets/load?id=131074'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     #*******************************************
     #Webcam and streaming controls
     #Note: Prior to issuing webcam commands, Wired USB Control must be disabled
     #*******************************************
-    def streamStart(self):
+    def streamStart(self, port=8554):
+        """Start preview stream on specified UDP port (default 8554)"""
         url = self.base_url + '/gopro/camera/stream/start'
-        response = requests.get(url)
+        querystring = {"port": str(port)}
+        response = requests.get(url, params=querystring, timeout=self.REQUEST_TIMEOUT)
         return response
     def streamStop(self):
+        """Stop preview stream"""
         url = self.base_url + '/gopro/camera/stream/stop'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def webcamStart(self):
         url = self.base_url + '/gopro/webcam/start'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def webcamStop(self):
         url = self.base_url + '/gopro/webcam/stop'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def webcamPreview(self):
         url = self.base_url + '/gopro/webcam/preview'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def webcamGetStatus(self):
         url = self.base_url + '/gopro/webcam/status'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def webcamExit(self):
         url = self.base_url + '/gopro/webcam/exit'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def getMediaList(self):
         url = self.base_url + '/gopro/media/list'
-        response = requests.get(url)
-        return response
-    #*******************************************
-    #Preview Stream Control
-    #*******************************************
-    def previewStreamStart(self, port=8554):
-        url = self.base_url + '/gopro/camera/stream/start'
-        querystring = {"port": str(port)}
-        response = requests.get(url, params=querystring)
-        return response
-    def previewStreamStop(self):
-        url = self.base_url + '/gopro/camera/stream/stop'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     #*******************************************
     #Settings Management
@@ -239,14 +236,14 @@ class GPcam:
         """
         url = self.base_url + '/gopro/camera/setting'
         querystring = {"setting": str(setting_id), "option": str(option)}
-        response = requests.get(url, params=querystring)
+        response = requests.get(url, params=querystring, timeout=self.REQUEST_TIMEOUT)
         return response
     
     def setSetting(self, setting_id, option):
         """Set a camera setting to a specific option value"""
         url = self.base_url + '/gopro/camera/setting'
         querystring = {"setting": str(setting_id), "option": str(option)}
-        response = requests.get(url, params=querystring)
+        response = requests.get(url, params=querystring, timeout=self.REQUEST_TIMEOUT)
         return response
     
     #*******************************************
@@ -254,236 +251,247 @@ class GPcam:
     #*******************************************
     def deleteAllFiles(self):
         url = self.base_url + '/gp/gpControl/command/storage/delete/all'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     #*******************************************
     #Lenses settings
     #*******************************************
     def setPhotoLensesNarrow(self):
         url = self.base_url + '/gopro/camera/setting?setting=122&option=19'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setPhotoLensesMaxSuperview(self):
         url = self.base_url + '/gopro/camera/setting?setting=122&option=100'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setPhotoLensesWide(self):
         url = self.base_url + '/gopro/camera/setting?setting=122&option=101'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setPhotoLensesLinear(self):
         url = self.base_url + '/gopro/camera/setting?setting=122&option=102'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
-    #video
+    #video - Setting 121 = Video Lens
     def setVideoLensesWide(self):
-        url = self.base_url + '/gopro/camera/setting?setting=122&option=19'
-        response = requests.get(url)
+        url = self.base_url + '/gopro/camera/setting?setting=121&option=0'
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setVideoLensesNarrow(self):
         url = self.base_url + '/gopro/camera/setting?setting=121&option=2'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setVideoLensesSuperview(self):
         url = self.base_url + '/gopro/camera/setting?setting=121&option=3'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setVideoLensesLinear(self):
         url = self.base_url + '/gopro/camera/setting?setting=121&option=4'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setVideoLensesMaxSuperview(self):
         url = self.base_url + '/gopro/camera/setting?setting=121&option=7'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setVideoLensesLinearHorizon(self):
         url = self.base_url + '/gopro/camera/setting?setting=121&option=8'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     #webcam
     def setWebcamLensesWide(self):
         url = self.base_url + '/gopro/camera/setting?setting=43&option=0'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setWebcamLensesNarrow(self):
         url = self.base_url + '/gopro/camera/setting?setting=43&option=2'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setWebcamLensesSuperview(self):
         url = self.base_url + '/gopro/camera/setting?setting=43&option=3'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setWebcamLensesLinear(self):
         url = self.base_url + '/gopro/camera/setting?setting=43&option=4'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     #timelapse
     def setTimelapseLensesNarrow(self):
         url = self.base_url + '/gopro/camera/setting?setting=123&option=19'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setTimelapseLensesMaxSuperview(self):
         url = self.base_url + '/gopro/camera/setting?setting=123&option=100'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setTimelapseLensesWide(self):
         url = self.base_url + '/gopro/camera/setting?setting=123&option=101'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setTimelapseLensesLinear(self):
         url = self.base_url + '/gopro/camera/setting?setting=123&option=102'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     #Maxlens - firmware >= v01.20.00
     def setMaxLensOff(self):
         url = self.base_url + '/gopro/camera/setting?setting=162&option=0'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setMaxLensOn(self):
-        url = self.base_url + '/gopro/camera/setting?setting=162&option=0'
-        response = requests.get(url)
+        url = self.base_url + '/gopro/camera/setting?setting=162&option=1'
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     #*******************************************
     #Video resolution settings
     #*******************************************
     def setVideoResolution4k(self):
         url = self.base_url + '/gopro/camera/setting?setting=2&option=1'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setVideoResolution2p7k(self):
         url = self.base_url + '/gopro/camera/setting?setting=2&option=4'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setVideoResolution2p7k_4to3(self):
         url = self.base_url + '/gopro/camera/setting?setting=2&option=6'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setVideoResolution1440(self):
         url = self.base_url + '/gopro/camera/setting?setting=2&option=7'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setVideoResolution1080(self):
         url = self.base_url + '/gopro/camera/setting?setting=2&option=9'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setVideoResolution4k_4to3(self):
         url = self.base_url + '/gopro/camera/setting?setting=2&option=18'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setVideoResolution5k(self):
         url = self.base_url + '/gopro/camera/setting?setting=2&option=24'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setVideoResolution5k_4to3(self):
         url = self.base_url + '/gopro/camera/setting?setting=2&option=25'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setVideoResolution5p3k(self):
         url = self.base_url + '/gopro/camera/setting?setting=2&option=100'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     #*******************************************
     #Frames per second Settings
     #*******************************************
     def setFPS240(self):
         url = self.base_url + '/gopro/camera/setting?setting=3&option=0'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setFPS120(self):
         url = self.base_url + '/gopro/camera/setting?setting=3&option=1'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setFPS100(self):
         url = self.base_url + '/gopro/camera/setting?setting=3&option=2'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setFPS60(self):
         url = self.base_url + '/gopro/camera/setting?setting=3&option=5'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setFPS50(self):
         url = self.base_url + '/gopro/camera/setting?setting=3&option=6'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setFPS30(self):
         url = self.base_url + '/gopro/camera/setting?setting=3&option=8'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setFPS25(self):
         url = self.base_url + '/gopro/camera/setting?setting=3&option=9'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setFPS24(self):
         url = self.base_url + '/gopro/camera/setting?setting=3&option=10'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setFPS200(self):
         url = self.base_url + '/gopro/camera/setting?setting=3&option=13'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     #*******************************************
     #Media Format Settings
     #*******************************************
     def setMediaFormatTimelapseVideo(self):
         url = self.base_url + '/gopro/camera/setting?setting=128&option=13'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setMediaFormatTimelapsePhoto(self):
         url = self.base_url + '/gopro/camera/setting?setting=128&option=20'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setMediaFormatNightlapsePhoto(self):
         url = self.base_url + '/gopro/camera/setting?setting=128&option=21'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setMediaFormatNightlapseVideo(self):
         url = self.base_url + '/gopro/camera/setting?setting=128&option=26'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     #*******************************************
     #Auto Power Down Settings
     #*******************************************
     def setAPDnever(self):
         url = self.base_url + '/gopro/camera/setting?setting=59&option=0'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setAPD5min(self):
         url = self.base_url + '/gopro/camera/setting?setting=59&option=4'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setAPD15min(self):
         url = self.base_url + '/gopro/camera/setting?setting=59&option=6'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     def setAPD30min(self):
         url = self.base_url + '/gopro/camera/setting?setting=59&option=7'
-        response = requests.get(url)
+        response = requests.get(url, timeout=self.REQUEST_TIMEOUT)
         return response
     #*******************************************
     #Camera status - boolean
     #*******************************************
     def camBusy(self):
-        if self.getState().json()['status']['8'] == 0:
+        """Check if camera is busy. Returns True if busy, False if ready.
+        Returns False on communication errors (fail-safe)."""
+        try:
+            state = self.getState()
+            return state.json()['status']['8'] != 0
+        except (requests.RequestException, KeyError, ValueError):
             return False
-        else:
-            return True
     def encodingActive(self):
-        if self.getState().json()['status']['10'] == 0:
+        """Check if camera is encoding. Returns True if encoding, False if idle.
+        Returns False on communication errors (fail-safe)."""
+        try:
+            state = self.getState()
+            return state.json()['status']['10'] != 0
+        except (requests.RequestException, KeyError, ValueError):
             return False
-        else:
-            return True
     #*******************************************
     #Media 
     #*******************************************
     #Download the last captured media file from the camera
     #outFileName - name of file to which save the last taken picture (extension added/modified automatically)
-    def mediaDownloadLast(self,outFileName):
+    def mediaDownloadLast(self, outFileName):
         ml = self.getMediaList()
+        # Wait for encoding to finish with timeout safeguard
+        timeout_seconds = 60
+        start_wait = time.time()
         while self.encodingActive():
-            continue
+            if time.time() - start_wait > timeout_seconds:
+                raise TimeoutError(f"Camera still encoding after {timeout_seconds}s timeout")
+            time.sleep(0.5)
         url = self.base_url + f"/videos/DCIM/"+ml.json()['media'][-1]['d']+"/"+ml.json()['media'][-1]['fs'][-1]['n']
         outFileName = outFileName.split('.')[0] + '.' + ml.json()['media'][-1]['fs'][-1]['n'].split('.')[1]
-        with requests.get(url, stream=True) as request:
+        with requests.get(url, stream=True, timeout=self.MEDIA_TIMEOUT) as request:
             request.raise_for_status()
             with open(outFileName, "wb") as f:
                 for chunk in request.iter_content(chunk_size=8192):
@@ -492,10 +500,10 @@ class GPcam:
     #
     #Download specified media file, from the specified directory
     #outFileName - name of file to which save the last taken picture (extension added/modified automatically)
-    def mediaDownloadFile(self,dirname,fname,outFileName):
+    def mediaDownloadFile(self, dirname, fname, outFileName):
         url = self.base_url + '/videos/DCIM/' + dirname + "/" + fname
         outFileName = outFileName.split('.')[0] + '.' + fname.split('.')[1]
-        with requests.get(url, stream=True) as request:
+        with requests.get(url, stream=True, timeout=self.MEDIA_TIMEOUT) as request:
             request.raise_for_status()
             with open(outFileName, "wb") as f:
                 for chunk in request.iter_content(chunk_size=8192):

@@ -12,33 +12,45 @@
 - **Profile Persistence**: Settings persist across sessions
 - **Simplified Recording**: Settings pre-applied, faster recording start
 
-### Existing Functionality
+### Core Camera Control ✅
 - **goproUSB.py Class**: Core camera control implementation complete
-  - HTTP API communication with GoPro cameras
+  - HTTP API communication with GoPro cameras (with 5s request timeouts)
   - Camera connection and USB control
   - Recording start/stop functionality
   - Settings configuration (lens, resolution, FPS)
-  - Media download capabilities
-  - Status monitoring (camBusy, encodingActive)
-  - **NEW**: `setSetting(setting_id, option_id)` for generic setting changes
+  - Media download capabilities (with 60s encoding timeout safeguard)
+  - Status monitoring with error handling (camBusy, encodingActive)
+  - `setSetting(setting_id, option_id)` for generic setting changes
+  - Digital zoom control (0-100%)
+  - Preview stream start/stop (`streamStart`/`streamStop`)
 
 - **Multi-Camera Recording**: Tested and verified working
-  - `goproRecordVideo_threeCameras.py` example functional
   - Concurrent camera operations using ThreadPoolExecutor
   - Synchronized recording across multiple cameras
   - Automatic file download and naming
-
-- **Project Structure**: Well-organized codebase
-  - Clear separation of core functionality and examples
-  - Comprehensive API specifications available
-  - Complete project documentation established
+  - Post-recording file deletion from cameras
 
 - **Live Preview and Digital Zoom**: Fully functional real-time camera control
   - OpenCV-based live video streaming from GoPro cameras
-  - Real-time digital zoom control (0-100% range, 5% increments)
+  - Real-time digital zoom control (0-100% range)
   - Settings changes during streaming without interruption
-  - All camera settings controllable during live preview
   - Performance: 0.5-1s stream delay, acceptable for research use
+
+### GUI Implementation ✅
+- **Tab 1 - Camera Settings**: 4-camera grid, status indicators, profile-driven dropdowns
+- **Tab 2 - Live Preview**: Integrated streaming with zoom controls (slider, +/-, text entry)
+- **Tab 3 - Recording**: Multi-camera recording workflow with progress tracking
+- **JSON configuration persistence** (`config/cameras.json`)
+- **Real-time status monitoring** (30-second keepAlive cycle)
+- **Multi-threaded operations** with progress tracking
+- **Proper file organization** (all files in single trial directory)
+- **Error handling and user feedback**
+- **Clean package structure** with proper imports
+
+### Settings on Connect ✅
+- Pro control mode, Linear lens, GPS off, Hindsight off
+- Hypersmooth off, LCD brightness 30%, Anti-Flicker 50Hz
+- System Video Mode highest quality, Auto WiFi AP off
 
 ### Verified Hardware
 - **4 GoPro Hero 12 Cameras** with known serial numbers:
@@ -47,142 +59,102 @@
   - C3501326054460 = GoPro 3
   - C3501326062418 = GoPro 4
 
+## Completed Phases
+
+### Phase 1: Extend goproUSB Class ✅
+- [x] Preview stream methods (`streamStart`, `streamStop`)
+- [x] Media deletion method (`deleteAllFiles`)
+- [x] Digital zoom methods (`setDigitalZoom`, `getZoomLevel`, `zoomIn`, `zoomOut`)
+- [x] Generic settings API (`setSetting`, `querySetting`)
+
+### Phase 2: Live Preview Testing ✅
+- [x] OpenCV successfully captures GoPro H.264 UDP stream directly
+- [x] Windows firewall issue resolved (custom UDP rule added)
+- [x] Live preview functionality with real-time settings control
+
+### Phase 3: GUI Implementation ✅
+- [x] Tab 1 - Camera Settings with profile-driven dropdowns
+- [x] Tab 2 - Live Preview with zoom controls
+- [x] Tab 3 - Recording with multi-camera workflow
+
+### Phase 4: Digital Zoom Integration ✅
+- [x] GUI zoom controls (slider, +/-, text entry)
+- [x] Profile integration and persistence
+- [x] Lifecycle management (enable/disable with preview)
+
+### Phase 5: Codebase Review & Cleanup ✅ (Feb 23, 2026)
+- [x] Fixed `setMaxLensOn()` bug (was sending option=0 instead of option=1)
+- [x] Fixed `setVideoLensesWide()` bug (was using Photo Lens setting ID 122 instead of Video Lens 121)
+- [x] Added `time.sleep(0.5)` and 60s timeout to `mediaDownloadLast()` encoding wait loop
+- [x] Added error handling to `camBusy()` and `encodingActive()` (fail-safe on comm errors)
+- [x] Added `timeout=5` to all HTTP requests in goproUSB.py (prevents app hang)
+- [x] Deleted unused `config/app_settings.json` (was dead config)
+- [x] Consolidated `previewStreamStart/Stop` into `streamStart/Stop` with port parameter
+- [x] Updated default resolution from "1080p" to "1080" (matches settings reference)
+- [x] Added Anti-Flicker 50Hz to settings_on_connect (correct for Australia)
+- [x] Updated `requirements.txt` with `opencv-python` and `Pillow`
+- [x] Updated `goproUSB/README.md` for HERO 12 compatibility
+- [x] Cleaned up all memory bank documentation
+
 ## What's Left to Build
 
-### Phase 1: Extend goproUSB Class (COMPLETED)
-- [x] Add preview stream methods (`previewStreamStart`, `previewStreamStop`)
-- [x] Add media deletion method (`deleteAllFiles`)
-- [x] Test new functionality with existing camera setup
-
-### Phase 2: Live Preview Testing (COMPLETED ✅)
-- [x] Create test script for UDP stream reception
-- [x] Test with VLC and Python UDP server
-- [x] Confirm camera streaming (3.6 Mbps data flow verified)
-- [x] Resolve Windows firewall blocking issue (custom UDP rule added)
-- [x] **SOLVED**: OpenCV successfully captures GoPro H.264 UDP stream directly
-- [x] **IMPLEMENTED**: Live preview functionality with real-time settings control
-- [x] **IMPLEMENTED**: Digital zoom functionality (0-100% range, 5% increments)
-
-### Phase 3: GUI Implementation (COMPLETED)
-- [x] **Tab 1 - Camera Settings**: 4-camera grid, status indicators, configuration UI
-- [x] **Tab 3 - Recording**: Multi-camera recording workflow with progress tracking
-- [x] **Tab 2 - Live Preview**: FULLY INTEGRATED ✅
-  - [x] Live preview stream integrated into Preview GUI tab
-  - [x] OpenCV optimizations applied from Go2Rep reference
-  - [x] Threaded video capture implemented for GUI responsiveness
-  - [x] Optimized cv2.VideoCapture settings for reduced delay
-- [x] JSON configuration persistence
-- [x] Error handling and user feedback
-- [x] Multi-threaded operations with proper file organization
-- [x] Real-time status monitoring
-- [x] Clean package structure with proper imports
-
-### Phase 4: Testing & Refinement (CURRENT)
+### Testing & Validation (Ongoing)
 - [ ] **Camera Settings Testing**: Test resolution, FPS, and lens mode changes during recording
 - [ ] **Settings Expansion**: Review GoPro API specs and identify additional settings for GUI control
 - [ ] **Settings Validation**: Verify all camera setting changes work correctly in practice
 - [ ] **User Testing**: Validate workflow with real research scenarios
-- [ ] **Documentation**: Create user guide for research team
 
-### Phase 3: GUI Implementation
-- [ ] **Tab 1 - Camera Settings**:
-  - 4-camera grid layout with status indicators
-  - Dropdown menus for lens/resolution/FPS
-  - Connect/disconnect functionality
-  - Serial number editing capability
-  
-- [ ] **Tab 3 - Recording** (implement before Tab 2):
-  - Output directory selection
-  - Trial name input with auto-increment
-  - Camera selection checkboxes
-  - Recording workflow with progress tracking
-  - File download and organization
-  
-- [ ] **Tab 2 - Live Preview**:
-  - Camera selector dropdown
-  - Start/stop preview controls
-  - Video display area
-  - Stream status indicators
-
-### Phase 4: Integration & Polish
-- [ ] Configuration persistence (JSON file)
-- [ ] Error handling and recovery
-- [ ] Threading coordination
-- [ ] User experience refinements
-- [ ] Testing with all 4 cameras
+### Future Enhancements (Phase 6)
+- [ ] **"Connect All" Button**: Single button to connect all 4 cameras simultaneously
+- [ ] **"Apply to All" Button**: Copy settings from one camera to all others
+- [ ] **Dynamic Camera Selection**: Auto-disable checkboxes for disconnected cameras in Recording tab
+- [ ] **Recording Readiness**: Prevent recording while cameras are formatting/busy
+- [ ] **Accurate Timer Start**: Timer begins after cameras confirm recording started
+- [ ] **ISO/Exposure Controls**: Implement exposure controls during live preview streaming
+- [ ] **GUI Layout Improvements**: Optimize sizing and responsive design
+- [ ] **User Documentation**: Create user guide for research team
 
 ## Current Status
 
-### Completed
-✅ **Project Planning**: Comprehensive requirements analysis and architecture design  
-✅ **Memory Bank**: Complete project documentation established  
-✅ **Foundation Code**: Working goproUSB class with multi-camera recording  
-✅ **Hardware Verification**: 4 GoPro cameras identified and tested  
-✅ **API Understanding**: Complete GoPro HTTP API specifications reviewed  
-✅ **Phase 1 Extensions**: goproUSB class extended with preview stream and zoom methods
-✅ **Phase 2 Live Preview**: OpenCV-based streaming with real-time settings control
-✅ **Phase 3 GUI Framework**: Complete 3-tab GUI with recording functionality
-✅ **Digital Zoom Implementation**: Full zoom control during live streaming
+**Project Status: CORE FUNCTIONALITY DELIVERED ✅**
 
-### In Progress
-🔄 **Phase 5 GUI Enhancement**: Adding zoom and ISO controls to integrated live preview
-
-### Pending
-⏳ **Zoom Controls Integration**: Add zoom slider and buttons to Preview tab GUI
-⏳ **ISO/Exposure Controls**: Implement exposure controls during streaming
-⏳ **GUI Layout Improvements**: Optimize Preview tab sizing and organization
-⏳ **Final Testing**: Complete system validation with all 4 cameras
-⏳ **User Documentation**: Create user guide for research team
+Complete multi-camera recording system ready for production use. Codebase reviewed and cleaned up with bug fixes, robustness improvements, and documentation updates.
 
 ## Known Issues
 
 ### Current Limitations
 - **Stream Latency**: 0.5-1s delay in live preview (acceptable for research use)
 - **Single Camera Preview**: Only one camera preview at a time (by design)
-- **Manual Configuration**: Some settings require manual JSON editing
-- **Missing GUI Controls**: Zoom and ISO controls not yet integrated into Preview tab
+- **Preview Overrides Settings**: Preview forces 1080p/30fps/Linear (intentional for positioning)
+- **connect_camera() blocks GUI**: Connection runs on main thread (~10s freeze) - future improvement candidate
+- **sys.path.insert imports**: Fragile import pattern - future improvement candidate
 
-### Potential Risks
-- **OpenCV Compatibility**: May not handle GoPro's specific stream format
-- **USB Bandwidth**: 4 simultaneous cameras may strain USB controller
-- **Threading Complexity**: GUI responsiveness during camera operations
-- **Memory Management**: Video frame processing efficiency
+### Resolved Issues (Feb 23, 2026)
+- ~~`setMaxLensOn()` sent wrong option~~ → Fixed (option=1)
+- ~~`setVideoLensesWide()` used wrong setting ID~~ → Fixed (setting=121)
+- ~~`mediaDownloadLast()` CPU-spinning busy loop~~ → Fixed (sleep + timeout)
+- ~~`camBusy()`/`encodingActive()` no error handling~~ → Fixed (try/except)
+- ~~No HTTP request timeouts~~ → Fixed (5s default, 300s for media)
+- ~~Dual config files confusion~~ → Fixed (deleted app_settings.json)
+- ~~Duplicate stream methods~~ → Fixed (consolidated to streamStart/Stop)
+- ~~Resolution format mismatch ("1080p" vs "1080")~~ → Fixed
+- ~~Anti-Flicker 60Hz in Australia~~ → Fixed (changed to 50Hz)
+- ~~requirements.txt incomplete~~ → Fixed (added opencv-python, Pillow)
 
 ## Evolution of Project Decisions
 
 ### Initial Approach
 - Complex MPEG-TS parsing and manual H264 decoding
-- Detailed UDP socket server implementation
 - Enterprise-grade error handling
 
 ### Simplified Approach (Current)
-- Test OpenCV VideoCapture for stream handling
-- Fallback to FFmpeg if needed
+- OpenCV VideoCapture handles stream natively
 - Research-focused simplicity over enterprise complexity
-- Single preview stream initially (multi-preview future consideration)
+- Single preview stream (multi-preview future consideration)
+- Profile-driven settings management
 
 ### Key Learnings
 - **Start Simple**: Test basic solutions before complex implementations
 - **Incremental Development**: Validate each phase before proceeding
 - **User-Focused**: Academic/lab users need reliability over features
 - **Hardware Constraints**: USB and camera limitations inform design decisions
-
-## Success Metrics
-
-### Technical Goals
-- [ ] Reliable multi-camera recording (>95% success rate)
-- [ ] Acceptable preview latency (<500ms)
-- [ ] Intuitive GUI operation (no training required)
-- [ ] Robust error recovery (graceful degradation)
-
-### User Experience Goals
-- [ ] One-click recording start/stop
-- [ ] Automatic file organization
-- [ ] Clear status feedback
-- [ ] Persistent configuration settings
-
-### Performance Targets
-- [ ] Support 4 cameras simultaneously
-- [ ] Reasonable download speeds (dependent on file size)
-- [ ] Responsive GUI during operations
-- [ ] Minimal memory footprint for continuous operation
