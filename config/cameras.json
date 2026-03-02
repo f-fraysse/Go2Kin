@@ -9,7 +9,7 @@
     "2": {
       "serial": "C3501326054100",
       "lens": "Linear",
-      "resolution": "1080",
+      "resolution": "4K",
       "fps": 100
     },
     "3": {
@@ -27,6 +27,6 @@
   },
   "recording": {
     "output_directory": "D:/PythonProjects/Go2Kin/output/tests_02032026",
-    "last_trial_name": "test01_005"
+    "last_trial_name": "test01_010"
   }
 }

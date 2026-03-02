@@ -27,6 +27,7 @@ config/
   settings_references/    # Per-model/firmware setting definitions
 tools/
   discover_camera_settings.py  # Run once per model/firmware to generate reference
+  test_video_quality.py        # Easy Mode vs Pro Mode quality comparison test
 output/                   # Recording output directory
 memory-bank/              # Legacy project documentation
 ```
@@ -90,4 +91,4 @@ memory-bank/              # Legacy project documentation
 
 ## Known Issues / TODO
 
-- *(none currently)*
+- **Video quality investigation (paused)**: Downloaded videos appear smoothed/processed. Confirmed the correct MP4 is downloaded (not LRV). Added High bitrate (182), 10-Bit depth (183), and Standard profile (184) to connect settings. Protune settings (Sharpness 117, Color 116, etc.) are not officially exposed via the HTTP API. Next step: run `tools/test_video_quality.py` to compare Easy Mode vs Pro Mode output, and/or set Protune options manually on camera LCD.

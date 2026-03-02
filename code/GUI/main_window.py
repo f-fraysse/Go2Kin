@@ -588,6 +588,9 @@ class Go2KinMainWindow:
                 (135, 0, "Hypersmooth", "Off"),               # Hypersmooth off
                 (88, 30, "LCD Brightness", "30%"),            # LCD brightness 30%
                 (134, 3, "Anti-Flicker", "50Hz"),             # 50Hz for Australia
+                (182, 1, "Bit Rate", "High"),                 # High bitrate for better quality
+                (183, 2, "Bit Depth", "10-Bit"),              # 10-bit for better color depth
+                (184, 0, "Profiles", "Standard"),             # Standard profile (no HDR processing)
                 # Setting 180 (System Video Mode) removed - not supported on HERO12 Black
                 (236, 0, "Auto WiFi AP", "Off"),              # Auto WiFi AP off
             ]
