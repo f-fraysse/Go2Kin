@@ -87,3 +87,7 @@ memory-bank/              # Legacy project documentation
 - Setting 236 (Auto WiFi AP) not in discovery tool but applied on connect
 - `camBusy()`/`encodingActive()` return False on errors (fail-safe design)
 - **GUI dropdown options are hardcoded for Hero 12 + 50Hz anti-flicker**: Resolution (1080, 2.7K, 4K) and FPS (25, 50, 100, 200) in `main_window.py` lines ~280/292. For different cameras or 60Hz anti-flicker, update these values. Invalid selections are caught at runtime (camera returns 403 with valid options popup).
+
+## Known Issues / TODO
+
+- **Low video quality on downloaded files**: Downloaded MP4s appear lower quality than expected for 1080p (low bitrate). Suspect the app may be downloading the GoPro's low-res preview file (LRV) instead of the full-quality MP4. To investigate: list SD card contents via `/gopro/media/list` before and after recording to see what files are created (MP4, LRV, THM, etc.), then check which file `mediaDownloadLast()` selects.
