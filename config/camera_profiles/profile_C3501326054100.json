@@ -2,7 +2,7 @@
   "serial_number": "C3501326054100",
   "model": "HERO12 Black",
   "firmware": "H23.01.02.32.00",
-  "last_connected": "2026-03-02T12:58:22.980178",
+  "last_connected": "2026-03-02T15:13:44.893526",
   "settings_reference_file": "settings_reference_HERO12_Black_H23_01_02_32_00.json",
   "current_settings": {
     "2": {
@@ -11,9 +11,9 @@
       "value_name": "4K"
     },
     "3": {
-      "value": 2,
+      "value": 6,
       "name": "Frames Per Second",
-      "value_name": "100"
+      "value_name": "50"
     },
     "5": {
       "value": 0,
@@ -116,9 +116,9 @@
       "value_name": "Pro"
     },
     "176": {
-      "value": 113,
+      "value": 117,
       "name": "Easy Mode Speed",
-      "value_name": "4X Super Slo-Mo"
+      "value_name": "2X Slo-Mo"
     },
     "178": {
       "value": 0,
@@ -136,9 +136,9 @@
       "value_name": "High"
     },
     "183": {
-      "value": 2,
+      "value": 0,
       "name": "Bit Depth",
-      "value_name": "10-Bit"
+      "value_name": "8-Bit"
     },
     "184": {
       "value": 0,

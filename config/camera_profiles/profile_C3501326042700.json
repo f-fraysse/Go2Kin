@@ -2,18 +2,18 @@
   "serial_number": "C3501326042700",
   "model": "HERO12 Black",
   "firmware": "H23.01.02.32.00",
-  "last_connected": "2026-02-26T12:40:20.886507",
+  "last_connected": "2026-03-02T15:13:40.431580",
   "settings_reference_file": "settings_reference_HERO12_Black_H23_01_02_32_00.json",
   "current_settings": {
     "2": {
-      "value": 9,
+      "value": 1,
       "name": "Video Resolution",
-      "value_name": "1080"
+      "value_name": "4K"
     },
     "3": {
-      "value": 9,
+      "value": 6,
       "name": "Frames Per Second",
-      "value_name": "25"
+      "value_name": "50"
     },
     "5": {
       "value": 0,
@@ -131,9 +131,9 @@
       "value_name": "Max"
     },
     "182": {
-      "value": 0,
+      "value": 1,
       "name": "Video Bit Rate",
-      "value_name": "Standard"
+      "value_name": "High"
     },
     "183": {
       "value": 0,
@@ -243,7 +243,7 @@
       "name": "Preset"
     },
     "98": {
-      "value": 16777223,
+      "value": 100663303,
       "name": "Preset Modified"
     },
     "101": {
