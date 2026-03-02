@@ -4,29 +4,29 @@
       "serial": "C3501326042700",
       "lens": "Linear",
       "resolution": "1080",
-      "fps": 240
+      "fps": 25
     },
     "2": {
       "serial": "C3501326054100",
       "lens": "Linear",
       "resolution": "1080",
-      "fps": 25
+      "fps": 100
     },
     "3": {
       "serial": "C3501326054460",
       "lens": "Linear",
-      "resolution": "1080p",
-      "fps": 30
+      "resolution": "1080",
+      "fps": 25
     },
     "4": {
       "serial": "C3501326062418",
       "lens": "Linear",
       "resolution": "1080",
-      "fps": 240
+      "fps": 25
     }
   },
   "recording": {
-    "output_directory": "D:\\PythonProjects\\Go2Kin\\output\\test_2025_02_23",
-    "last_trial_name": "test_fixes_001"
+    "output_directory": "D:/PythonProjects/Go2Kin/output/tests_02032026",
+    "last_trial_name": "test01_002"
   }
 }

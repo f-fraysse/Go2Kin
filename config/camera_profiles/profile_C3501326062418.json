@@ -2,7 +2,7 @@
   "serial_number": "C3501326062418",
   "model": "HERO12 Black",
   "firmware": "H23.01.02.32.00",
-  "last_connected": "2025-12-03T14:49:42.565916",
+  "last_connected": "2026-02-26T12:40:34.715941",
   "settings_reference_file": "settings_reference_HERO12_Black_H23_01_02_32_00.json",
   "current_settings": {
     "2": {
@@ -11,9 +11,9 @@
       "value_name": "1080"
     },
     "3": {
-      "value": 0,
+      "value": 9,
       "name": "Frames Per Second",
-      "value_name": "240"
+      "value_name": "25"
     },
     "5": {
       "value": 0,
@@ -76,9 +76,9 @@
       "value_name": "Video"
     },
     "134": {
-      "value": 2,
+      "value": 3,
       "name": "Anti-Flicker",
-      "value_name": "60Hz"
+      "value_name": "50Hz"
     },
     "135": {
       "value": 0,
@@ -116,9 +116,9 @@
       "value_name": "Pro"
     },
     "176": {
-      "value": 108,
+      "value": 115,
       "name": "Easy Mode Speed",
-      "value_name": "8X Ultra Slo-Mo"
+      "value_name": "1X Speed / Low Light"
     },
     "178": {
       "value": 0,
@@ -279,7 +279,7 @@
       "name": "Display Mod Status"
     },
     "111": {
-      "value": 1,
+      "value": 0,
       "name": "SD Card Write Speed Error"
     },
     "112": {

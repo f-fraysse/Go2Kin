@@ -277,7 +277,7 @@ class Go2KinMainWindow:
         ttk.Label(res_frame, text="Resolution:", width=10).pack(side=tk.LEFT)
         res_var = tk.StringVar()
         res_combo = ttk.Combobox(res_frame, textvariable=res_var,
-                                values=["1080p", "1440p", "2.7K", "4K", "5K"],
+                                values=["1080", "2.7K", "4K"],
                                 state="readonly", width=15)
         res_combo.pack(side=tk.RIGHT)
         frame.res_var = res_var
@@ -289,7 +289,7 @@ class Go2KinMainWindow:
         ttk.Label(fps_frame, text="FPS:", width=10).pack(side=tk.LEFT)
         fps_var = tk.StringVar()
         fps_combo = ttk.Combobox(fps_frame, textvariable=fps_var,
-                                values=["24", "25", "30", "50", "60", "120", "240"],
+                                values=["25", "50", "100", "200"],
                                 state="readonly", width=15)
         fps_combo.pack(side=tk.RIGHT)
         frame.fps_var = fps_var
@@ -588,7 +588,7 @@ class Go2KinMainWindow:
                 (135, 0, "Hypersmooth", "Off"),               # Hypersmooth off
                 (88, 30, "LCD Brightness", "30%"),            # LCD brightness 30%
                 (134, 3, "Anti-Flicker", "50Hz"),             # 50Hz for Australia
-                (180, 0, "System Video Mode", "Highest Quality"),  # Highest quality
+                # Setting 180 (System Video Mode) removed - not supported on HERO12 Black
                 (236, 0, "Auto WiFi AP", "Off"),              # Auto WiFi AP off
             ]
             
@@ -603,7 +603,27 @@ class Go2KinMainWindow:
                         time.sleep(0.3)
                     else:
                         self.log_progress(f"  {name} already {value_desc}")
-            
+
+            # Restore critical recording settings from saved profile
+            # This ensures settings survive camera power-cycles between sessions
+            if existing_profile and 'current_settings' in existing_profile:
+                critical_settings = [
+                    ('2', "Video Resolution"),
+                    ('3', "Frames Per Second"),
+                    ('121', "Video Lens"),
+                ]
+                for setting_id, name in critical_settings:
+                    if setting_id in existing_profile['current_settings']:
+                        saved = existing_profile['current_settings'][setting_id]
+                        saved_value = saved['value']
+                        current_value = current_settings.get(setting_id, None)
+                        if current_value != saved_value:
+                            self.log_progress(f"  Restoring {name} to {saved['value_name']}...")
+                            camera.setSetting(int(setting_id), saved_value)
+                            time.sleep(0.3)
+                        else:
+                            self.log_progress(f"  {name} already {saved['value_name']}")
+
             # Get current camera state
             state_response = camera.getState()
             if state_response.status_code != 200:
@@ -651,7 +671,7 @@ class Go2KinMainWindow:
                     self.log_progress(f"  Current FPS: {fps_setting['value_name']}")
                 
                 # Populate dropdowns from profile
-                self.populate_dropdowns_from_profile(camera_num, profile, reference)
+                self.populate_dropdowns_from_profile(camera_num, profile)
                 
                 # Save profile with zoom level
                 profile_mgr.save_camera_profile(serial, profile)
@@ -667,49 +687,27 @@ class Go2KinMainWindow:
             self.log_progress(f"✗ Failed to connect GoPro {camera_num}: {e}")
             messagebox.showerror("Connection Error", f"Failed to connect GoPro {camera_num}:\n{e}")
     
-    def populate_dropdowns_from_profile(self, camera_num, profile, reference):
-        """Populate dropdown menus from camera profile and settings reference"""
+    def populate_dropdowns_from_profile(self, camera_num, profile):
+        """Set dropdown current values from camera profile and bind change handlers"""
         panel = self.camera_panels[camera_num]
-        
-        try:
-            # Populate Resolution dropdown
-            if '2' in reference['settings']:  # Setting ID 2 = Video Resolution
-                res_options = reference['settings']['2']['available_options']
-                # Get list of display names (e.g., ["1080", "4K", "2.7K", ...])
-                display_names = sorted(set(res_options.values()))
-                panel.res_combo['values'] = display_names
-                
-                # Set current value from profile
-                if '2' in profile['current_settings']:
-                    current_res = profile['current_settings']['2']['value_name']
-                    panel.res_var.set(current_res)
-                    self.log_progress(f"  Resolution dropdown set to: {current_res}")
-                
-                # Bind change handler
-                panel.res_combo.bind('<<ComboboxSelected>>', 
-                                    lambda e, cn=camera_num: self.on_resolution_change(cn))
-            
-            # Populate FPS dropdown
-            if '3' in reference['settings']:  # Setting ID 3 = FPS
-                fps_options = reference['settings']['3']['available_options']
-                # Get list of display names (e.g., ["24", "30", "60", ...])
-                display_names = sorted(set(fps_options.values()), key=lambda x: int(x))
-                panel.fps_combo['values'] = display_names
-                
-                # Set current value from profile
-                if '3' in profile['current_settings']:
-                    current_fps = profile['current_settings']['3']['value_name']
-                    panel.fps_var.set(current_fps)
-                    self.log_progress(f"  FPS dropdown set to: {current_fps}")
-                
-                # Bind change handler
-                panel.fps_combo.bind('<<ComboboxSelected>>', 
-                                    lambda e, cn=camera_num: self.on_fps_change(cn))
-            
-            self.log_progress(f"✓ Dropdowns populated from camera settings")
-            
-        except Exception as e:
-            self.log_progress(f"⚠ Error populating dropdowns: {e}")
+
+        # Set current resolution from profile
+        if '2' in profile['current_settings']:
+            current_res = profile['current_settings']['2']['value_name']
+            panel.res_var.set(current_res)
+            self.log_progress(f"  Resolution: {current_res}")
+
+        # Set current FPS from profile
+        if '3' in profile['current_settings']:
+            current_fps = profile['current_settings']['3']['value_name']
+            panel.fps_var.set(current_fps)
+            self.log_progress(f"  FPS: {current_fps}")
+
+        # Bind change handlers
+        panel.res_combo.bind('<<ComboboxSelected>>',
+                            lambda e, cn=camera_num: self.on_resolution_change(cn))
+        panel.fps_combo.bind('<<ComboboxSelected>>',
+                            lambda e, cn=camera_num: self.on_fps_change(cn))
     
     def on_resolution_change(self, camera_num):
         """Handle resolution dropdown change"""
@@ -761,7 +759,7 @@ class Go2KinMainWindow:
                 # Success! Update profile
                 self.update_camera_profile_setting(camera_num, setting_id, option_id, display_name)
                 self.log_progress(f"✓ {setting_name} set to: {display_name}")
-                
+
                 # Re-apply zoom in case the setting change reset it
                 if camera_num in self.camera_profiles:
                     saved_zoom = self.camera_profiles[camera_num].get('current_zoom', 0)
@@ -773,13 +771,16 @@ class Go2KinMainWindow:
                             self.log_progress(f"  ⚠ Note: Zoom may have been reset by setting change")
                 
             elif response.status_code == 403:
-                # Invalid option - show available options
+                # Invalid option - log details and show available options
                 try:
                     error_data = response.json()
-                    available_options = error_data.get('supported_options', [])
+                    error_code = error_data.get('error', 'unknown')
+                    self.log_progress(f"  Setting rejected (error code {error_code}): {error_data}")
+                    available_options = error_data.get('supported_options', error_data.get('available_options', []))
                     self.show_invalid_setting_dialog(setting_name, available_options)
-                except:
-                    messagebox.showerror("Setting Error", 
+                except Exception as e:
+                    self.log_progress(f"  Failed to parse 403 response: {e}")
+                    messagebox.showerror("Setting Error",
                                        f"Cannot set {setting_name} to '{display_name}' with current camera state")
                 
                 # Revert dropdown to previous value

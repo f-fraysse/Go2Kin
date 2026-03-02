@@ -177,7 +177,7 @@ def discover_camera_settings(camera):
                 
                 # Extract available options
                 available_options = {}
-                for option in data.get('supported_options', []):
+                for option in data.get('supported_options', data.get('available_options', [])):
                     available_options[str(option['id'])] = option['display_name']
                 
                 if available_options:
