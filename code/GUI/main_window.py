@@ -430,11 +430,13 @@ class Go2KinMainWindow:
         selection_frame.pack(fill=tk.X, padx=20, pady=10)
         
         self.camera_selection_vars = {}
+        self.camera_selection_checkboxes = {}
         for i in range(1, 5):
-            var = tk.BooleanVar(value=True)
-            checkbox = ttk.Checkbutton(selection_frame, text=f"GoPro {i}", variable=var)
+            var = tk.BooleanVar(value=False)
+            checkbox = ttk.Checkbutton(selection_frame, text=f"GoPro {i}", variable=var, state="disabled")
             checkbox.pack(side=tk.LEFT, padx=15)
             self.camera_selection_vars[i] = var
+            self.camera_selection_checkboxes[i] = checkbox
         
         # Recording controls
         control_frame = ttk.Frame(self.recording_frame)
@@ -589,7 +591,7 @@ class Go2KinMainWindow:
                 (88, 30, "LCD Brightness", "30%"),            # LCD brightness 30%
                 (134, 3, "Anti-Flicker", "50Hz"),             # 50Hz for Australia
                 (182, 1, "Bit Rate", "High"),                 # High bitrate for better quality
-                (183, 0, "Bit Depth", "10-Bit"),              # 10-bit for better color depth
+                (183, 0, "Bit Depth", "8-Bit"),              # reduces processing
                 (184, 0, "Profiles", "Standard"),             # Standard profile (no HDR processing)
                 # Setting 180 (System Video Mode) removed - not supported on HERO12 Black
                 (236, 0, "Auto WiFi AP", "Off"),              # Auto WiFi AP off
@@ -877,7 +879,16 @@ class Go2KinMainWindow:
         color = "green" if connected else "red"
         outline_color = "darkgreen" if connected else "darkred"
         panel.status_canvas.itemconfig(panel.status_circle, fill=color, outline=outline_color)
-        
+
+        # Enable/disable recording checkbox based on connection status
+        if camera_num in self.camera_selection_checkboxes:
+            if connected:
+                self.camera_selection_checkboxes[camera_num].config(state="normal")
+                self.camera_selection_vars[camera_num].set(True)
+            else:
+                self.camera_selection_checkboxes[camera_num].config(state="disabled")
+                self.camera_selection_vars[camera_num].set(False)
+
         # Update preview camera dropdown when camera status changes
         self.update_preview_camera_dropdown()
     
@@ -1325,44 +1336,7 @@ class Go2KinMainWindow:
             self.root.after(0, self.reset_recording_ui)
     
     def start_camera_recording(self, camera_num, camera):
-        """Start recording on a single camera with settings from profile"""
-        
-        # Get camera profile
-        if camera_num not in self.camera_profiles:
-            # No profile - just start recording with current settings
-            camera.shutterStart()
-            return
-        
-        profile = self.camera_profiles[camera_num]
-        
-        # Ensure video mode
-        camera.modeVideo()
-        time.sleep(0.5)
-        
-        # Apply resolution from profile (setting ID 2)
-        if '2' in profile['current_settings']:
-            res_setting = profile['current_settings']['2']
-            camera.setSetting(2, res_setting['value'])
-            time.sleep(0.3)
-        
-        # Apply FPS from profile (setting ID 3)
-        if '3' in profile['current_settings']:
-            fps_setting = profile['current_settings']['3']
-            camera.setSetting(3, fps_setting['value'])
-            time.sleep(0.3)
-        
-        # Apply lens from profile (setting ID 121 for video)
-        if '121' in profile['current_settings']:
-            lens_setting = profile['current_settings']['121']
-            camera.setSetting(121, lens_setting['value'])
-            time.sleep(0.3)
-        
-        # Apply zoom from profile
-        saved_zoom = profile.get('current_zoom', 0)
-        camera.setDigitalZoom(saved_zoom)
-        time.sleep(0.3)
-        
-        # Start recording
+        """Start recording on a single camera (settings already applied via GUI)"""
         camera.shutterStart()
     
     def stop_and_download(self, camera_num, camera, trial_dir, trial_name):
