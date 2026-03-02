@@ -90,4 +90,4 @@ memory-bank/              # Legacy project documentation
 
 ## Known Issues / TODO
 
-- **Low video quality on downloaded files**: Downloaded MP4s appear lower quality than expected for 1080p (low bitrate). Suspect the app may be downloading the GoPro's low-res preview file (LRV) instead of the full-quality MP4. To investigate: list SD card contents via `/gopro/media/list` before and after recording to see what files are created (MP4, LRV, THM, etc.), then check which file `mediaDownloadLast()` selects.
+- *(none currently)*

@@ -1370,7 +1370,7 @@ class Go2KinMainWindow:
         # Wait for encoding to finish
         while camera.camBusy() or camera.encodingActive():
             time.sleep(0.5)
-        
+
         # Download file to the shared trial directory
         filename = trial_dir / f"{trial_name}_GP{camera_num}.mp4"
         camera.mediaDownloadLast(str(filename))
