@@ -2,7 +2,7 @@
   "serial_number": "C3501326054460",
   "model": "HERO12 Black",
   "firmware": "H23.01.02.32.00",
-  "last_connected": "2026-03-02T15:13:48.809778",
+  "last_connected": "2026-03-03T12:18:09.012951",
   "settings_reference_file": "settings_reference_HERO12_Black_H23_01_02_32_00.json",
   "current_settings": {
     "2": {
@@ -116,9 +116,9 @@
       "value_name": "Pro"
     },
     "176": {
-      "value": 115,
+      "value": 117,
       "name": "Easy Mode Speed",
-      "value_name": "1X Speed / Low Light"
+      "value_name": "2X Slo-Mo"
     },
     "178": {
       "value": 0,

@@ -26,7 +26,7 @@
     }
   },
   "recording": {
-    "output_directory": "D:/PythonProjects/Go2Kin/output/tests_02032026",
-    "last_trial_name": "test01_021"
+    "output_directory": "D:/PythonProjects/Go2Kin/output/test_sync_03",
+    "last_trial_name": "test_audio_sync"
   }
 }

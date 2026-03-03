@@ -477,6 +477,11 @@ class Go2KinMainWindow:
         self.open_folder_btn = ttk.Button(self.recording_frame, text="📁 Open Output Folder",
                                         command=self.open_output_folder, state="disabled")
         self.open_folder_btn.pack(pady=15)
+
+        # Sync button
+        self.sync_btn = ttk.Button(self.recording_frame, text="🔄 Synchronise Video Files",
+                                   command=self.start_sync)
+        self.sync_btn.pack(pady=5)
     
     def load_camera_settings(self):
         """Load camera settings from config into GUI"""
@@ -1425,6 +1430,109 @@ class Go2KinMainWindow:
         else:
             messagebox.showerror("Error", "Output directory does not exist")
     
+    def start_sync(self):
+        """Open folder picker and start audio synchronisation."""
+        from audio_sync import check_ffmpeg, AudioSyncError
+
+        # Check ffmpeg first
+        if not check_ffmpeg():
+            messagebox.showerror("ffmpeg Not Found",
+                "ffmpeg is required for audio synchronisation.\n\n"
+                "Install with: conda install -c conda-forge ffmpeg\n"
+                "Or download from: https://ffmpeg.org/download.html")
+            return
+
+        # Open folder picker
+        initial_dir = self.output_dir_var.get()
+        trial_dir = filedialog.askdirectory(
+            title="Select trial folder containing 4 MP4 files",
+            initialdir=initial_dir
+        )
+        if not trial_dir:
+            return
+
+        # Find MP4 files (exclude synced/ subfolder)
+        trial_path = Path(trial_dir)
+        mp4_files = sorted([
+            f for f in trial_path.iterdir()
+            if f.suffix.lower() == ".mp4" and f.is_file()
+        ])
+
+        if len(mp4_files) != 4:
+            messagebox.showerror("Invalid Folder",
+                f"Expected exactly 4 MP4 files, found {len(mp4_files)}.\n\n"
+                + (("\n".join(f"  {f.name}" for f in mp4_files)) if mp4_files
+                   else "No MP4 files found in this folder."))
+            return
+
+        # Log and launch background thread
+        self.log_progress("--- Starting audio synchronisation ---")
+        for f in mp4_files:
+            self.log_progress(f"  Found: {f.name}")
+
+        self.sync_btn.config(state="disabled")
+        sync_thread = threading.Thread(
+            target=self.sync_worker,
+            args=([str(f) for f in mp4_files], trial_dir),
+            daemon=True
+        )
+        sync_thread.start()
+
+    def sync_worker(self, video_paths, trial_dir):
+        """Background worker for audio synchronisation."""
+        try:
+            from audio_sync import (check_audio_track, compute_sync_offsets,
+                                    trim_and_sync_videos, create_stitched_preview,
+                                    AudioSyncError)
+
+            # Check audio tracks
+            for vp in video_paths:
+                name = Path(vp).name
+                if not check_audio_track(vp):
+                    raise AudioSyncError(f"No audio track in: {name}")
+                self.log_progress(f"  Audio confirmed: {name}")
+
+            # Compute sync offsets
+            self.log_progress("Analysing audio for clap detection...")
+            offsets = compute_sync_offsets(
+                video_paths,
+                progress_callback=lambda msg: self.log_progress(f"  {msg}")
+            )
+
+            # Log offset results
+            for path, info in offsets.items():
+                name = Path(path).name
+                ref = " (REFERENCE)" if info["is_reference"] else ""
+                self.log_progress(
+                    f"  {name}: clap at {info['clap_time_seconds']:.3f}s, "
+                    f"trim {info['offset_seconds']:.4f}s{ref}")
+
+            # Trim and sync videos
+            self.log_progress("Trimming videos (stream copy, no re-encoding)...")
+            output_files = trim_and_sync_videos(
+                video_paths, offsets, trial_dir,
+                progress_callback=lambda msg: self.log_progress(f"  {msg}")
+            )
+
+            # Create stitched preview
+            synced_dir = str(Path(trial_dir) / "synced")
+            self.log_progress("Creating 2x2 stitched preview...")
+            create_stitched_preview(
+                synced_dir,
+                progress_callback=lambda msg: self.log_progress(f"  {msg}")
+            )
+
+            self.log_progress(
+                f"Synchronisation complete! "
+                f"{len(output_files)} synced files + stitched preview in synced/ folder")
+
+        except Exception as e:
+            error_msg = str(e)
+            self.log_progress(f"Sync error: {error_msg}")
+            self.root.after(0, lambda msg=error_msg: messagebox.showerror("Sync Error", msg))
+        finally:
+            self.root.after(0, lambda: self.sync_btn.config(state="normal"))
+
     def on_closing(self):
         """Handle window close event with graceful cleanup"""
         

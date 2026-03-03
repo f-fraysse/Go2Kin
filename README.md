@@ -23,6 +23,7 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
 2. Install dependencies:
    ```
    pip install -r requirements.txt
+   conda install -c conda-forge ffmpeg
    ```
 
 3. Connect GoPro cameras via USB and power them on.
@@ -53,11 +54,14 @@ Stream a live preview from one camera at a time for positioning and framing. Inc
 ### Tab 3 — Recording
 Start/stop synchronized recording across selected cameras. After recording, files are automatically downloaded from each camera and saved to `output/` with timestamps. Progress is tracked in the log.
 
+Includes a **Synchronise Video Files** button for post-recording audio-based synchronisation (see below).
+
 ## Project Structure
 
 ```
 code/
   go2kin.py              # Entry point
+  audio_sync.py          # Audio-based multi-camera video synchronisation
   camera_profiles.py     # Camera profile and settings reference management
   GUI/
     main_window.py        # Main GUI window (Settings, Preview, Recording tabs)
@@ -96,3 +100,38 @@ These settings are automatically applied each time a camera connects to ensure c
 | Auto WiFi AP | Off | Not needed over USB |
 
 Resolution, FPS, lens, and digital zoom are restored from the camera's saved profile.
+
+## Video Synchronisation
+
+Even when starting all cameras simultaneously, each GoPro begins recording at a slightly different time. The **Synchronise Video Files** button in the Recording tab aligns multi-camera recordings using audio clap detection.
+
+### How to use
+
+1. At the start of each recording, perform a **loud hand clap** within the first 5 seconds while all cameras are recording.
+2. After files are downloaded, click **Synchronise Video Files** and select the trial folder containing the 4 MP4 files.
+3. The tool analyses the audio, detects the clap, computes precise time offsets between cameras, and trims all files to a common start and end point.
+
+### Output
+
+A `synced/` subfolder is created inside the trial directory containing:
+- 4 trimmed MP4 files (same filenames as originals) — start-aligned at the clap and end-trimmed to identical duration
+- `stitched_videos.mp4` — a 2x2 grid preview (960x960) of all 4 cameras for quick visual verification of sync
+
+Original files are never modified.
+
+### Technical approach
+
+| Step | Method | Detail |
+|------|--------|--------|
+| Audio extraction | ffmpeg pipe | First 5s extracted as 48kHz mono WAV via stdout pipe (no temp files) |
+| Clap detection | Envelope thresholding | Smoothed envelope (10ms window), threshold at 5x background median, peak refinement in 50ms window |
+| Precision alignment | Cross-correlation | `scipy.signal.correlate` on 200ms windows around each clap for sub-millisecond accuracy |
+| Reference selection | Earliest clap | Camera with clap earliest in its file (started recording last) is the reference; others trimmed from the start |
+| End alignment | Common duration | All files trimmed to the shortest remaining duration after start alignment |
+| Video trimming | ffmpeg stream copy | `-ss` + `-t` + `-c copy` — no re-encoding, lossless, fast |
+| Stitched preview | ffmpeg xstack filter | 4 inputs downscaled to 480x480, arranged in 2x2 grid, encoded with built-in mpeg4 codec |
+
+### Requirements
+
+- **ffmpeg** must be installed and in PATH (included when installed via `conda install -c conda-forge ffmpeg`)
+- **numpy** and **scipy** (included in `requirements.txt`)

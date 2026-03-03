@@ -8,13 +8,15 @@ Multi-camera GoPro control application for research. Controls up to 4 GoPro Hero
 - **Python**: 3.10 in Conda environment `Go2Kin` (`conda activate Go2Kin`)
 - **IDE**: VSCode
 - **Run**: `python code/go2kin.py`
-- **Dependencies**: `pip install -r requirements.txt` (requests, opencv-python, Pillow)
+- **Dependencies**: `pip install -r requirements.txt` (requests, opencv-python, Pillow, numpy, scipy)
+- **External tools**: `ffmpeg` in PATH (for audio sync feature; install via `conda install -c conda-forge ffmpeg`)
 
 ## Project Structure
 
 ```
 code/
   go2kin.py              # Entry point
+  audio_sync.py          # Audio-based multi-camera video synchronisation
   camera_profiles.py     # CameraProfileManager (profiles + settings references)
   GUI/
     __init__.py           # Exports Go2KinMainWindow
@@ -88,6 +90,17 @@ memory-bank/              # Legacy project documentation
 - Setting 236 (Auto WiFi AP) not in discovery tool but applied on connect
 - `camBusy()`/`encodingActive()` return False on errors (fail-safe design)
 - **GUI dropdown options are hardcoded for Hero 12 + 50Hz anti-flicker**: Resolution (1080, 2.7K, 4K) and FPS (25, 50, 100, 200) in `main_window.py` lines ~280/292. For different cameras or 60Hz anti-flicker, update these values. Invalid selections are caught at runtime (camera returns 403 with valid options popup).
+
+## Audio Sync Feature
+
+The "Synchronise Video Files" button in the Recording tab aligns multi-camera recordings using audio clap detection:
+1. User selects a trial folder containing exactly 4 MP4 files
+2. Extracts first 5 seconds of audio from each file (ffmpeg pipe → numpy)
+3. Detects hand clap transient (envelope thresholding + cross-correlation)
+4. Reference = camera with earliest clap (started recording last). Other files trimmed from start to align
+5. All files trimmed to shortest common duration (identical length)
+6. Output: `synced/` subfolder with 4 trimmed files + `stitched_videos.mp4` (2x2 grid preview, 480x480 per camera)
+7. Uses ffmpeg stream-copy for trimming (no re-encoding, lossless). Stitched preview re-encodes at low resolution.
 
 ## Known Issues / TODO
 
