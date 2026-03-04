@@ -26,7 +26,7 @@
     }
   },
   "recording": {
-    "output_directory": "D:/PythonProjects/Go2Kin/output/test_sync_03",
-    "last_trial_name": "test_audio_sync"
+    "output_directory": "D:/PythonProjects/Go2Kin/output/caliscope_calib_ext_3cams",
+    "last_trial_name": "calib_ext_002"
   }
 }

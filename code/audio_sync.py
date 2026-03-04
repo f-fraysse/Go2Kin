@@ -59,6 +59,46 @@ def get_video_duration(video_path: str, ffprobe_path: str = "ffprobe") -> float:
     return float(result.stdout.strip())
 
 
+def get_frame_count(video_path: str, ffprobe_path: str = "ffprobe") -> int:
+    """Count video frames using ffprobe container metadata."""
+    result = subprocess.run(
+        [ffprobe_path, "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=nb_frames", "-of", "csv=p=0", video_path],
+        capture_output=True, text=True, timeout=30
+    )
+    count_str = result.stdout.strip()
+    if result.returncode != 0 or not count_str or count_str == "N/A":
+        # Fallback: decode-count (slower but always accurate)
+        result = subprocess.run(
+            [ffprobe_path, "-v", "error", "-count_frames",
+             "-select_streams", "v:0",
+             "-show_entries", "stream=nb_read_frames",
+             "-of", "csv=p=0", video_path],
+            capture_output=True, text=True, timeout=120
+        )
+        count_str = result.stdout.strip()
+    if not count_str:
+        raise AudioSyncError(
+            f"Failed to count frames in {Path(video_path).name}"
+        )
+    return int(count_str)
+
+
+def get_frame_rate(video_path: str, ffprobe_path: str = "ffprobe") -> float:
+    """Get video frame rate using ffprobe."""
+    result = subprocess.run(
+        [ffprobe_path, "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=r_frame_rate", "-of", "csv=p=0", video_path],
+        capture_output=True, text=True, timeout=10
+    )
+    # r_frame_rate returns as fraction e.g. "50/1"
+    rate_str = result.stdout.strip()
+    if "/" in rate_str:
+        num, den = rate_str.split("/")
+        return float(num) / float(den)
+    return float(rate_str)
+
+
 def extract_audio(video_path: str, duration: float = AUDIO_DURATION,
                   ffmpeg_path: str = "ffmpeg") -> Tuple[np.ndarray, int]:
     """
@@ -289,6 +329,54 @@ def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
         ref_marker = " (reference)" if info["is_reference"] else ""
         log(f"  Created: {Path(vp).name}{ref_marker}")
         output_files.append(str(out_path))
+
+    # Frame equalization: ensure all files have identical frame counts
+    log("Verifying frame counts...")
+    frame_counts = {}
+    for out_path in output_files:
+        count = get_frame_count(out_path)
+        frame_counts[out_path] = count
+        log(f"  {Path(out_path).name}: {count} frames")
+
+    min_frames = min(frame_counts.values())
+    max_frames = max(frame_counts.values())
+
+    if min_frames != max_frames:
+        log(f"Frame mismatch ({min_frames}-{max_frames}), equalising to {min_frames} frames...")
+        for out_path in output_files:
+            if frame_counts[out_path] > min_frames:
+                temp_path = Path(out_path).with_suffix(".tmp.mp4")
+                cmd = [
+                    ffmpeg_path, "-y",
+                    "-i", out_path,
+                    "-frames:v", str(min_frames),
+                    "-c", "copy",
+                    str(temp_path)
+                ]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                if result.returncode != 0:
+                    raise AudioSyncError(
+                        f"Frame equalization failed for {Path(out_path).name}: "
+                        f"{result.stderr[-300:]}"
+                    )
+                Path(out_path).unlink()
+                temp_path.rename(out_path)
+                log(f"  {Path(out_path).name}: trimmed {frame_counts[out_path]} -> {min_frames}")
+    else:
+        log(f"All files have {min_frames} frames")
+
+    # Generate timestamps.csv
+    fps = get_frame_rate(output_files[0])
+    num_cameras = len(output_files)
+    csv_path = synced_dir / "timestamps.csv"
+    log(f"Generating timestamps.csv ({min_frames} frames x {num_cameras} cameras, {fps:.2f} fps)...")
+    with open(csv_path, "w", newline="") as f:
+        f.write("cam_id,frame_time\n")
+        for frame_idx in range(min_frames):
+            frame_time = frame_idx / fps
+            for cam_id in range(1, num_cameras + 1):
+                f.write(f"{cam_id},{frame_time:.8f}\n")
+    log(f"  Created: timestamps.csv")
 
     return output_files
 
