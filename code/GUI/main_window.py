@@ -1445,7 +1445,7 @@ class Go2KinMainWindow:
         # Open folder picker
         initial_dir = self.output_dir_var.get()
         trial_dir = filedialog.askdirectory(
-            title="Select trial folder containing 4 MP4 files",
+            title="Select trial folder containing MP4 files to sync",
             initialdir=initial_dir
         )
         if not trial_dir:
@@ -1458,9 +1458,9 @@ class Go2KinMainWindow:
             if f.suffix.lower() == ".mp4" and f.is_file()
         ])
 
-        if len(mp4_files) != 4:
+        if len(mp4_files) < 2:
             messagebox.showerror("Invalid Folder",
-                f"Expected exactly 4 MP4 files, found {len(mp4_files)}.\n\n"
+                f"Need at least 2 MP4 files, found {len(mp4_files)}.\n\n"
                 + (("\n".join(f"  {f.name}" for f in mp4_files)) if mp4_files
                    else "No MP4 files found in this folder."))
             return

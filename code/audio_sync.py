@@ -8,6 +8,7 @@ Requires: ffmpeg (in PATH), numpy, scipy
 """
 
 import io
+import math
 import struct
 import subprocess
 import wave
@@ -384,8 +385,8 @@ def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
 def create_stitched_preview(synced_dir: str, ffmpeg_path: str = "ffmpeg",
                             progress_callback: Optional[Callable] = None) -> str:
     """
-    Create a 2x2 grid preview video from 4 synced files.
-    Each input is downscaled to 480x480, producing a 960x960 output.
+    Create a grid preview video from synced files (2 or more).
+    Each input is downscaled to 480x480, arranged in an auto-sized grid.
     Returns path to the stitched file.
     """
     def log(msg):
@@ -398,27 +399,45 @@ def create_stitched_preview(synced_dir: str, ffmpeg_path: str = "ffmpeg",
         if f.name.lower() != "stitched_videos.mp4"
     )
 
-    if len(mp4_files) != 4:
+    if len(mp4_files) < 2:
         raise AudioSyncError(
-            f"Expected 4 synced files for stitching, found {len(mp4_files)}"
+            f"Need at least 2 synced files for stitching, found {len(mp4_files)}"
         )
 
     output_path = synced_path / "stitched_videos.mp4"
-    log("Creating 2x2 stitched preview...")
+    n = len(mp4_files)
+    cols = math.ceil(math.sqrt(n))
+    rows = math.ceil(n / cols)
+    cell_size = 480
+    log(f"Creating {cols}x{rows} stitched preview ({n} files)...")
 
     # Build ffmpeg command with xstack filter
-    # Each input scaled to 480x480, arranged in 2x2 grid
     cmd = [ffmpeg_path, "-y"]
     for f in mp4_files:
         cmd.extend(["-i", str(f)])
+    # Add black filler inputs for empty grid cells
+    pad_count = cols * rows - n
+    for _ in range(pad_count):
+        cmd.extend(["-f", "lavfi", "-i",
+                     f"color=black:s={cell_size}x{cell_size}:d=1"])
 
-    filter_str = (
-        "[0:v]scale=480:480[v0];"
-        "[1:v]scale=480:480[v1];"
-        "[2:v]scale=480:480[v2];"
-        "[3:v]scale=480:480[v3];"
-        "[v0][v1][v2][v3]xstack=inputs=4:layout=0_0|480_0|0_480|480_480[out]"
-    )
+    total_inputs = n + pad_count
+    # Scale real inputs, build xstack layout
+    parts = []
+    for i in range(n):
+        parts.append(f"[{i}:v]scale={cell_size}:{cell_size}[v{i}]")
+    for i in range(n, total_inputs):
+        parts.append(f"[{i}:v]copy[v{i}]")
+
+    stack_inputs = "".join(f"[v{i}]" for i in range(total_inputs))
+    layout_parts = []
+    for i in range(total_inputs):
+        r, c = divmod(i, cols)
+        layout_parts.append(f"{c * cell_size}_{r * cell_size}")
+    layout = "|".join(layout_parts)
+
+    parts.append(f"{stack_inputs}xstack=inputs={total_inputs}:layout={layout}[out]")
+    filter_str = ";".join(parts)
 
     cmd.extend([
         "-filter_complex", filter_str,
