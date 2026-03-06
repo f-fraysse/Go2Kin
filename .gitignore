@@ -111,3 +111,9 @@ config/local_*
 # trials/
 # calibration/
 # results/
+
+# Upstream Caliscope source (reference only)
+code/caliscope/
+
+# Calibration output (machine-specific)
+config/calibration/

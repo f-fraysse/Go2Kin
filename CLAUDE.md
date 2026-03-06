@@ -8,7 +8,7 @@ Multi-camera GoPro control application for research. Controls up to 4 GoPro Hero
 - **Python**: 3.10 in Conda environment `Go2Kin` (`conda activate Go2Kin`)
 - **IDE**: VSCode
 - **Run**: `python code/go2kin.py`
-- **Dependencies**: `pip install -r requirements.txt` (requests, opencv-python, Pillow, numpy, scipy)
+- **Dependencies**: `pip install -r requirements.txt` (requests, opencv-contrib-python, Pillow, numpy, scipy, pandas)
 - **External tools**: `ffmpeg` in PATH (for audio sync feature; install via `conda install -c conda-forge ffmpeg`)
 
 ## Project Structure
@@ -21,12 +21,32 @@ code/
   GUI/
     __init__.py           # Exports Go2KinMainWindow
     main_window.py        # Go2KinMainWindow + LivePreviewCapture
+    calibration_tab.py    # CalibrationTab (tkinter calibration UI)
   goproUSB/
     goproUSB.py           # GPcam class (camera HTTP API client)
+  calibration/            # Camera calibration (adapted from Caliscope, BSD-2-Clause)
+    __init__.py
+    charuco.py            # Charuco board definition
+    charuco_tracker.py    # Corner detection (cv2.aruco.CharucoDetector)
+    data_types.py         # PointPacket, CameraData, CameraArray, ImagePoints, WorldPoints, StereoPair
+    frame_selector.py     # Smart frame selection (orientation + spatial coverage)
+    intrinsic.py          # Intrinsic calibration (cv2.calibrateCamera)
+    video_processor.py    # MP4 → ImagePoints bridge
+    extrinsic.py          # PoseNetworkBuilder (PnP + relative poses + outlier rejection)
+    paired_pose_network.py  # Stereo pair graph with bridging
+    triangulation.py      # Pure-numpy DLT triangulation
+    reprojection.py       # Reprojection error computation
+    reprojection_report.py  # ReprojectionReport dataclass
+    bundle_adjustment.py  # PointDataBundle + scipy least_squares optimization
+    alignment.py          # Umeyama similarity transform
+    scale_accuracy.py     # Volumetric scale error metrics
+    calibrate.py          # High-level orchestrator (intrinsic, extrinsic, origin)
+    persistence.py        # JSON save/load for calibration
 config/
   cameras.json            # Main config (serials, settings, recording prefs)
   camera_profiles/        # Per-camera JSON profiles (profile_{serial}.json)
   settings_references/    # Per-model/firmware setting definitions
+  calibration/            # Calibration output (charuco_config.json, calibration.json)
 tools/
   discover_camera_settings.py  # Run once per model/firmware to generate reference
   test_video_quality.py        # Easy Mode vs Pro Mode quality comparison test
@@ -38,7 +58,7 @@ memory-bank/              # Legacy project documentation
 
 - **GPcam** (`goproUSB.py`): HTTP client for one camera. IP derived from serial: `172.2X.1YZ.51:8080`
 - **CameraProfileManager** (`camera_profiles.py`): Singleton managing per-camera profiles and per-model settings references
-- **Go2KinMainWindow** (`GUI/main_window.py`): 3-tab tkinter GUI (Settings, Preview, Recording)
+- **Go2KinMainWindow** (`GUI/main_window.py`): 4-tab tkinter GUI (Settings, Preview, Recording, Calibration)
 - **LivePreviewCapture** (`GUI/main_window.py`): Threaded OpenCV capture from UDP stream
 
 ## Hardware
@@ -102,6 +122,36 @@ The "Synchronise Video Files" button in the Recording tab aligns multi-camera re
 6. Frame equalization: counts frames in each output, trims excess files to the minimum frame count (`-frames:v N -c copy`)
 7. Output: `synced/` subfolder with trimmed files + `stitched_videos.mp4` (auto-sized grid preview, 480x480 per camera)
 8. Uses ffmpeg stream-copy for trimming (no re-encoding, lossless). Stitched preview re-encodes at low resolution.
+
+## Camera Calibration
+
+The Calibration tab (4th tab) provides intrinsic and extrinsic camera calibration using Charuco board detection. Code adapted from the Caliscope project (BSD-2-Clause, Mac Prible).
+
+### Dependencies
+- `opencv-contrib-python` (replaces `opencv-python` — superset, needed for `cv2.aruco`)
+- `pandas` (for ImagePoints/WorldPoints DataFrames)
+
+### Default Charuco Board
+7x5, A1 paper (59.4x84.1cm), 11.70cm squares, DICT_4X4_50, aruco_scale=0.75
+
+### Calibration Workflow
+1. **Charuco config**: Set board parameters in Calibration tab (or accept defaults). Print board, measure actual square size.
+2. **Intrinsic**: For each camera, select a video of charuco board → "Calibrate" → verify RMSE < 1.0px
+3. **Extrinsic**: Record all cameras simultaneously with charuco board visible. Audio sync → synced/ folder. Select synced folder → "Calibrate Extrinsics" → verify 3D camera positions
+4. **Set Origin**: Place charuco at lab origin, take short recording. Select folder → "Set Origin"
+5. **Save**: Save calibration to `config/calibration/calibration.json`
+
+### Pipeline Architecture
+```
+Intrinsic: Video → CharucoTracker → PointPackets → frame_selector → cv2.calibrateCamera
+Extrinsic: Synced videos → PnP per camera → relative poses → IQR outlier rejection
+           → quaternion averaging → stereo pair graph (with bridging)
+           → anchor selection → global poses → DLT triangulation
+           → bundle adjustment (scipy least_squares) → Umeyama alignment
+```
+
+### File-to-Camera Mapping
+Synced folder MP4 filenames must follow `{trial}_GP{N}.mp4` convention (e.g., `Trial1_GP1.mp4`). The parser extracts camera number from the `_GP{N}` suffix. Files `stitched_videos.mp4` and `timestamps.csv` are automatically skipped.
 
 ## Known Issues / TODO
 

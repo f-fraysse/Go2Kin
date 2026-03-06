@@ -200,6 +200,9 @@ class Go2KinMainWindow:
         
         # Tab 3: Recording
         self.create_recording_tab()
+
+        # Tab 4: Calibration
+        self.create_calibration_tab()
     
     def create_camera_settings_tab(self):
         """Create the camera settings tab"""
@@ -390,6 +393,11 @@ class Go2KinMainWindow:
         # Update camera dropdown initially
         self.update_preview_camera_dropdown()
     
+    def create_calibration_tab(self):
+        """Create the calibration tab"""
+        from GUI.calibration_tab import CalibrationTab
+        self.calibration_tab = CalibrationTab(self.notebook, self.config)
+
     def create_recording_tab(self):
         """Create the recording tab"""
         self.recording_frame = ttk.Frame(self.notebook)
