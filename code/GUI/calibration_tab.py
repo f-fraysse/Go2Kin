@@ -90,11 +90,11 @@ class CalibrationTab:
 
         # Row 0: columns, rows
         ttk.Label(grid, text="Columns:").grid(row=0, column=0, sticky="e", padx=5, pady=2)
-        self._charuco_cols = tk.IntVar(value=7)
+        self._charuco_cols = tk.IntVar(value=5)
         ttk.Spinbox(grid, from_=3, to=20, textvariable=self._charuco_cols, width=5).grid(row=0, column=1, padx=5)
 
         ttk.Label(grid, text="Rows:").grid(row=0, column=2, sticky="e", padx=5, pady=2)
-        self._charuco_rows = tk.IntVar(value=5)
+        self._charuco_rows = tk.IntVar(value=7)
         ttk.Spinbox(grid, from_=3, to=20, textvariable=self._charuco_rows, width=5).grid(row=0, column=3, padx=5)
 
         # Row 1: square size, aruco scale

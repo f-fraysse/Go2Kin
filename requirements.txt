@@ -4,3 +4,4 @@ Pillow
 numpy
 scipy
 pandas
+matplotlib

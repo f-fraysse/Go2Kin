@@ -439,8 +439,8 @@ The charuco board is the calibration target. Its physical geometry must be accur
 
 | Parameter | Default | Effect |
 |-----------|---------|--------|
-| `columns` | 7 | Number of columns on the board |
-| `rows` | 5 | Number of rows on the board |
+| `columns` | 5 | Number of columns on the board |
+| `rows` | 7 | Number of rows on the board |
 | `square_size_overide_cm` | 11.70 | Physical size of one chessboard square in cm. **Critical for scale accuracy.** |
 | `dictionary` | `DICT_4X4_50` | ArUco marker dictionary. Must match the printed board. |
 | `aruco_scale` | 0.75 | Ratio of ArUco marker size to square size |
@@ -459,7 +459,7 @@ The charuco board is the calibration target. Its physical geometry must be accur
 ### Go2Kin Defaults
 
 Designed for an A1 (59.4 x 84.1 cm) printed charuco board:
-- 7 columns x 5 rows = 24 inner corners
+- 5 columns x 7 rows = 24 inner corners
 - 11.70 cm squares with 0.75 aruco scale
 - DICT_4X4_50 (small dictionary, fast detection)
 
@@ -474,8 +474,8 @@ Calibration is saved as JSON to `config/calibration/calibration.json`:
 ```json
 {
   "charuco": {
-    "columns": 7,
-    "rows": 5,
+    "columns": 5,
+    "rows": 7,
     "board_height": 59.4,
     "board_width": 84.1,
     "dictionary": "DICT_4X4_50",
