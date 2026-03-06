@@ -65,7 +65,9 @@ Multi-camera calibration using a printed charuco board. The calibration pipeline
 - **Set Origin** — align the coordinate system to a known world position using a Umeyama similarity transform.
 - **Save/Load** — persist calibration to `config/calibration/calibration.json`.
 
-See [`code/calibration/CALIBRATION.md`](code/calibration/CALIBRATION.md) for full technical documentation of the calibration pipeline.
+### Attribution
+
+The calibration pipeline is adapted from [Caliscope](https://github.com/mprib/caliscope) by Mac Prible, licensed under BSD-2-Clause. Caliscope is a full-featured multi-camera calibration and motion capture application. Go2Kin extracts the core calibration algorithms (charuco detection, intrinsic/extrinsic calibration, bundle adjustment, coordinate alignment) and replaces the UI and persistence layers: PySide6 with tkinter, pyvista with matplotlib, TOML with JSON, and numba JIT with pure numpy. See [`code/calibration/CALIBRATION.md`](code/calibration/CALIBRATION.md) for full technical documentation and per-file provenance.
 
 ## Calibration Workflow
 
