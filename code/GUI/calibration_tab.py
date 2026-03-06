@@ -414,13 +414,13 @@ class CalibrationTab:
                 ).pack(anchor="w")
 
         # Try to show 3D plot
-        self._show_camera_positions(bundle)
+        self._show_camera_positions(bundle.camera_array)
 
     def _extrinsic_error(self, error_msg: str):
         self._extrinsic_status.set(f"Error: {error_msg}")
         messagebox.showerror("Extrinsic Calibration Error", error_msg)
 
-    def _show_camera_positions(self, bundle):
+    def _show_camera_positions(self, camera_array):
         """Show matplotlib 3D scatter plot of camera positions."""
         try:
             import matplotlib
@@ -432,7 +432,7 @@ class CalibrationTab:
             fig = Figure(figsize=(4, 3), dpi=100)
             ax = fig.add_subplot(111, projection="3d")
 
-            for cam_id, cam in bundle.camera_array.posed_cameras.items():
+            for cam_id, cam in camera_array.posed_cameras.items():
                 if cam.translation is not None and cam.rotation is not None:
                     # Camera position in world: C = -R^T @ t
                     pos = -cam.rotation.T @ cam.translation
@@ -442,6 +442,7 @@ class CalibrationTab:
             ax.set_xlabel("X")
             ax.set_ylabel("Y")
             ax.set_zlabel("Z")
+            ax.set_aspect("equal")
             ax.set_title("Camera Positions")
             fig.tight_layout()
 
@@ -469,8 +470,8 @@ class CalibrationTab:
             messagebox.showwarning("Warning", "No origin folder selected")
             return
 
-        if self._bundle is None or self._camera_array is None:
-            messagebox.showwarning("Warning", "Run extrinsic calibration first")
+        if self._camera_array is None:
+            messagebox.showwarning("Warning", "Load calibration or run extrinsic calibration first")
             return
 
         self._origin_status.set("Setting origin...")
@@ -479,18 +480,30 @@ class CalibrationTab:
             try:
                 import sys
                 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-                from calibration.calibrate import set_origin
 
                 charuco = self._get_charuco()
-                aligned_bundle = set_origin(
-                    Path(folder), charuco, self._camera_array, self._bundle,
-                )
 
-                self._bundle = aligned_bundle
-                self._camera_array = aligned_bundle.camera_array
+                if self._bundle is not None:
+                    from calibration.calibrate import set_origin
+                    aligned_bundle = set_origin(
+                        Path(folder), charuco, self._camera_array, self._bundle,
+                    )
+                    self._bundle = aligned_bundle
+                    self._camera_array = aligned_bundle.camera_array
+                else:
+                    from calibration.calibrate import compute_origin_transform
+                    from calibration.alignment import apply_similarity_transform
+                    transform = compute_origin_transform(
+                        Path(folder), charuco, self._camera_array,
+                    )
+                    new_camera_array, _ = apply_similarity_transform(
+                        self._camera_array, None, transform,
+                    )
+                    self._camera_array = new_camera_array
+
+                self.frame.after(0, lambda: self._show_camera_positions(self._camera_array))
 
                 self.frame.after(0, lambda: self._origin_status.set("Origin set successfully"))
-                self.frame.after(0, lambda: self._show_camera_positions(aligned_bundle))
             except Exception as e:
                 self.frame.after(0, lambda err=str(e): self._origin_error(err))
 

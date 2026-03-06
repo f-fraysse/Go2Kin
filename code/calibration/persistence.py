@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -43,6 +45,14 @@ def save_calibration(
         json.dump(data, f, indent=2)
 
     logger.info(f"Calibration saved to {filepath}")
+
+    # Auto-export TOML for Pose2Sim compatibility
+    try:
+        toml_script = Path(__file__).resolve().parents[2] / "tools" / "export_toml.py"
+        if toml_script.exists():
+            subprocess.run([sys.executable, str(toml_script), str(filepath)], check=False)
+    except Exception as e:
+        logger.warning(f"TOML export failed: {e}")
 
 
 def load_calibration(filepath: Path) -> tuple[CameraArray, Charuco]:

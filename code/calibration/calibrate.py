@@ -13,7 +13,7 @@ from typing import Callable, Optional
 
 import numpy as np
 
-from calibration.alignment import estimate_similarity_transform, apply_similarity_transform
+from calibration.alignment import SimilarityTransform, estimate_similarity_transform, apply_similarity_transform
 from calibration.bundle_adjustment import PointDataBundle
 from calibration.charuco import Charuco
 from calibration.data_types import CameraArray, CameraData, ImagePoints
@@ -160,34 +160,32 @@ def run_extrinsic_calibration(
     return optimized_bundle
 
 
-def set_origin(
+def compute_origin_transform(
     origin_folder: Path,
     charuco: Charuco,
     camera_array: CameraArray,
-    bundle: PointDataBundle,
     *,
     sample_fps: float = 5.0,
     progress_callback: Optional[Callable[[int, int, int], None]] = None,
-) -> PointDataBundle:
-    """Set the coordinate origin using a charuco board at the lab origin.
+) -> SimilarityTransform:
+    """Compute the similarity transform to align calibration to a charuco board at lab origin.
 
     Pipeline:
     1. Extract charuco corners from origin videos
-    2. Triangulate board corners
-    3. Umeyama similarity transform to align to board's known 3D coordinates
+    2. Triangulate board corners using existing camera poses
+    3. Umeyama similarity transform from triangulated to known board coordinates
 
     Args:
         origin_folder: Folder with short recordings of board at lab origin
         charuco: Charuco board definition
         camera_array: CameraArray with extrinsic calibration
-        bundle: Existing PointDataBundle to align
         sample_fps: Frame sampling rate
         progress_callback: Optional fn(cam_id, frame_idx, total_frames)
 
     Returns:
-        New PointDataBundle aligned to real-world coordinates
+        SimilarityTransform mapping old coordinate frame to new (board-aligned) frame
     """
-    logger.info(f"Setting origin from {origin_folder}")
+    logger.info(f"Computing origin transform from {origin_folder}")
 
     # Discover and extract corners from origin videos
     video_map = discover_synced_videos(origin_folder)
@@ -203,23 +201,12 @@ def set_origin(
     if origin_world.df.empty:
         raise ValueError("Could not triangulate any origin board corners")
 
-    # Create temporary bundle for alignment
-    origin_bundle = PointDataBundle(
-        camera_array=camera_array,
-        image_points=origin_points,
-        world_points=origin_world,
-    )
-
     # Find the sync_index with most triangulated corners
     sync_counts = origin_world.df.groupby("sync_index").size()
     best_sync = int(sync_counts.idxmax())
     logger.info(f"Using sync_index {best_sync} with {sync_counts[best_sync]} corners for alignment")
 
-    # Align using object coordinates from that frame
-    aligned_bundle = origin_bundle.align_to_object(best_sync)
-
-    # Apply the same transform to the main bundle
-    # We need to recompute the transform and apply it to the main bundle's data
+    # Build source (triangulated) and target (known board coords) point sets
     img_df = origin_points.df
     world_df = origin_world.df
 
@@ -243,10 +230,60 @@ def set_origin(
 
     source = merged[["x_coord", "y_coord", "z_coord"]].values.astype(np.float64)
     target = merged[obj_cols].values.astype(np.float64)
-    target[:, 2] *= -1  # Flip Z axis to point upward
 
     transform = estimate_similarity_transform(source, target)
     logger.info(f"Origin alignment: scale={transform.scale:.6f}")
+
+    # Ensure Z points up: cameras on tripods should have positive Z.
+    # Umeyama has no Z-direction info (target Z=0), so the SVD may
+    # produce a rotation with Z pointing down. Fix by rotating 180°
+    # around X, which flips Y and Z while preserving right-handedness.
+    cam_positions = []
+    for cam in camera_array.posed_cameras.values():
+        pos_old = -cam.rotation.T @ cam.translation
+        pos_new = transform.apply(pos_old.reshape(1, 3))[0]
+        cam_positions.append(pos_new)
+    mean_z = np.mean([p[2] for p in cam_positions])
+
+    if mean_z < 0:
+        R_flip = np.diag([1.0, -1.0, -1.0])
+        new_rotation = R_flip @ transform.rotation
+        new_translation = R_flip @ transform.translation
+        transform = SimilarityTransform(new_rotation, new_translation, transform.scale)
+        logger.info("Applied Z-up correction (180° rotation around X)")
+
+    return transform
+
+
+def set_origin(
+    origin_folder: Path,
+    charuco: Charuco,
+    camera_array: CameraArray,
+    bundle: PointDataBundle,
+    *,
+    sample_fps: float = 5.0,
+    progress_callback: Optional[Callable[[int, int, int], None]] = None,
+) -> PointDataBundle:
+    """Set the coordinate origin using a charuco board at the lab origin.
+
+    Computes the origin transform and applies it to the full bundle
+    (camera poses + world points).
+
+    Args:
+        origin_folder: Folder with short recordings of board at lab origin
+        charuco: Charuco board definition
+        camera_array: CameraArray with extrinsic calibration
+        bundle: Existing PointDataBundle to align
+        sample_fps: Frame sampling rate
+        progress_callback: Optional fn(cam_id, frame_idx, total_frames)
+
+    Returns:
+        New PointDataBundle aligned to real-world coordinates
+    """
+    transform = compute_origin_transform(
+        origin_folder, charuco, camera_array,
+        sample_fps=sample_fps, progress_callback=progress_callback,
+    )
 
     # Apply transform to the main bundle's camera array and world points
     new_cam, new_world = apply_similarity_transform(

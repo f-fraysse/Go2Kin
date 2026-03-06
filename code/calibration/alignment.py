@@ -111,10 +111,10 @@ def estimate_similarity_transform(
 
 def apply_similarity_transform(
     camera_array: CameraArray,
-    world_points: WorldPoints,
+    world_points: WorldPoints | None,
     transform: SimilarityTransform,
-) -> tuple[CameraArray, WorldPoints]:
-    """Apply similarity transform to camera array and world points.
+) -> tuple[CameraArray, WorldPoints | None]:
+    """Apply similarity transform to camera array and (optionally) world points.
 
     Returns new instances (immutable pattern).
 
@@ -124,13 +124,15 @@ def apply_similarity_transform(
     3. Rotate orientation: R_cam_new = R_cam @ R_world^T
     4. New translation: t_cam_new = -R_cam_new @ C_new
     """
-    # Transform world points
-    points_3d = world_points.points
-    transformed_points = transform.apply(points_3d)
+    # Transform world points (if provided)
+    new_world_points = None
+    if world_points is not None:
+        points_3d = world_points.points
+        transformed_points = transform.apply(points_3d)
 
-    world_df = world_points.df.copy()
-    world_df[["x_coord", "y_coord", "z_coord"]] = transformed_points
-    new_world_points = WorldPoints(world_df)
+        world_df = world_points.df.copy()
+        world_df[["x_coord", "y_coord", "z_coord"]] = transformed_points
+        new_world_points = WorldPoints(world_df)
 
     # Transform camera extrinsics
     new_cameras = {}
