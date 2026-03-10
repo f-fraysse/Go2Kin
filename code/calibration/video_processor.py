@@ -57,6 +57,10 @@ def extract_charuco_points_from_video(
     step = max(1, int(fps / sample_fps))
 
     sync_index = 0
+    frames_sampled = 0
+    frames_with_corners = 0
+    total_corners = 0
+
     for frame_idx in range(0, total_frames, step):
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ret, frame = cap.read()
@@ -64,8 +68,14 @@ def extract_charuco_points_from_video(
             break
 
         point_packet = tracker.get_points(frame, cam_id=cam_id)
-        if len(point_packet.point_id) > 0:
-            for i in range(len(point_packet.point_id)):
+        n_corners = len(point_packet.point_id)
+        frames_sampled += 1
+        print(f"  Camera {cam_id} frame {frame_idx}/{total_frames}: {n_corners} corners")
+
+        if n_corners > 0:
+            frames_with_corners += 1
+            total_corners += n_corners
+            for i in range(n_corners):
                 row = {
                     "sync_index": sync_index,
                     "cam_id": cam_id,
@@ -84,6 +94,8 @@ def extract_charuco_points_from_video(
             progress_callback(cam_id, frame_idx, total_frames)
 
     cap.release()
+
+    print(f"  Camera {cam_id} summary: {frames_with_corners}/{frames_sampled} frames with detections, {total_corners} total corners")
 
     if not all_rows:
         logger.warning(f"No charuco corners detected in {video_path}")

@@ -21,11 +21,22 @@ class CharucoTracker:
     def __init__(self, charuco):
         self.charuco = charuco
         self.board = charuco.board
-        self.detector = cv2.aruco.CharucoDetector(self.board)
+
+        # Relax detector parameters for smaller boards in frame
+        det_params = cv2.aruco.DetectorParameters()
+        det_params.minMarkerPerimeterRate = 0.01
+        det_params.adaptiveThreshWinSizeStep = 5
+
+        self.detector = cv2.aruco.CharucoDetector(
+            self.board,
+            charucoParams=cv2.aruco.CharucoParameters(),
+            detectorParams=det_params,
+            refineParams=cv2.aruco.RefineParameters(),
+        )
 
         # Sub-pixel refinement parameters
         self.criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.0001)
-        self.conv_size = (11, 11)
+        self.conv_size = (5, 5)
 
     def get_points(self, frame: np.ndarray, cam_id: int = 0, rotation_count: int = 0) -> PointPacket:
         """Detect charuco corners. Falls back to mirror image if none found."""
@@ -47,6 +58,10 @@ class CharucoTracker:
         img_loc = np.empty((0, 2), dtype=np.float64)
 
         _img_loc, _ids, marker_corners, marker_ids = self.detector.detectBoard(gray_frame)
+
+        n_markers = len(marker_ids) if marker_ids is not None else 0
+        n_corners = len(_ids) if _ids is not None else 0
+        print(f"    detectBoard: {n_markers} markers, {n_corners} charuco corners{' (mirrored)' if mirror else ''}")
 
         if _ids is not None and len(_ids) > 0:
             try:

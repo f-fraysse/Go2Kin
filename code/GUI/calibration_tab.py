@@ -215,6 +215,7 @@ class CalibrationTab:
         btn_frame.pack(fill="x", pady=5)
         ttk.Button(btn_frame, text="Save Calibration", command=self._save_calibration).pack(side="left", padx=5)
         ttk.Button(btn_frame, text="Load Calibration", command=self._load_calibration).pack(side="left", padx=5)
+        ttk.Button(btn_frame, text="Load Intrinsics Only", command=self._load_intrinsics).pack(side="left", padx=5)
 
         self._save_load_status = tk.StringVar(value="")
         ttk.Label(section, textvariable=self._save_load_status).pack(fill="x", pady=2)
@@ -570,3 +571,52 @@ class CalibrationTab:
             messagebox.showinfo("Success", f"Calibration loaded ({len(camera_array.cameras)} cameras)")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load: {e}")
+
+    def _load_intrinsics(self):
+        """Load only intrinsic parameters from saved calibration file."""
+        try:
+            import sys
+            from dataclasses import replace
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+            from calibration.persistence import load_calibration
+
+            if not CALIBRATION_PATH.exists():
+                messagebox.showwarning("Warning", f"No calibration file found at {CALIBRATION_PATH}")
+                return
+
+            camera_array, charuco = load_calibration(CALIBRATION_PATH)
+
+            # Update charuco GUI
+            self._charuco_cols.set(charuco.columns)
+            self._charuco_rows.set(charuco.rows)
+            if charuco.square_size_overide_cm:
+                self._charuco_square_cm.set(charuco.square_size_overide_cm)
+            self._charuco_dict.set(charuco.dictionary)
+            self._charuco_aruco_scale.set(charuco.aruco_scale)
+            self._charuco_inverted.set(charuco.inverted)
+
+            # Strip extrinsics and populate intrinsic results only
+            self._intrinsic_results.clear()
+            for cam_id, cam in camera_array.cameras.items():
+                if cam_id in self._intrinsic_entries:
+                    entry = self._intrinsic_entries[cam_id]
+                    if cam.matrix is not None and cam.distortions is not None:
+                        intrinsic_only = replace(cam, rotation=None, translation=None)
+                        self._intrinsic_results[cam_id] = {"camera": intrinsic_only, "report": None}
+                        error_str = f"RMSE: {cam.error:.3f}px" if cam.error is not None else "Loaded"
+                        entry["status_var"].set(error_str)
+                    else:
+                        entry["status_var"].set("No intrinsics")
+
+            # Clear extrinsic state so user must re-run extrinsics
+            self._camera_array = None
+            self._bundle = None
+            self._extrinsic_status.set("")
+            for widget in self._extrinsic_results_frame.winfo_children():
+                widget.destroy()
+            self._origin_status.set("")
+
+            self._save_load_status.set(f"Intrinsics loaded from {CALIBRATION_PATH}")
+            messagebox.showinfo("Success", f"Intrinsics loaded for {len(self._intrinsic_results)} cameras")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load intrinsics: {e}")

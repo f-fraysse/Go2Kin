@@ -26,7 +26,7 @@
     }
   },
   "recording": {
-    "output_directory": "D:/PythonProjects/Go2Kin/output/calib_A1",
-    "last_trial_name": "extrinsic_003"
+    "output_directory": "D:/PythonProjects/Go2Kin/output/motion_tuesday",
+    "last_trial_name": "jumping_001"
   }
 }
