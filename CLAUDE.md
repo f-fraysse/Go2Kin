@@ -139,7 +139,7 @@ The Calibration tab (4th tab) provides intrinsic and extrinsic camera calibratio
 1. **Charuco config**: Set board parameters in Calibration tab (or accept defaults). Print board, measure actual square size.
 2. **Intrinsic**: For each camera, select a video of charuco board → "Calibrate" → verify RMSE < 1.0px
 3. **Extrinsic**: Record all cameras simultaneously with charuco board visible. Audio sync → synced/ folder. Select synced folder → "Calibrate Extrinsics" → verify 3D camera positions
-4. **Set Origin**: Place charuco at lab origin, take short recording. Select folder → "Set Origin". Can also be re-run after loading a saved calibration (no need to redo extrinsic).
+4. **Set Origin**: Stand charuco vertically in portrait mode at lab origin (origin corner 790mm above floor), take short recording. Select folder → "Set Origin". Can also be re-run after loading a saved calibration (no need to redo extrinsic).
 5. **Save**: Save calibration to `config/calibration/calibration.json` (also auto-generates `camera_array_go2kin.toml` for Pose2Sim)
 
 ### Pipeline Architecture
@@ -152,10 +152,10 @@ Extrinsic: Synced videos → PnP per camera → relative poses → IQR outlier r
 ```
 
 ### Global Coordinate System (after Set Origin)
-- **X** = along charuco columns (long axis on default 7×5 board)
-- **Y** = along charuco rows (short axis)
-- **Z** = up (perpendicular to board, away from floor). Auto-corrected: if Umeyama produces Z-down, a 180° rotation around X is applied.
-- **Origin** = first interior corner of the charuco board (adjacent to ArUco marker ID 0)
+- **X** = along charuco rows (horizontal, short axis on default 7×5 board)
+- **Y** = along board normal (horizontal, perpendicular to board surface)
+- **Z** = up (vertical). Auto-corrected: if Umeyama produces Z-down, a 180° rotation around X is applied.
+- **Origin** = floor below the first interior corner of the charuco board (adjacent to ArUco marker ID 0). The board's origin corner is at (0, 0, 0.790).
 
 ### File-to-Camera Mapping
 Synced folder MP4 filenames must follow `{trial}_GP{N}.mp4` convention (e.g., `Trial1_GP1.mp4`). The parser extracts camera number from the `_GP{N}` suffix. Files `stitched_videos.mp4` and `timestamps.csv` are automatically skipped.

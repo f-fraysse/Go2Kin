@@ -567,6 +567,10 @@ class CalibrationTab:
                     else:
                         entry["status_var"].set("No intrinsics")
 
+            # Show 3D camera positions if extrinsics are available
+            if camera_array.posed_cameras:
+                self._show_camera_positions(camera_array)
+
             self._save_load_status.set(f"Loaded from {CALIBRATION_PATH}")
             messagebox.showinfo("Success", f"Calibration loaded ({len(camera_array.cameras)} cameras)")
         except Exception as e:

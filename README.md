@@ -62,7 +62,7 @@ Multi-camera calibration using a printed charuco board. The calibration pipeline
 - **Charuco Board Config** — set board dimensions, square size, ArUco dictionary. Save a printable board image.
 - **Intrinsic Calibration** — per-camera lens calibration from a video of the board. Uses smart frame selection for orientation and spatial coverage diversity.
 - **Extrinsic Calibration** — multi-camera pose estimation from synced videos. Includes PnP solving, outlier rejection, graph bridging, triangulation, and bundle adjustment.
-- **Set Origin** — align the coordinate system to a known world position using a Umeyama similarity transform. Can be re-run after loading a saved calibration without redoing extrinsic calibration.
+- **Set Origin** — stand the charuco board vertically in portrait mode at the lab origin. Aligns the coordinate system using a Umeyama similarity transform. Can be re-run after loading a saved calibration.
 - **Save/Load** — persist calibration to `config/calibration/calibration.json` (also auto-exports `camera_array_go2kin.toml` for Pose2Sim compatibility).
 
 ### Attribution
@@ -74,7 +74,7 @@ The calibration pipeline is adapted from [Caliscope](https://github.com/mprib/ca
 1. **Print the charuco board.** Configure board parameters in the Calibration tab and click **Save Board Image**. Print at the configured size (default: A1). Mount on a rigid flat surface. **Measure the actual printed square size** — printers don't always scale exactly.
 2. **Intrinsic calibration.** For each camera, record a video of the board from various angles and distances. In the Calibration tab, browse to each video and click **Calibrate**.
 3. **Extrinsic calibration.** With all cameras in their final positions, record the board being moved through the shared field of view. Use the Recording tab's **Synchronise Video Files** to align the recordings, then browse to the `synced/` folder and click **Calibrate Extrinsics**.
-4. **Set origin.** Place the board at the desired world origin and record with all cameras. Synchronise, then browse to the synced folder and click **Set Origin**. This can also be re-run after loading a saved calibration to redefine the coordinate system.
+4. **Set origin.** Stand the board vertically in portrait mode at the desired world origin (origin corner 790mm above floor). Record with all cameras, synchronise, then browse to the synced folder and click **Set Origin**. This can also be re-run after loading a saved calibration to redefine the coordinate system.
 5. **Save.** Click **Save Calibration** to persist all results. A Pose2Sim-compatible TOML file is auto-generated alongside the JSON.
 
 ## Project Structure

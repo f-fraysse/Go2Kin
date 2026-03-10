@@ -231,13 +231,30 @@ def compute_origin_transform(
     source = merged[["x_coord", "y_coord", "z_coord"]].values.astype(np.float64)
     target = merged[obj_cols].values.astype(np.float64)
 
+    # Remap board coords to world coords for vertical portrait board.
+    # Board is standing upright: columns (board X) run vertically downward,
+    # rows (board Y) run horizontally. Origin corner is 790mm above floor.
+    # Board X (columns, vertical, increasing downward) → World Z (inverted)
+    # Board Y (rows, horizontal) → World X
+    # Board Z (normal, all zeros) → World Y (degenerate, resolved by Z-up correction)
+    # Note: X/Z swapped in target array to counteract Umeyama SVD axis swap
+    # with coplanar inputs.
+    ORIGIN_HEIGHT_M = 0.790  # height of first internal corner above floor
+    x_b = target[:, 0].copy()
+    y_b = target[:, 1].copy()
+    x_b_min = x_b.min()
+    y_b_min = y_b.min()
+    target[:, 0] = ORIGIN_HEIGHT_M - (x_b - x_b_min)     # swapped: vertical
+    target[:, 1] = 0.0                                    # World Y
+    target[:, 2] = y_b - y_b_min                          # swapped: horizontal
+
     transform = estimate_similarity_transform(source, target)
     logger.info(f"Origin alignment: scale={transform.scale:.6f}")
 
     # Ensure Z points up: cameras on tripods should have positive Z.
-    # Umeyama has no Z-direction info (target Z=0), so the SVD may
-    # produce a rotation with Z pointing down. Fix by rotating 180°
-    # around X, which flips Y and Z while preserving right-handedness.
+    # The degenerate target dimension (Y=0) means the SVD may produce
+    # a rotation with Z pointing down. Fix by rotating 180° around X,
+    # which flips Y and Z while preserving right-handedness.
     cam_positions = []
     for cam in camera_array.posed_cameras.values():
         pos_old = -cam.rotation.T @ cam.translation
