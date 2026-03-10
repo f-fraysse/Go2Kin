@@ -238,13 +238,14 @@ def compute_origin_transform(
     # Board Y (rows, horizontal) → World X
     # Board Z (normal, all zeros) → World Y (degenerate, resolved by Z-up correction)
     # Note: X/Z swapped in target array to counteract Umeyama SVD axis swap
-    # with coplanar inputs.
+    # with coplanar inputs. Floor offset applied separately after Z-up correction
+    # to ensure it goes into the correct (Z) axis.
     ORIGIN_HEIGHT_M = 0.790  # height of first internal corner above floor
     x_b = target[:, 0].copy()
     y_b = target[:, 1].copy()
     x_b_min = x_b.min()
     y_b_min = y_b.min()
-    target[:, 0] = ORIGIN_HEIGHT_M - (x_b - x_b_min)     # swapped: vertical
+    target[:, 0] = -(x_b - x_b_min)                      # swapped: vertical (0 at origin corner)
     target[:, 1] = 0.0                                    # World Y
     target[:, 2] = y_b - y_b_min                          # swapped: horizontal
 
@@ -268,6 +269,13 @@ def compute_origin_transform(
         new_translation = R_flip @ transform.translation
         transform = SimilarityTransform(new_rotation, new_translation, transform.scale)
         logger.info("Applied Z-up correction (180° rotation around X)")
+
+    # Shift origin from board corner down to floor level.
+    # The Umeyama placed the origin corner at Z≈0; move it to Z=ORIGIN_HEIGHT_M
+    # so the floor (0.79m below the corner) is at Z=0.
+    adjusted_t = transform.translation.copy()
+    adjusted_t[2] += ORIGIN_HEIGHT_M
+    transform = SimilarityTransform(transform.rotation, adjusted_t, transform.scale)
 
     return transform
 
