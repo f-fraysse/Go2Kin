@@ -1501,9 +1501,10 @@ class Go2KinMainWindow:
                 self.log_progress(f"  Audio confirmed: {name}")
 
             # Compute sync offsets
-            self.log_progress("Analysing audio for clap detection...")
+            self.log_progress("Analysing audio for cross-correlation sync...")
             offsets = compute_sync_offsets(
                 video_paths,
+                output_dir=trial_dir,
                 progress_callback=lambda msg: self.log_progress(f"  {msg}")
             )
 
@@ -1512,8 +1513,7 @@ class Go2KinMainWindow:
                 name = Path(path).name
                 ref = " (REFERENCE)" if info["is_reference"] else ""
                 self.log_progress(
-                    f"  {name}: clap at {info['clap_time_seconds']:.3f}s, "
-                    f"trim {info['offset_seconds']:.4f}s{ref}")
+                    f"  {name}: trim {info['offset_seconds']:.4f}s{ref}")
 
             # Trim and sync videos
             self.log_progress("Trimming videos (stream copy, no re-encoding)...")

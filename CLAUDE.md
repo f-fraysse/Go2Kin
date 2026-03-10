@@ -114,14 +114,14 @@ memory-bank/              # Legacy project documentation
 
 ## Audio Sync Feature
 
-The "Synchronise Video Files" button in the Recording tab aligns multi-camera recordings using audio clap detection:
+The "Synchronise Video Files" button in the Recording tab aligns multi-camera recordings using full audio cross-correlation:
 1. User selects a trial folder containing 2 or more MP4 files
-2. Extracts first 5 seconds of audio from each file (ffmpeg pipe → numpy)
-3. Detects hand clap transient (envelope thresholding + cross-correlation)
-4. Reference = camera with earliest clap (started recording last). Other files trimmed from start to align
+2. Extracts first 3 seconds of audio from each file (ffmpeg pipe → numpy)
+3. Full cross-correlation (`scipy.signal.correlate`) of entire audio signals to find precise time offsets
+4. Reference = camera that started recording last (largest offset). Other files trimmed from start to align
 5. All files trimmed to shortest common duration (time-based)
 6. Frame equalization: counts frames in each output, trims excess files to the minimum frame count (`-frames:v N -c copy`)
-7. Output: `synced/` subfolder with trimmed files + `stitched_videos.mp4` (auto-sized grid preview, 480x480 per camera)
+7. Output: `synced/` subfolder with trimmed files + `stitched_videos.mp4` (auto-sized grid preview, 480x480 per camera) + `audio_waveforms.png` (diagnostic plot)
 8. Uses ffmpeg stream-copy for trimming (no re-encoding, lossless). Stitched preview re-encodes at low resolution.
 
 ## Camera Calibration

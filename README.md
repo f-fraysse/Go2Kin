@@ -139,18 +139,19 @@ Resolution, FPS, lens, and digital zoom are restored from the camera's saved pro
 
 ## Video Synchronisation
 
-Even when starting all cameras simultaneously, each GoPro begins recording at a slightly different time. The **Synchronise Video Files** button in the Recording tab aligns multi-camera recordings using audio clap detection.
+Even when starting all cameras simultaneously, each GoPro begins recording at a slightly different time. The **Synchronise Video Files** button in the Recording tab aligns multi-camera recordings using full audio cross-correlation.
 
 ### How to use
 
-1. At the start of each recording, perform a **loud hand clap** within the first 5 seconds while all cameras are recording.
+1. At the start of each recording, perform a **loud hand clap** or other distinct sound within the first 3 seconds while all cameras are recording.
 2. After files are downloaded, click **Synchronise Video Files** and select the trial folder containing the 4 MP4 files.
-3. The tool analyses the audio, detects the clap, computes precise time offsets between cameras, and trims all files to a common start and end point.
+3. The tool cross-correlates the audio signals, computes precise time offsets between cameras, and trims all files to a common start and end point.
 
 ### Output
 
 A `synced/` subfolder is created inside the trial directory containing:
-- 4 trimmed MP4 files (same filenames as originals) — start-aligned at the clap and end-trimmed to identical duration
+- 4 trimmed MP4 files (same filenames as originals) — start-aligned and end-trimmed to identical duration
+- `audio_waveforms.png` — diagnostic plot of the first 3 seconds of audio from each camera
 - `stitched_videos.mp4` — a 2x2 grid preview (960x960) of all 4 cameras for quick visual verification of sync
 
 Original files are never modified.
@@ -159,10 +160,9 @@ Original files are never modified.
 
 | Step | Method | Detail |
 |------|--------|--------|
-| Audio extraction | ffmpeg pipe | First 5s extracted as 48kHz mono WAV via stdout pipe (no temp files) |
-| Clap detection | Envelope thresholding | Smoothed envelope (10ms window), threshold at 5x background median, peak refinement in 50ms window |
-| Precision alignment | Cross-correlation | `scipy.signal.correlate` on 200ms windows around each clap for sub-millisecond accuracy |
-| Reference selection | Earliest clap | Camera with clap earliest in its file (started recording last) is the reference; others trimmed from the start |
+| Audio extraction | ffmpeg pipe | First 3s extracted as 48kHz mono WAV via stdout pipe (no temp files) |
+| Sync alignment | Full cross-correlation | `scipy.signal.correlate` on entire audio signals for sub-millisecond accuracy — robust to multiple transients |
+| Reference selection | Latest start | Camera that started recording last (largest offset) is the reference; others trimmed from the start |
 | End alignment | Common duration | All files trimmed to the shortest remaining duration after start alignment |
 | Video trimming | ffmpeg stream copy | `-ss` + `-t` + `-c copy` — no re-encoding, lossless, fast |
 | Stitched preview | ffmpeg xstack filter | 4 inputs downscaled to 480x480, arranged in 2x2 grid, encoded with built-in mpeg4 codec |

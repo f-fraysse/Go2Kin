@@ -1,15 +1,14 @@
 """
 Audio-based multi-camera video synchronisation.
 
-Extracts audio from GoPro MP4 files, detects hand clap transients,
-cross-correlates to find time offsets, and trims videos to sync.
+Extracts audio from GoPro MP4 files, uses full cross-correlation
+to find time offsets, and trims videos to sync.
 
 Requires: ffmpeg (in PATH), numpy, scipy
 """
 
 import io
 import math
-import struct
 import subprocess
 import wave
 from pathlib import Path
@@ -20,7 +19,7 @@ from scipy.signal import correlate
 
 
 SAMPLE_RATE = 48000  # GoPro native AAC rate
-AUDIO_DURATION = 5.0  # seconds to analyse for clap detection
+AUDIO_DURATION = 3.0  # seconds to analyse for cross-correlation sync
 
 
 class AudioSyncError(Exception):
@@ -129,7 +128,7 @@ def extract_audio(video_path: str, duration: float = AUDIO_DURATION,
 
 
 def detect_clap(audio: np.ndarray, sample_rate: int,
-                threshold_factor: float = 5.0) -> Optional[int]:
+                threshold_factor: float = 3.0) -> Optional[int]:
     """
     Detect a hand clap transient in the audio signal.
 
@@ -164,114 +163,113 @@ def detect_clap(audio: np.ndarray, sample_rate: int,
     return int(first_hit + peak_offset)
 
 
-def cross_correlate_claps(audio_ref: np.ndarray, audio_other: np.ndarray,
-                          clap_ref: int, clap_other: int,
-                          sample_rate: int,
-                          window_ms: float = 200.0) -> int:
+def find_offset_xcorr(ref_audio: np.ndarray, other_audio: np.ndarray,
+                      sample_rate: int) -> float:
     """
-    Find precise sample offset between two audio signals using cross-correlation.
-    Returns offset in samples (positive = other's clap is later in its file).
+    Find time offset between two audio signals using full cross-correlation.
+    Returns offset in seconds (positive = other started recording earlier).
     """
-    half_window = int(sample_rate * window_ms / 1000.0 / 2)
-
-    # Extract windows around each clap
-    ref_start = max(0, clap_ref - half_window)
-    ref_end = min(len(audio_ref), clap_ref + half_window)
-    ref_window = audio_ref[ref_start:ref_end]
-
-    other_start = max(0, clap_other - half_window)
-    other_end = min(len(audio_other), clap_other + half_window)
-    other_window = audio_other[other_start:other_end]
-
-    # Cross-correlate
-    corr = correlate(other_window, ref_window, mode="full")
+    corr = correlate(other_audio, ref_audio, mode="full")
     peak_idx = np.argmax(np.abs(corr))
+    # In 'full' mode, zero-lag is at index len(ref_audio) - 1
+    offset_samples = peak_idx - (len(ref_audio) - 1)
+    return offset_samples / sample_rate
 
-    # Convert correlation peak index to sample offset
-    # In 'full' mode, zero-lag is at index len(ref_window) - 1
-    offset_from_corr = peak_idx - (len(ref_window) - 1)
 
-    # Total offset: rough offset from clap positions + fine correction from correlation
-    rough_offset = clap_other - clap_ref
-    # The correlation offset refines the rough estimate
-    fine_offset = (other_start + offset_from_corr) - ref_start
+def save_audio_waveform_plot(audio_data: Dict[str, np.ndarray],
+                             sample_rate: int, output_dir: str) -> str:
+    """
+    Save a waveform plot of each camera's audio to output_dir/synced/audio_waveforms.png.
+    Returns path to the saved image.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
 
-    return fine_offset
+    synced_dir = Path(output_dir) / "synced"
+    synced_dir.mkdir(exist_ok=True)
+
+    n = len(audio_data)
+    fig, axes = plt.subplots(n, 1, figsize=(14, 2.5 * n), sharex=True)
+    if n == 1:
+        axes = [axes]
+    fig.suptitle(f"Audio Waveforms - First {AUDIO_DURATION:.0f} Seconds", fontsize=14)
+
+    for i, (vp, audio) in enumerate(audio_data.items()):
+        t = np.arange(len(audio)) / sample_rate
+        axes[i].plot(t, audio, linewidth=0.3, color="steelblue")
+        axes[i].set_ylabel(Path(vp).stem)
+        axes[i].set_ylim(-1, 1)
+        axes[i].grid(True, alpha=0.3)
+
+    axes[-1].set_xlabel("Time (seconds)")
+    plt.tight_layout()
+    out_path = synced_dir / "audio_waveforms.png"
+    plt.savefig(str(out_path), dpi=150)
+    plt.close(fig)
+    return str(out_path)
 
 
 def compute_sync_offsets(video_paths: List[str],
+                         output_dir: Optional[str] = None,
                          progress_callback: Optional[Callable] = None
                          ) -> Dict[str, dict]:
     """
-    Compute sync offsets for a list of video files.
+    Compute sync offsets for a list of video files using full cross-correlation.
 
     Returns dict keyed by video path with:
-      clap_sample, clap_time_seconds, offset_seconds, is_reference
+      offset_seconds, is_reference
     """
     def log(msg):
         if progress_callback:
             progress_callback(msg)
 
-    # Step 1: Extract audio and detect claps
-    clap_data = {}
+    # Step 1: Extract audio from all cameras
+    audio_data = {}
     for vp in video_paths:
         name = Path(vp).name
         log(f"Extracting audio: {name}")
         audio, sr = extract_audio(vp)
+        audio_data[vp] = audio
 
-        log(f"Detecting clap: {name}")
-        clap_sample = detect_clap(audio, sr)
-        if clap_sample is None:
-            raise AudioSyncError(
-                f"No clap detected in {name}. "
-                f"Ensure a hand clap occurs in the first {AUDIO_DURATION:.0f} seconds."
-            )
+    # Save waveform plot if output_dir provided
+    if output_dir:
+        log("Saving audio waveform plot...")
+        save_audio_waveform_plot(audio_data, sr, output_dir)
+        log("  Created: synced/audio_waveforms.png")
 
-        clap_time = clap_sample / sr
-        log(f"  {name}: clap at {clap_time:.3f}s")
-        clap_data[vp] = {
-            "audio": audio,
-            "clap_sample": clap_sample,
-            "clap_time_seconds": clap_time,
-        }
-
-    # Step 2: Reference = earliest clap (smallest clap_sample)
-    ref_path = min(clap_data, key=lambda p: clap_data[p]["clap_sample"])
-    ref_clap = clap_data[ref_path]["clap_sample"]
+    # Step 2: Cross-correlate all cameras against first (arbitrary reference)
+    ref_path = video_paths[0]
+    ref_audio = audio_data[ref_path]
     ref_name = Path(ref_path).name
-    log(f"Reference camera: {ref_name} (earliest clap at {clap_data[ref_path]['clap_time_seconds']:.3f}s)")
+    log(f"Cross-correlating against reference: {ref_name}")
 
-    # Step 3: Cross-correlate each non-reference against reference for precision
-    ref_audio = clap_data[ref_path]["audio"]
-    results = {}
-
+    raw_offsets = {}
     for vp in video_paths:
-        data = clap_data[vp]
         if vp == ref_path:
-            results[vp] = {
-                "clap_sample": data["clap_sample"],
-                "clap_time_seconds": data["clap_time_seconds"],
-                "offset_seconds": 0.0,
-                "is_reference": True,
-            }
+            raw_offsets[vp] = 0.0
         else:
-            # Cross-correlate for precise offset
-            precise_offset_samples = cross_correlate_claps(
-                ref_audio, data["audio"],
-                ref_clap, data["clap_sample"],
-                sr
-            )
-            offset_seconds = precise_offset_samples / sr
-            # Offset should be positive (other cameras started earlier)
-            offset_seconds = max(0.0, offset_seconds)
+            offset = find_offset_xcorr(ref_audio, audio_data[vp], sr)
+            raw_offsets[vp] = offset
+            log(f"  {Path(vp).name}: offset {offset:.4f}s vs reference")
 
-            results[vp] = {
-                "clap_sample": data["clap_sample"],
-                "clap_time_seconds": data["clap_time_seconds"],
-                "offset_seconds": offset_seconds,
-                "is_reference": False,
-            }
-            log(f"  {Path(vp).name}: trim {offset_seconds:.4f}s from start")
+    # Step 3: Shift so minimum offset = 0 (latest-starting camera becomes reference)
+    min_offset = min(raw_offsets.values())
+    adjusted = {vp: off - min_offset for vp, off in raw_offsets.items()}
+
+    # Identify the reference (the one with offset 0 after adjustment)
+    ref_vp = min(adjusted, key=adjusted.get)
+    log(f"Sync reference: {Path(ref_vp).name} (latest start)")
+
+    results = {}
+    for vp in video_paths:
+        is_ref = (vp == ref_vp)
+        results[vp] = {
+            "offset_seconds": adjusted[vp],
+            "is_reference": is_ref,
+        }
+        if not is_ref:
+            log(f"  {Path(vp).name}: trim {adjusted[vp]:.4f}s from start")
 
     return results
 
