@@ -1,8 +1,10 @@
 # Go2Kin
 
-Multi-camera GoPro control application for research. Controls up to 4 GoPro Hero 12 Black cameras simultaneously via USB, with a tkinter GUI for settings, live preview, and synchronized recording.
+Multi-camera GoPro control application for research. Controls up to 4 GoPro Hero 12 Black cameras simultaneously via USB, with a tkinter GUI for settings, live preview, synchronized recording, and multi-camera calibration.
 
-Built for biomechanics research where consistent camera settings across sessions are critical for keypoint triangulation and pose estimation.
+Built for biomechanics research where consistent camera settings and accurate camera calibration are critical for 3D keypoint triangulation and pose estimation.
+
+https://github.com/user-attachments/assets/df12f3de-d97a-499a-bcfe-97afe6419e71
 
 ## Hardware Requirements
 
