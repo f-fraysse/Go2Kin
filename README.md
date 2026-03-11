@@ -1,8 +1,13 @@
 # Go2Kin
+WIP
 
 Multi-camera GoPro control application for research. Controls up to 4 GoPro Hero 12 Black cameras simultaneously via USB, with a tkinter GUI for settings, live preview, synchronized recording, and multi-camera calibration.
 
 Built for biomechanics research where consistent camera settings and accurate camera calibration are critical for 3D keypoint triangulation and pose estimation.
+Produces calibration file and synced videos that can be fed straight into Pose2Sim (https://github.com/perfanalytics/pose2sim) - full integration is next step
+
+GoPro control via USB HTTP API (inspired by https://github.com/drukasz/goproUSB ) - connect, manage settings, preview, record, download, audio-based video sync
+Calibration method taken from Caliscope (https://github.com/mprib/caliscope)
 
 https://github.com/user-attachments/assets/df12f3de-d97a-499a-bcfe-97afe6419e71
 
