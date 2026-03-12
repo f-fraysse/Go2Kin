@@ -52,7 +52,6 @@ tools/
   test_video_quality.py        # Easy Mode vs Pro Mode quality comparison test
   export_toml.py               # Convert calibration.json → Pose2Sim TOML
 output/                   # Recording output directory
-memory-bank/              # Legacy project documentation
 ```
 
 ## Architecture
