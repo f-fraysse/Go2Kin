@@ -45,9 +45,20 @@ class CalibrationTab:
     # =================================================================
 
     def _create_widgets(self):
-        # Scrollable canvas for the tab content
-        canvas = tk.Canvas(self.frame)
-        scrollbar = ttk.Scrollbar(self.frame, orient="vertical", command=canvas.yview)
+        # Two-column layout: left = scrollable controls, right = 3D viewer
+        self.frame.columnconfigure(0, weight=3)
+        self.frame.columnconfigure(1, weight=2)
+        self.frame.rowconfigure(0, weight=1)
+
+        left_frame = ttk.Frame(self.frame)
+        left_frame.grid(row=0, column=0, sticky="nsew")
+
+        right_frame = ttk.Frame(self.frame)
+        right_frame.grid(row=0, column=1, sticky="nsew")
+
+        # Scrollable canvas for the left panel
+        canvas = tk.Canvas(left_frame)
+        scrollbar = ttk.Scrollbar(left_frame, orient="vertical", command=canvas.yview)
         self._scroll_frame = ttk.Frame(canvas)
 
         self._scroll_frame.bind(
@@ -59,10 +70,11 @@ class CalibrationTab:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        # Bind mousewheel
+        # Bind mousewheel only when hovering over left panel
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        canvas.bind("<Enter>", lambda e: canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
 
         parent = self._scroll_frame
 
@@ -80,6 +92,9 @@ class CalibrationTab:
 
         # Section 5: Save/Load
         self._create_save_load_section(parent)
+
+        # 3D viewer in right panel
+        self._create_3d_viewer(right_frame)
 
     def _create_charuco_section(self, parent):
         section = ttk.LabelFrame(parent, text="Charuco Board Configuration", padding=10)
@@ -183,10 +198,6 @@ class CalibrationTab:
 
         self._extrinsic_status = tk.StringVar(value="")
         ttk.Label(section, textvariable=self._extrinsic_status).pack(fill="x", pady=2)
-
-        # Results frame (for camera positions display)
-        self._extrinsic_results_frame = ttk.Frame(section)
-        self._extrinsic_results_frame.pack(fill="x", pady=5)
 
     def _create_origin_section(self, parent):
         section = ttk.LabelFrame(parent, text="Set Origin", padding=10)
@@ -401,60 +412,109 @@ class CalibrationTab:
         status = f"RMSE: {report.overall_rmse:.3f}px | {report.n_cameras} cameras | {report.n_points} points"
         self._extrinsic_status.set(status)
 
-        # Show per-camera info
-        for widget in self._extrinsic_results_frame.winfo_children():
-            widget.destroy()
-
-        for cam_id, rmse in report.by_camera.items():
-            cam = bundle.camera_array.cameras[cam_id]
-            if cam.translation is not None:
-                pos = cam.translation
-                ttk.Label(
-                    self._extrinsic_results_frame,
-                    text=f"  Camera {cam_id}: RMSE={rmse:.3f}px, pos=[{pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f}]",
-                ).pack(anchor="w")
-
-        # Try to show 3D plot
-        self._show_camera_positions(bundle.camera_array)
+        self._update_3d_viewer(bundle.camera_array)
 
     def _extrinsic_error(self, error_msg: str):
         self._extrinsic_status.set(f"Error: {error_msg}")
         messagebox.showerror("Extrinsic Calibration Error", error_msg)
 
-    def _show_camera_positions(self, camera_array):
-        """Show matplotlib 3D scatter plot of camera positions."""
+    def _create_3d_viewer(self, parent):
+        """Create persistent matplotlib 3D viewer in the right panel."""
         try:
             import matplotlib
             matplotlib.use("TkAgg")
             from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
             from matplotlib.figure import Figure
-            import numpy as np
 
-            fig = Figure(figsize=(4, 3), dpi=100)
-            ax = fig.add_subplot(111, projection="3d")
+            self._viewer_fig = Figure(figsize=(5, 4), dpi=100)
+            self._viewer_ax = self._viewer_fig.add_subplot(111, projection="3d")
+            self._viewer_ax.set_xlabel("X")
+            self._viewer_ax.set_ylabel("Y")
+            self._viewer_ax.set_zlabel("Z")
+            self._viewer_ax.set_title("Camera Positions")
+            self._viewer_fig.tight_layout()
 
-            for cam_id, cam in camera_array.posed_cameras.items():
-                if cam.translation is not None and cam.rotation is not None:
-                    # Camera position in world: C = -R^T @ t
-                    pos = -cam.rotation.T @ cam.translation
-                    ax.scatter(*pos, s=50, label=f"Cam {cam_id}")
-                    ax.text(pos[0], pos[1], pos[2], f" {cam_id}", fontsize=8)
-
-            ax.set_xlabel("X")
-            ax.set_ylabel("Y")
-            ax.set_zlabel("Z")
-            ax.set_aspect("equal")
-            ax.set_title("Camera Positions")
-            fig.tight_layout()
-
-            canvas = FigureCanvasTkAgg(fig, master=self._extrinsic_results_frame)
-            canvas.draw()
-            canvas.get_tk_widget().pack(fill="x", pady=5)
+            self._viewer_canvas = FigureCanvasTkAgg(self._viewer_fig, master=parent)
+            self._viewer_canvas.draw()
+            self._viewer_canvas.get_tk_widget().pack(fill="both", expand=True)
 
         except ImportError:
-            logger.info("matplotlib not available, skipping 3D camera view")
+            logger.info("matplotlib not available, 3D viewer disabled")
+            self._viewer_fig = None
         except Exception as e:
-            logger.warning(f"Could not display camera positions: {e}")
+            logger.warning(f"Could not create 3D viewer: {e}")
+            self._viewer_fig = None
+
+    def _update_3d_viewer(self, camera_array=None):
+        """Clear and redraw 3D camera positions on the persistent viewer."""
+        if self._viewer_fig is None:
+            return
+
+        import numpy as np
+        ax = self._viewer_ax
+        ax.cla()
+
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
+        ax.set_title("Camera Positions")
+
+        if camera_array is None or not camera_array.posed_cameras:
+            self._viewer_canvas.draw_idle()
+            return
+
+        # Collect camera positions and look directions
+        positions = {}
+        look_dirs = {}
+        for cam_id, cam in camera_array.posed_cameras.items():
+            if cam.translation is not None and cam.rotation is not None:
+                pos = -cam.rotation.T @ cam.translation
+                positions[cam_id] = pos
+                look_dirs[cam_id] = cam.rotation.T @ np.array([0, 0, 1])
+
+        if not positions:
+            self._viewer_canvas.draw_idle()
+            return
+
+        # Equal aspect ratio limits
+        all_pos = np.array(list(positions.values()))
+        mid = (all_pos.max(axis=0) + all_pos.min(axis=0)) / 2
+        half_range = (all_pos.max(axis=0) - all_pos.min(axis=0)).max() / 2 * 1.1
+        half_range = max(half_range, 0.5)  # minimum range for single-camera case
+        ax.set_xlim(mid[0] - half_range, mid[0] + half_range)
+        ax.set_ylim(mid[1] - half_range, mid[1] + half_range)
+        z_lo = max(mid[2] - half_range, -0.2) if all_pos[:, 2].min() >= 0 else mid[2] - half_range
+        ax.set_zlim(z_lo, mid[2] + half_range)
+
+        arrow_len = half_range * 0.25
+
+        for cam_id in sorted(positions):
+            pos = positions[cam_id]
+            look = look_dirs[cam_id]
+            ax.scatter(*pos, s=80, zorder=5)
+            ax.quiver(
+                pos[0], pos[1], pos[2],
+                look[0], look[1], look[2],
+                length=arrow_len, arrow_length_ratio=0.15,
+                color="red", linewidth=1.5,
+            )
+            ax.text(pos[0], pos[1], pos[2], f"  Cam {cam_id}", fontsize=9)
+
+        # Floor plane at Z=0
+        x_lo, x_hi = ax.get_xlim()
+        y_lo, y_hi = ax.get_ylim()
+        floor_x = np.array([[x_lo, x_hi], [x_lo, x_hi]])
+        floor_y = np.array([[y_lo, y_lo], [y_hi, y_hi]])
+        floor_z = np.zeros_like(floor_x)
+        ax.plot_surface(floor_x, floor_y, floor_z, color="grey", alpha=0.4)
+
+        # World coordinate system axes (RGB = XYZ, 1m arrows)
+        ax.quiver(0, 0, 0, 1, 0, 0, length=1.0, arrow_length_ratio=0.1, color="red", linewidth=2)
+        ax.quiver(0, 0, 0, 0, 1, 0, length=1.0, arrow_length_ratio=0.1, color="green", linewidth=2)
+        ax.quiver(0, 0, 0, 0, 0, 1, length=1.0, arrow_length_ratio=0.1, color="blue", linewidth=2)
+
+        self._viewer_fig.tight_layout()
+        self._viewer_canvas.draw_idle()
 
     # =================================================================
     # Origin setting
@@ -502,7 +562,7 @@ class CalibrationTab:
                     )
                     self._camera_array = new_camera_array
 
-                self.frame.after(0, lambda: self._show_camera_positions(self._camera_array))
+                self.frame.after(0, lambda: self._update_3d_viewer(self._camera_array))
 
                 self.frame.after(0, lambda: self._origin_status.set("Origin set successfully"))
             except Exception as e:
@@ -569,7 +629,7 @@ class CalibrationTab:
 
             # Show 3D camera positions if extrinsics are available
             if camera_array.posed_cameras:
-                self._show_camera_positions(camera_array)
+                self._update_3d_viewer(camera_array)
 
             self._save_load_status.set(f"Loaded from {CALIBRATION_PATH}")
             messagebox.showinfo("Success", f"Calibration loaded ({len(camera_array.cameras)} cameras)")
@@ -616,8 +676,7 @@ class CalibrationTab:
             self._camera_array = None
             self._bundle = None
             self._extrinsic_status.set("")
-            for widget in self._extrinsic_results_frame.winfo_children():
-                widget.destroy()
+            self._update_3d_viewer(None)
             self._origin_status.set("")
 
             self._save_load_status.set(f"Intrinsics loaded from {CALIBRATION_PATH}")

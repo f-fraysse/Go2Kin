@@ -21,7 +21,7 @@ code/
   GUI/
     __init__.py           # Exports Go2KinMainWindow
     main_window.py        # Go2KinMainWindow + LivePreviewCapture
-    calibration_tab.py    # CalibrationTab (tkinter calibration UI)
+    calibration_tab.py    # CalibrationTab (tkinter calibration UI + integrated 3D viewer)
   goproUSB/
     goproUSB.py           # GPcam class (camera HTTP API client)
   calibration/            # Camera calibration (adapted from Caliscope, BSD-2-Clause)
@@ -50,6 +50,7 @@ config/
 tools/
   discover_camera_settings.py  # Run once per model/firmware to generate reference
   test_video_quality.py        # Easy Mode vs Pro Mode quality comparison test
+  view_calibration.py           # Standalone 3D viewer for calibration camera positions
   export_toml.py               # Convert calibration.json → Pose2Sim TOML
 output/                   # Recording output directory
 ```
