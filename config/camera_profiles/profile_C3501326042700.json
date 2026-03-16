@@ -2,7 +2,7 @@
   "serial_number": "C3501326042700",
   "model": "HERO12 Black",
   "firmware": "H23.01.02.32.00",
-  "last_connected": "2026-03-11T11:53:23.762234",
+  "last_connected": "2026-03-16T11:45:50.017395",
   "settings_reference_file": "settings_reference_HERO12_Black_H23_01_02_32_00.json",
   "current_settings": {
     "2": {
@@ -243,7 +243,7 @@
       "name": "Preset"
     },
     "98": {
-      "value": 16777223,
+      "value": 100663303,
       "name": "Preset Modified"
     },
     "101": {
