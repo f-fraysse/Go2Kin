@@ -129,6 +129,12 @@ class Go2KinMainWindow:
         self.camera_status = {}
         self.camera_references = {}  # Store settings reference per camera
         self.camera_profiles = {}     # Store profile per camera
+
+        # Camera serial numbers from app config
+        serials = self.app_config.get("gopro_serial_numbers", [])
+        self.camera_serials = {}
+        for i in range(min(4, len(serials))):
+            self.camera_serials[i + 1] = serials[i]
         
         # Recording state
         self.recording = False
@@ -215,135 +221,98 @@ class Go2KinMainWindow:
 
     def create_widgets(self):
         """Create the main GUI widgets"""
+        # Fixed bottom bar (packed first so it stays at the bottom)
+        self.create_camera_bottom_bar()
+
         # Create notebook for tabs
         self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 5))
 
         # Tab 0: Project
         self.create_project_tab()
 
-        # Tab 1: Camera Settings
-        self.create_camera_settings_tab()
-        
-        # Tab 2: Live Preview (placeholder)
+        # Tab 1: Live Preview
         self.create_live_preview_tab()
-        
-        # Tab 3: Recording
+
+        # Tab 2: Recording
         self.create_recording_tab()
 
-        # Tab 4: Calibration
+        # Tab 3: Calibration
         self.create_calibration_tab()
     
-    def create_camera_settings_tab(self):
-        """Create the camera settings tab"""
-        self.camera_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.camera_frame, text="Camera Settings")
-        
-        # Title
-        title_label = ttk.Label(self.camera_frame, text="Camera Configuration", 
-                               font=("Arial", 16, "bold"))
-        title_label.pack(pady=15)
-        
-        # Camera grid frame
-        grid_frame = ttk.Frame(self.camera_frame)
-        grid_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
-        
-        # Configure grid weights
-        for i in range(2):
-            grid_frame.columnconfigure(i, weight=1)
-        for i in range(2):
-            grid_frame.rowconfigure(i, weight=1)
-        
-        # Camera panels
-        self.camera_panels = {}
-        positions = [(0, 0), (0, 1), (1, 0), (1, 1)]
-        
-        for i, (row, col) in enumerate(positions, 1):
-            panel = self.create_camera_panel(grid_frame, i)
-            panel.grid(row=row, column=col, padx=15, pady=15, sticky="nsew")
-            self.camera_panels[i] = panel
-    
-    def create_camera_panel(self, parent, camera_num):
-        """Create a single camera configuration panel"""
-        # Main frame with border
-        frame = ttk.LabelFrame(parent, text=f"GoPro {camera_num}", padding=15)
-        
-        # Status indicator
-        status_frame = ttk.Frame(frame)
-        status_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        status_label = ttk.Label(status_frame, text="Status:", font=("Arial", 10, "bold"))
-        status_label.pack(side=tk.LEFT)
-        
-        # Status indicator (circle)
-        status_canvas = tk.Canvas(status_frame, width=24, height=24)
-        status_canvas.pack(side=tk.LEFT, padx=(8, 0))
-        status_circle = status_canvas.create_oval(2, 2, 22, 22, fill="red", outline="darkred", width=2)
-        
-        # Store references
-        frame.status_canvas = status_canvas
-        frame.status_circle = status_circle
-        
-        # Serial number
-        serial_frame = ttk.Frame(frame)
-        serial_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(serial_frame, text="Serial:", width=10).pack(side=tk.LEFT)
-        serial_var = tk.StringVar()
-        serial_entry = ttk.Entry(serial_frame, textvariable=serial_var, width=18)
-        serial_entry.pack(side=tk.RIGHT)
-        frame.serial_var = serial_var
-        
-        # Lens setting (fixed to Linear)
-        lens_frame = ttk.Frame(frame)
-        lens_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(lens_frame, text="Lens:", width=10).pack(side=tk.LEFT)
-        lens_var = tk.StringVar(value="Linear")
-        lens_combo = ttk.Combobox(lens_frame, textvariable=lens_var, 
-                                 values=["Linear"], 
-                                 state="disabled", width=15)
-        lens_combo.pack(side=tk.RIGHT)
-        frame.lens_var = lens_var
-        
-        # Resolution setting
-        res_frame = ttk.Frame(frame)
-        res_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(res_frame, text="Resolution:", width=10).pack(side=tk.LEFT)
-        res_var = tk.StringVar()
-        res_combo = ttk.Combobox(res_frame, textvariable=res_var,
-                                values=["1080", "2.7K", "4K"],
-                                state="readonly", width=15)
-        res_combo.pack(side=tk.RIGHT)
-        frame.res_var = res_var
-        frame.res_combo = res_combo  # Store reference to combobox
-        
-        # FPS setting
-        fps_frame = ttk.Frame(frame)
-        fps_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(fps_frame, text="FPS:", width=10).pack(side=tk.LEFT)
-        fps_var = tk.StringVar()
-        fps_combo = ttk.Combobox(fps_frame, textvariable=fps_var,
-                                values=["25", "50", "100", "200"],
-                                state="readonly", width=15)
-        fps_combo.pack(side=tk.RIGHT)
-        frame.fps_var = fps_var
-        frame.fps_combo = fps_combo  # Store reference to combobox
-        
-        # Connect/Disconnect buttons
-        button_frame = ttk.Frame(frame)
-        button_frame.pack(fill=tk.X, pady=(15, 0))
-        
-        connect_btn = ttk.Button(button_frame, text="Connect",
-                               command=lambda: self.connect_camera(camera_num))
-        connect_btn.pack(side=tk.LEFT, padx=(0, 8))
-        
-        disconnect_btn = ttk.Button(button_frame, text="Disconnect",
-                                  command=lambda: self.disconnect_camera(camera_num))
-        disconnect_btn.pack(side=tk.LEFT)
-        
-        frame.connect_btn = connect_btn
-        frame.disconnect_btn = disconnect_btn
-        
-        return frame
+    def create_camera_bottom_bar(self):
+        """Create a fixed bottom panel with camera status, controls, and global settings"""
+        bar_frame = ttk.LabelFrame(self.root, text="Cameras", padding=(8, 4))
+        bar_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 5))
+
+        self.camera_bar = {}
+
+        # Per-camera controls (left side)
+        cameras_frame = ttk.Frame(bar_frame)
+        cameras_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        for i in range(1, 5):
+            cam_frame = ttk.Frame(cameras_frame)
+            cam_frame.pack(side=tk.LEFT, padx=(0, 12))
+
+            # Status circle
+            status_canvas = tk.Canvas(cam_frame, width=16, height=16,
+                                      highlightthickness=0)
+            status_canvas.pack(side=tk.LEFT, padx=(0, 3))
+            status_circle = status_canvas.create_oval(2, 2, 14, 14,
+                                                       fill="red", outline="darkred", width=2)
+
+            # Camera label
+            ttk.Label(cam_frame, text=f"GP{i}",
+                      font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=(0, 3))
+
+            # Connect/Disconnect toggle button
+            connect_btn = ttk.Button(cam_frame, text="Connect", width=10,
+                                     command=lambda cn=i: self.toggle_camera_connection(cn))
+            connect_btn.pack(side=tk.LEFT, padx=(0, 3))
+
+            # Battery label
+            battery_var = tk.StringVar(value="\u2014")
+            battery_label = ttk.Label(cam_frame, textvariable=battery_var,
+                                      font=("Arial", 9), width=5)
+            battery_label.pack(side=tk.LEFT)
+
+            self.camera_bar[i] = {
+                'status_canvas': status_canvas,
+                'status_circle': status_circle,
+                'connect_btn': connect_btn,
+                'battery_var': battery_var,
+                'battery_label': battery_label,
+            }
+
+        # Global settings (right side)
+        settings_frame = ttk.Frame(bar_frame)
+        settings_frame.pack(side=tk.RIGHT)
+
+        # FPS dropdown
+        self.global_fps_var = tk.StringVar()
+        fps_combo = ttk.Combobox(settings_frame, textvariable=self.global_fps_var,
+                                 values=["25", "50", "100", "200"],
+                                 state="readonly", width=5)
+        fps_combo.pack(side=tk.RIGHT, padx=(3, 0))
+        ttk.Label(settings_frame, text="FPS:").pack(side=tk.RIGHT, padx=(8, 0))
+        fps_combo.bind('<<ComboboxSelected>>', self.on_global_fps_change)
+
+        # Resolution dropdown
+        self.global_res_var = tk.StringVar()
+        res_combo = ttk.Combobox(settings_frame, textvariable=self.global_res_var,
+                                 values=["1080", "2.7K", "4K"],
+                                 state="readonly", width=5)
+        res_combo.pack(side=tk.RIGHT, padx=(3, 0))
+        ttk.Label(settings_frame, text="Res:").pack(side=tk.RIGHT)
+        res_combo.bind('<<ComboboxSelected>>', self.on_global_resolution_change)
+
+    def toggle_camera_connection(self, camera_num):
+        """Toggle connect/disconnect for a camera"""
+        if self.camera_status.get(camera_num, False):
+            self.disconnect_camera(camera_num)
+        else:
+            self.connect_camera(camera_num)
     
     def create_live_preview_tab(self):
         """Create the functional live preview tab with maximized video display"""
@@ -530,41 +499,36 @@ class Go2KinMainWindow:
         self.sync_btn.pack(pady=5)
     
     def load_camera_settings(self):
-        """Load camera settings from config into GUI"""
-        for i in range(1, 5):
-            if str(i) in self.config["cameras"]:
-                camera_config = self.config["cameras"][str(i)]
-                panel = self.camera_panels[i]
-                
-                panel.serial_var.set(camera_config["serial"])
-                panel.lens_var.set(camera_config["lens"])
-                panel.res_var.set(camera_config["resolution"])
-                panel.fps_var.set(str(camera_config["fps"]))
-    
+        """Load last-used resolution/fps into global dropdowns"""
+        if "1" in self.config["cameras"]:
+            cam1 = self.config["cameras"]["1"]
+            self.global_res_var.set(cam1.get("resolution", "4K"))
+            self.global_fps_var.set(str(cam1.get("fps", 50)))
+
     def save_camera_settings(self):
         """Save current camera settings to config"""
+        res = self.global_res_var.get()
+        fps = int(self.global_fps_var.get()) if self.global_fps_var.get().isdigit() else 50
         for i in range(1, 5):
-            panel = self.camera_panels[i]
             self.config["cameras"][str(i)] = {
-                "serial": panel.serial_var.get(),
-                "lens": panel.lens_var.get(),
-                "resolution": panel.res_var.get(),
-                "fps": int(panel.fps_var.get()) if panel.fps_var.get().isdigit() else 30
+                "serial": self.camera_serials.get(i, ""),
+                "lens": "Linear",
+                "resolution": res,
+                "fps": fps
             }
-        
+
         self.config["recording"]["output_directory"] = self.output_dir_var.get()
         self.config["recording"]["last_trial_name"] = self.trial_name_var.get()
-        
+
         self.save_config()
     
     def connect_camera(self, camera_num):
         """Connect to a specific camera with profile management"""
         try:
-            panel = self.camera_panels[camera_num]
-            serial = panel.serial_var.get()
-            
+            serial = self.camera_serials.get(camera_num, "")
+
             if not serial:
-                messagebox.showerror("Error", f"Please enter serial number for GoPro {camera_num}")
+                messagebox.showerror("Error", f"No serial number configured for GoPro {camera_num} in go2kin_config.json")
                 return
             
             self.log_progress(f"Connecting to GoPro {camera_num} ({serial})...")
@@ -738,54 +702,52 @@ class Go2KinMainWindow:
             self.update_camera_status(camera_num, True)
             
             self.log_progress(f"✓ GoPro {camera_num} connected successfully")
-                
+
+            # Query initial battery level
+            try:
+                state_resp = camera.getState()
+                if state_resp.status_code == 200:
+                    state = state_resp.json()
+                    battery_level = state.get('status', {}).get('2', None)
+                    if battery_level is not None:
+                        battery_level = int(battery_level)
+                        self._update_battery(camera_num, str(battery_level), low=(battery_level == 0))
+            except Exception:
+                pass  # Non-critical
+
         except Exception as e:
             self.log_progress(f"✗ Failed to connect GoPro {camera_num}: {e}")
             messagebox.showerror("Connection Error", f"Failed to connect GoPro {camera_num}:\n{e}")
     
     def populate_dropdowns_from_profile(self, camera_num, profile):
-        """Set dropdown current values from camera profile and bind change handlers"""
-        panel = self.camera_panels[camera_num]
-
+        """Set global dropdown values from camera profile"""
         # Set current resolution from profile
         if '2' in profile['current_settings']:
             current_res = profile['current_settings']['2']['value_name']
-            panel.res_var.set(current_res)
+            self.global_res_var.set(current_res)
             self.log_progress(f"  Resolution: {current_res}")
 
         # Set current FPS from profile
         if '3' in profile['current_settings']:
             current_fps = profile['current_settings']['3']['value_name']
-            panel.fps_var.set(current_fps)
+            self.global_fps_var.set(current_fps)
             self.log_progress(f"  FPS: {current_fps}")
 
-        # Bind change handlers
-        panel.res_combo.bind('<<ComboboxSelected>>',
-                            lambda e, cn=camera_num: self.on_resolution_change(cn))
-        panel.fps_combo.bind('<<ComboboxSelected>>',
-                            lambda e, cn=camera_num: self.on_fps_change(cn))
-    
-    def on_resolution_change(self, camera_num):
-        """Handle resolution dropdown change"""
-        if camera_num not in self.cameras or camera_num not in self.camera_references:
-            return
-        
-        panel = self.camera_panels[camera_num]
-        new_value = panel.res_var.get()
-        
-        self.log_progress(f"Applying resolution change: {new_value}")
-        self.apply_setting_to_camera(camera_num, 2, new_value, "Video Resolution")
-    
-    def on_fps_change(self, camera_num):
-        """Handle FPS dropdown change"""
-        if camera_num not in self.cameras or camera_num not in self.camera_references:
-            return
-        
-        panel = self.camera_panels[camera_num]
-        new_value = panel.fps_var.get()
-        
-        self.log_progress(f"Applying FPS change: {new_value}")
-        self.apply_setting_to_camera(camera_num, 3, new_value, "Frames Per Second")
+    def on_global_resolution_change(self, event=None):
+        """Handle global resolution dropdown change — apply to all connected cameras"""
+        new_value = self.global_res_var.get()
+        self.log_progress(f"Applying resolution {new_value} to all cameras...")
+        for camera_num in list(self.cameras.keys()):
+            if camera_num in self.camera_references:
+                self.apply_setting_to_camera(camera_num, 2, new_value, "Video Resolution")
+
+    def on_global_fps_change(self, event=None):
+        """Handle global FPS dropdown change — apply to all connected cameras"""
+        new_value = self.global_fps_var.get()
+        self.log_progress(f"Applying FPS {new_value} to all cameras...")
+        for camera_num in list(self.cameras.keys()):
+            if camera_num in self.camera_references:
+                self.apply_setting_to_camera(camera_num, 3, new_value, "Frames Per Second")
     
     def apply_setting_to_camera(self, camera_num, setting_id, display_name, setting_name):
         """Apply a setting change to the camera with validation"""
@@ -844,11 +806,10 @@ class Go2KinMainWindow:
                     profile = self.camera_profiles[camera_num]
                     if setting_id_str in profile['current_settings']:
                         old_value = profile['current_settings'][setting_id_str]['value_name']
-                        panel = self.camera_panels[camera_num]
                         if setting_id == 2:
-                            panel.res_var.set(old_value)
+                            self.global_res_var.set(old_value)
                         elif setting_id == 3:
-                            panel.fps_var.set(old_value)
+                            self.global_fps_var.set(old_value)
                 
             else:
                 raise Exception(f"Unexpected response: {response.status_code}")
@@ -926,10 +887,13 @@ class Go2KinMainWindow:
     
     def update_camera_status(self, camera_num, connected):
         """Update the visual status indicator for a camera"""
-        panel = self.camera_panels[camera_num]
+        bar = self.camera_bar[camera_num]
         color = "green" if connected else "red"
         outline_color = "darkgreen" if connected else "darkred"
-        panel.status_canvas.itemconfig(panel.status_circle, fill=color, outline=outline_color)
+        bar['status_canvas'].itemconfig(bar['status_circle'], fill=color, outline=outline_color)
+        bar['connect_btn'].config(text="Disconnect" if connected else "Connect")
+        if not connected:
+            bar['battery_var'].set("\u2014")
 
         # Enable/disable recording checkbox based on connection status
         if camera_num in self.camera_selection_checkboxes:
@@ -1265,7 +1229,7 @@ class Go2KinMainWindow:
             self.preview_update_job = self.root.after(33, self.update_video_display)
     
     def start_status_monitoring(self):
-        """Start background thread for status monitoring"""
+        """Start background thread for status monitoring and battery queries"""
         def monitor_status():
             while True:
                 for camera_num in list(self.cameras.keys()):
@@ -1275,14 +1239,42 @@ class Go2KinMainWindow:
                         if response.status_code != 200:
                             self.camera_status[camera_num] = False
                             self.root.after(0, lambda cn=camera_num: self.update_camera_status(cn, False))
-                    except:
+                            continue
+
+                        # Query battery level
+                        try:
+                            state_resp = camera.getState()
+                            if state_resp.status_code == 200:
+                                state = state_resp.json()
+                                battery_level = state.get('status', {}).get('2', None)
+                                if battery_level is not None:
+                                    battery_level = int(battery_level)
+                                    text = str(battery_level)
+                                    low = battery_level == 0
+                                    self.root.after(0, lambda cn=camera_num, t=text, l=low:
+                                                    self._update_battery(cn, t, l))
+                        except Exception:
+                            pass  # Battery query is non-critical
+
+                    except Exception:
                         self.camera_status[camera_num] = False
                         self.root.after(0, lambda cn=camera_num: self.update_camera_status(cn, False))
-                
+
                 time.sleep(30)  # Check every 30 seconds
-        
+
         monitor_thread = threading.Thread(target=monitor_status, daemon=True)
         monitor_thread.start()
+
+    def _update_battery(self, camera_num, text, low=False):
+        """Update battery display for a camera (must be called on main thread)"""
+        if camera_num not in self.camera_bar:
+            return
+        bar = self.camera_bar[camera_num]
+        bar['battery_var'].set(text)
+        if low:
+            bar['battery_label'].config(foreground="red", font=("Arial", 9, "bold"))
+        else:
+            bar['battery_label'].config(foreground="black", font=("Arial", 9))
     
     def browse_output_dir(self):
         """Browse for output directory"""

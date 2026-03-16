@@ -56,7 +56,7 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
    ```
    This creates a reference file in `config/settings_references/` that maps setting IDs to human-readable names and available options.
 
-6. Configure camera serial numbers in `config/cameras.json`.
+6. Configure camera serial numbers in `go2kin_config.json` (see step 3).
 
 ## Usage
 
@@ -65,23 +65,23 @@ conda activate Go2Kin
 python code/go2kin.py
 ```
 
-The GUI has five tabs:
+The GUI has four tabs and a fixed bottom bar:
+
+### Bottom Bar — Camera Status & Controls
+Always visible at the bottom of the window, regardless of which tab is selected. Shows per-camera connection status (green/red indicator), connect/disconnect toggle buttons, and battery status. Includes global Resolution and FPS dropdowns that apply to all connected cameras simultaneously. Camera serial numbers are read from `go2kin_config.json`.
 
 ### Tab 1 — Project
 Select or create projects, sessions, and subjects. Your last selection is remembered between sessions. This tab organises all data under the configured `data_root`.
 
-### Tab 2 — Camera Settings
-Connect to each camera, view status, and adjust resolution, FPS, and digital zoom. On connect, the application automatically applies a set of consistent settings (Pro control mode, Linear lens, GPS off, 50Hz anti-flicker, etc.) and restores previously saved resolution/FPS/zoom from the camera profile.
-
-### Tab 3 — Live Preview
+### Tab 2 — Live Preview
 Stream a live preview from one camera at a time for positioning and framing. Includes real-time digital zoom control (slider, +/-, text entry). Preview runs at 1080p/30fps/Linear regardless of recording settings.
 
-### Tab 4 — Recording
+### Tab 3 — Recording
 Start/stop synchronized recording across selected cameras. After recording, files are automatically downloaded from each camera and saved to `output/` with timestamps. Progress is tracked in the log.
 
 Includes a **Synchronise Video Files** button for post-recording audio-based synchronisation (see below).
 
-### Tab 5 — Calibration
+### Tab 4 — Calibration
 Multi-camera calibration using a printed charuco board. The calibration pipeline computes lens parameters (intrinsic) and camera positions/orientations (extrinsic) for 3D triangulation. Includes:
 
 - **Charuco Board Config** — set board dimensions, square size, ArUco dictionary. Save a printable board image.
@@ -144,7 +144,7 @@ go2kin_config_template.json  # Template for app config (copy to go2kin_config.js
 
 The GUI dropdown options for Resolution (1080, 2.7K, 4K) and FPS (25, 50, 100, 200) are hardcoded for GoPro Hero 12 Black with 50Hz anti-flicker (Australia). To adapt for different cameras or regions:
 
-- **Different anti-flicker (60Hz)**: FPS options would typically be 24, 30, 60, 120, 240. Update the combo values in `code/GUI/main_window.py` (search for `res_combo` and `fps_combo`).
+- **Different anti-flicker (60Hz)**: FPS options would typically be 24, 30, 60, 120, 240. Update the combo values in `code/GUI/main_window.py` (search for `global_fps_var` and `global_res_var`).
 - **Different camera model**: Run the discovery tool to generate a new settings reference, then update combo values to match the camera's capabilities.
 - **Runtime safety**: If a user selects an option the camera doesn't support, the camera rejects it with an error and a popup displays the actually available options.
 
