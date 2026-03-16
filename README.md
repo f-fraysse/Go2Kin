@@ -37,15 +37,26 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
    conda install -c conda-forge ffmpeg
    ```
 
-3. Connect GoPro cameras via USB and power them on.
+3. Set up the application config:
+   ```
+   cp go2kin_config_template.json go2kin_config.json
+   ```
+   Edit `go2kin_config.json`:
+   - `data_root`: path where Go2Kin will store project data (e.g. `D:/Markerless_Projects`)
+   - `gopro_serial_numbers`: serial numbers of your GoPro cameras (found on the camera label or via USB connection)
+   - Leave `last_project` and `last_session` empty — these are managed by the app
 
-4. Run the settings discovery tool once per camera model/firmware to generate a settings reference file:
+   If you skip this step, Go2Kin will prompt you to select a data root folder on first launch.
+
+4. Connect GoPro cameras via USB and power them on.
+
+5. Run the settings discovery tool once per camera model/firmware to generate a settings reference file:
    ```
    python tools/discover_camera_settings.py <camera_serial_number>
    ```
    This creates a reference file in `config/settings_references/` that maps setting IDs to human-readable names and available options.
 
-5. Configure camera serial numbers in `config/cameras.json`.
+6. Configure camera serial numbers in `config/cameras.json`.
 
 ## Usage
 
@@ -54,20 +65,23 @@ conda activate Go2Kin
 python code/go2kin.py
 ```
 
-The GUI has four tabs:
+The GUI has five tabs:
 
-### Tab 1 — Camera Settings
+### Tab 1 — Project
+Select or create projects, sessions, and subjects. Your last selection is remembered between sessions. This tab organises all data under the configured `data_root`.
+
+### Tab 2 — Camera Settings
 Connect to each camera, view status, and adjust resolution, FPS, and digital zoom. On connect, the application automatically applies a set of consistent settings (Pro control mode, Linear lens, GPS off, 50Hz anti-flicker, etc.) and restores previously saved resolution/FPS/zoom from the camera profile.
 
-### Tab 2 — Live Preview
+### Tab 3 — Live Preview
 Stream a live preview from one camera at a time for positioning and framing. Includes real-time digital zoom control (slider, +/-, text entry). Preview runs at 1080p/30fps/Linear regardless of recording settings.
 
-### Tab 3 — Recording
+### Tab 4 — Recording
 Start/stop synchronized recording across selected cameras. After recording, files are automatically downloaded from each camera and saved to `output/` with timestamps. Progress is tracked in the log.
 
 Includes a **Synchronise Video Files** button for post-recording audio-based synchronisation (see below).
 
-### Tab 4 — Calibration
+### Tab 5 — Calibration
 Multi-camera calibration using a printed charuco board. The calibration pipeline computes lens parameters (intrinsic) and camera positions/orientations (extrinsic) for 3D triangulation. Includes:
 
 - **Charuco Board Config** — set board dimensions, square size, ArUco dictionary. Save a printable board image.
@@ -95,8 +109,10 @@ code/
   go2kin.py              # Entry point
   audio_sync.py          # Audio-based multi-camera video synchronisation
   camera_profiles.py     # Camera profile and settings reference management
+  project_manager.py     # Project/session/trial/subject file hierarchy management
   GUI/
-    main_window.py        # Main GUI window (Settings, Preview, Recording tabs)
+    main_window.py        # Main GUI window
+    project_tab.py        # Project tab (project/session/subject management)
     calibration_tab.py    # Calibration tab (charuco config, intrinsic, extrinsic, origin)
   goproUSB/
     goproUSB.py           # GoPro HTTP API client (GPcam class)
@@ -121,6 +137,7 @@ tools/
   export_toml.py               # Convert calibration JSON to Pose2Sim TOML
   view_calibration.py          # Visualise saved calibration results
 output/                   # Recording output directory
+go2kin_config_template.json  # Template for app config (copy to go2kin_config.json)
 ```
 
 ## Adapting for Different Cameras

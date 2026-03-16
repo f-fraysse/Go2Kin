@@ -18,9 +18,11 @@ code/
   go2kin.py              # Entry point
   audio_sync.py          # Audio-based multi-camera video synchronisation
   camera_profiles.py     # CameraProfileManager (profiles + settings references)
+  project_manager.py     # ProjectManager (project/session/trial/subject file hierarchy)
   GUI/
     __init__.py           # Exports Go2KinMainWindow
     main_window.py        # Go2KinMainWindow + LivePreviewCapture
+    project_tab.py        # ProjectTab (project/session/subject selection)
     calibration_tab.py    # CalibrationTab (tkinter calibration UI + integrated 3D viewer)
   goproUSB/
     goproUSB.py           # GPcam class (camera HTTP API client)
@@ -53,13 +55,21 @@ tools/
   view_calibration.py           # Standalone 3D viewer for calibration camera positions
   export_toml.py               # Convert calibration.json → Pose2Sim TOML
 output/                   # Recording output directory
+tests/
+  test_project_manager.py  # ProjectManager unit tests
+go2kin_config.json         # App config (data_root, GoPro serials, last selection) — gitignored
+go2kin_config_template.json # Template for go2kin_config.json (tracked in git)
 ```
+
+- **Tests**: `python tests/test_project_manager.py` (run from repo root)
 
 ## Architecture
 
 - **GPcam** (`goproUSB.py`): HTTP client for one camera. IP derived from serial: `172.2X.1YZ.51:8080`
 - **CameraProfileManager** (`camera_profiles.py`): Singleton managing per-camera profiles and per-model settings references
-- **Go2KinMainWindow** (`GUI/main_window.py`): 4-tab tkinter GUI (Settings, Preview, Recording, Calibration)
+- **ProjectManager** (`project_manager.py`): Manages project/session/trial/subject file hierarchy at `data_root` (configured in `go2kin_config.json`). GUI-agnostic — handles only filesystem and JSON operations. See `docs/project_manager.md` for full architecture doc.
+- **ProjectTab** (`GUI/project_tab.py`): Project/session/subject selection UI. Persists last selection to `go2kin_config.json`.
+- **Go2KinMainWindow** (`GUI/main_window.py`): 5-tab tkinter GUI (Project, Settings, Preview, Recording, Calibration)
 - **LivePreviewCapture** (`GUI/main_window.py`): Threaded OpenCV capture from UDP stream
 
 ## Hardware
@@ -126,7 +136,7 @@ The "Synchronise Video Files" button in the Recording tab aligns multi-camera re
 
 ## Camera Calibration
 
-The Calibration tab (4th tab) provides intrinsic and extrinsic camera calibration using Charuco board detection. Code adapted from the Caliscope project (BSD-2-Clause, Mac Prible).
+The Calibration tab (5th tab) provides intrinsic and extrinsic camera calibration using Charuco board detection. Code adapted from the Caliscope project (BSD-2-Clause, Mac Prible).
 
 ### Dependencies
 - `opencv-contrib-python` (replaces `opencv-python` — superset, needed for `cv2.aruco`)

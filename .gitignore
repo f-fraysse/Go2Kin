@@ -93,6 +93,7 @@ tmp/
 # (Keep config/ structure but ignore sensitive configs if any)
 config/sensitive_*
 config/local_*
+go2kin_config.json
 
 # Memory bank (project documentation - you may want to include this)
 # memory-bank/
@@ -123,6 +124,7 @@ docs/redesign plan 13 03 2026.docx
 docs/redesign plan 16 03 2026.docx
 docs/redesign_plan_16_03_2026_updated.md
 docs/phase1_prompt.md
+docs/phase1b_prompt.md
 
 #temp pip files before / after adding pose2sim
 before.txt

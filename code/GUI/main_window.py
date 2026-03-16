@@ -110,12 +110,17 @@ class LivePreviewCapture:
                 break
 
 class Go2KinMainWindow:
-    def __init__(self, root):
+    def __init__(self, root, project_manager=None, app_config=None, app_config_path=None):
         self.root = root
         self.root.title("Go2Kin - Multi-Camera GoPro Control")
         self.root.geometry("900x700")
-        
-        # Configuration
+
+        # Project manager and app-level config
+        self.project_manager = project_manager
+        self.app_config = app_config or {}
+        self.app_config_path = app_config_path
+
+        # Camera configuration
         self.config_file = Path("config/cameras.json")
         self.config = self.load_config()
         
@@ -186,12 +191,37 @@ class Go2KinMainWindow:
         except Exception as e:
             print(f"Error saving config: {e}")
     
+    def save_app_config(self):
+        """Save the app-level config (go2kin_config.json)."""
+        if not self.app_config_path:
+            return
+        try:
+            with open(self.app_config_path, "w") as f:
+                json.dump(self.app_config, f, indent=4)
+        except Exception as e:
+            print(f"Error saving app config: {e}")
+
+    def get_current_project(self):
+        """Return the currently selected project name, or None."""
+        if hasattr(self, "project_tab"):
+            return self.project_tab.get_current_project()
+        return None
+
+    def get_current_session(self):
+        """Return the currently selected session name, or None."""
+        if hasattr(self, "project_tab"):
+            return self.project_tab.get_current_session()
+        return None
+
     def create_widgets(self):
         """Create the main GUI widgets"""
         # Create notebook for tabs
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
+
+        # Tab 0: Project
+        self.create_project_tab()
+
         # Tab 1: Camera Settings
         self.create_camera_settings_tab()
         
@@ -393,6 +423,14 @@ class Go2KinMainWindow:
         # Update camera dropdown initially
         self.update_preview_camera_dropdown()
     
+    def create_project_tab(self):
+        """Create the project management tab (first tab)"""
+        from GUI.project_tab import ProjectTab
+        self.project_tab = ProjectTab(
+            self.notebook, self.project_manager,
+            self.app_config, self.save_app_config
+        )
+
     def create_calibration_tab(self):
         """Create the calibration tab"""
         from GUI.calibration_tab import CalibrationTab
