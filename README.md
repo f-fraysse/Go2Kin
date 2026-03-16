@@ -77,9 +77,7 @@ Select or create projects, sessions, and subjects. Your last selection is rememb
 Stream a live preview from one camera at a time for positioning and framing. Includes real-time digital zoom control (slider, +/-, text entry). Preview runs at 1080p/30fps/Linear regardless of recording settings.
 
 ### Tab 3 — Recording
-Start/stop synchronized recording across selected cameras. After recording, files are automatically downloaded from each camera and saved to `output/` with timestamps. Progress is tracked in the log.
-
-Includes a **Synchronise Video Files** button for post-recording audio-based synchronisation (see below).
+Select a participant and calibration file for the trial, enter a trial name, and start/stop synchronized recording across selected cameras. Files are downloaded from each camera and saved to the project directory (`[project]/sessions/[session]/[trial]/video/`). After download, audio synchronisation runs automatically — synced files appear in `video/synced/`. A session/trial tree view at the bottom shows all recorded trials. See **Video Synchronisation** below for details.
 
 ### Tab 4 — Calibration
 Multi-camera calibration using a printed charuco board. The calibration pipeline computes lens parameters (intrinsic) and camera positions/orientations (extrinsic) for 3D triangulation. Includes:
@@ -98,7 +96,7 @@ The calibration pipeline is adapted from [Caliscope](https://github.com/mprib/ca
 
 1. **Print the charuco board.** Configure board parameters in the Calibration tab and click **Save Board Image**. Print at the configured size (default: A1). Mount on a rigid flat surface. **Measure the actual printed square size** — printers don't always scale exactly.
 2. **Intrinsic calibration.** For each camera, record a video of the board from various angles and distances. In the Calibration tab, browse to each video and click **Calibrate**.
-3. **Extrinsic calibration.** With all cameras in their final positions, record the board being moved through the shared field of view. Use the Recording tab's **Synchronise Video Files** to align the recordings, then browse to the `synced/` folder and click **Calibrate Extrinsics**.
+3. **Extrinsic calibration.** With all cameras in their final positions, record the board being moved through the shared field of view. The Recording tab automatically synchronises files after download. Browse to the `synced/` folder and click **Calibrate Extrinsics**.
 4. **Set origin.** Stand the board vertically in portrait mode at the desired world origin (origin corner 790mm above floor). Record with all cameras, synchronise, then browse to the synced folder and click **Set Origin**. This can also be re-run after loading a saved calibration to redefine the coordinate system.
 5. **Save.** Click **Save Calibration** to persist all results. A Pose2Sim-compatible TOML file is auto-generated alongside the JSON.
 
@@ -136,7 +134,7 @@ tools/
   discover_camera_settings.py  # Settings discovery tool
   export_toml.py               # Convert calibration JSON to Pose2Sim TOML
   view_calibration.py          # Visualise saved calibration results
-output/                   # Recording output directory
+output/                   # Legacy recording output (unused by current version)
 go2kin_config_template.json  # Template for app config (copy to go2kin_config.json)
 ```
 
@@ -167,22 +165,22 @@ Resolution, FPS, lens, and digital zoom are restored from the camera's saved pro
 
 ## Video Synchronisation
 
-Even when starting all cameras simultaneously, each GoPro begins recording at a slightly different time. The **Synchronise Video Files** button in the Recording tab aligns multi-camera recordings using full audio cross-correlation.
+Even when starting all cameras simultaneously, each GoPro begins recording at a slightly different time. Audio synchronisation runs automatically after each recording — no manual button press or file selection required.
 
 ### How to use
 
 1. At the start of each recording, perform a **loud hand clap** or other distinct sound within the first 3 seconds while all cameras are recording.
-2. After files are downloaded, click **Synchronise Video Files** and select the trial folder containing the 4 MP4 files.
-3. The tool cross-correlates the audio signals, computes precise time offsets between cameras, and trims all files to a common start and end point.
+2. After files are downloaded, synchronisation runs automatically. The progress log shows time offsets and peak cross-correlation quality for each camera pair.
+3. If any camera pair has a peak correlation below 0.7, a warning is displayed — consider re-recording with a louder clap.
 
 ### Output
 
-A `synced/` subfolder is created inside the trial directory containing:
-- 4 trimmed MP4 files (same filenames as originals) — start-aligned and end-trimmed to identical duration
+A `synced/` subfolder is created inside the trial's `video/` directory containing:
+- Trimmed MP4 files (same filenames as originals) — start-aligned and end-trimmed to identical duration
 - `audio_waveforms.png` — diagnostic plot of the first 3 seconds of audio from each camera
-- `stitched_videos.mp4` — a 2x2 grid preview (960x960) of all 4 cameras for quick visual verification of sync
+- `stitched_videos.mp4` — a 2x2 grid preview (960x960) of all cameras for quick visual verification of sync
 
-Original files are never modified.
+Original files are never modified. `trial.json` is updated with `synced: true` on success.
 
 ### Technical approach
 

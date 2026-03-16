@@ -54,7 +54,7 @@ tools/
   test_video_quality.py        # Easy Mode vs Pro Mode quality comparison test
   view_calibration.py           # Standalone 3D viewer for calibration camera positions
   export_toml.py               # Convert calibration.json → Pose2Sim TOML
-output/                   # Recording output directory
+output/                   # Legacy recording output (unused — recordings now go to project data_root)
 tests/
   test_project_manager.py  # ProjectManager unit tests
 go2kin_config.json         # App config (data_root, GoPro serials, last selection) — gitignored
@@ -69,7 +69,7 @@ go2kin_config_template.json # Template for go2kin_config.json (tracked in git)
 - **CameraProfileManager** (`camera_profiles.py`): Singleton managing per-camera profiles and per-model settings references
 - **ProjectManager** (`project_manager.py`): Manages project/session/trial/subject file hierarchy at `data_root` (configured in `go2kin_config.json`). GUI-agnostic — handles only filesystem and JSON operations. See `docs/project_manager.md` for full architecture doc.
 - **ProjectTab** (`GUI/project_tab.py`): Project/session/subject selection UI. Persists last selection to `go2kin_config.json`.
-- **Go2KinMainWindow** (`GUI/main_window.py`): 5-tab tkinter GUI (Project, Settings, Preview, Recording, Calibration)
+- **Go2KinMainWindow** (`GUI/main_window.py`): 4-tab tkinter GUI (Project, Preview, Recording, Calibration) + fixed bottom camera bar
 - **LivePreviewCapture** (`GUI/main_window.py`): Threaded OpenCV capture from UDP stream
 
 ## Hardware
@@ -124,19 +124,21 @@ go2kin_config_template.json # Template for go2kin_config.json (tracked in git)
 
 ## Audio Sync Feature
 
-The "Synchronise Video Files" button in the Recording tab aligns multi-camera recordings using full audio cross-correlation:
-1. User selects a trial folder containing 2 or more MP4 files
+Audio synchronisation runs automatically after each recording completes and files are downloaded. No manual button or file selection required.
+1. After all MP4 files download, sync starts automatically (skipped if fewer than 2 files)
 2. Extracts first 3 seconds of audio from each file (ffmpeg pipe → numpy)
 3. Full cross-correlation (`scipy.signal.correlate`) of entire audio signals to find precise time offsets
-4. Reference = camera that started recording last (largest offset). Other files trimmed from start to align
-5. All files trimmed to shortest common duration (time-based)
-6. Frame equalization: counts frames in each output, trims excess files to the minimum frame count (`-frames:v N -c copy`)
-7. Output: `synced/` subfolder with trimmed files + `stitched_videos.mp4` (auto-sized grid preview, 480x480 per camera) + `audio_waveforms.png` (diagnostic plot)
-8. Uses ffmpeg stream-copy for trimming (no re-encoding, lossless). Stitched preview re-encodes at low resolution.
+4. `compute_sync_offsets()` returns offset + normalised `peak_correlation` (0–1) per camera pair. If any pair < 0.7, a warning is logged
+5. Reference = camera that started recording last (largest offset). Other files trimmed from start to align
+6. All files trimmed to shortest common duration (time-based)
+7. Frame equalization: counts frames in each output, trims excess files to the minimum frame count (`-frames:v N -c copy`)
+8. Output: `video/synced/` subfolder with trimmed files + `stitched_videos.mp4` (auto-sized grid preview, 480x480 per camera) + `audio_waveforms.png` (diagnostic plot)
+9. Uses ffmpeg stream-copy for trimming (no re-encoding, lossless). Stitched preview re-encodes at low resolution.
+10. `trial.json` updated with `synced: true` on success, `synced: false` on failure
 
 ## Camera Calibration
 
-The Calibration tab (5th tab) provides intrinsic and extrinsic camera calibration using Charuco board detection. Code adapted from the Caliscope project (BSD-2-Clause, Mac Prible).
+The Calibration tab (4th tab) provides intrinsic and extrinsic camera calibration using Charuco board detection. Code adapted from the Caliscope project (BSD-2-Clause, Mac Prible).
 
 ### Dependencies
 - `opencv-contrib-python` (replaces `opencv-python` — superset, needed for `cv2.aruco`)
@@ -173,3 +175,4 @@ Synced folder MP4 filenames must follow `{trial}_GP{N}.mp4` convention (e.g., `T
 ## Known Issues / TODO
 
 - **Video quality investigation (paused)**: Downloaded videos appear smoothed/processed. Confirmed the correct MP4 is downloaded (not LRV). Added High bitrate (182), 8-Bit depth (183), and Standard profile (184) to connect settings. Protune settings (Sharpness 117, Color 116, etc.) are not officially exposed via the HTTP API. Next step: run `tools/test_video_quality.py` to compare Easy Mode vs Pro Mode output, and/or set Protune options manually on camera LCD.
+- **Audio sync offset accuracy (investigating)**: Cross-correlation offset values sometimes appear inconsistent with visual inspection of audio waveforms. Sync functionality works correctly (files are trimmed and aligned), but the computed offsets may not be optimal. Will revisit the correlation algorithm — potential areas: normalisation method, audio extraction duration, or sample rate handling.

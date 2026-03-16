@@ -164,16 +164,20 @@ def detect_clap(audio: np.ndarray, sample_rate: int,
 
 
 def find_offset_xcorr(ref_audio: np.ndarray, other_audio: np.ndarray,
-                      sample_rate: int) -> float:
+                      sample_rate: int) -> tuple:
     """
     Find time offset between two audio signals using full cross-correlation.
-    Returns offset in seconds (positive = other started recording earlier).
+    Returns (offset_seconds, peak_correlation) where offset is positive if
+    other started recording earlier, and peak_correlation is normalised 0-1.
     """
     corr = correlate(other_audio, ref_audio, mode="full")
     peak_idx = np.argmax(np.abs(corr))
     # In 'full' mode, zero-lag is at index len(ref_audio) - 1
     offset_samples = peak_idx - (len(ref_audio) - 1)
-    return offset_samples / sample_rate
+    # Normalised peak correlation (0 to 1)
+    norm = np.sqrt(np.sum(ref_audio**2) * np.sum(other_audio**2))
+    peak_corr = float(abs(corr[peak_idx]) / max(norm, 1e-10))
+    return offset_samples / sample_rate, peak_corr
 
 
 def save_audio_waveform_plot(audio_data: Dict[str, np.ndarray],
@@ -245,13 +249,16 @@ def compute_sync_offsets(video_paths: List[str],
     log(f"Cross-correlating against reference: {ref_name}")
 
     raw_offsets = {}
+    peak_correlations = {}
     for vp in video_paths:
         if vp == ref_path:
             raw_offsets[vp] = 0.0
+            peak_correlations[vp] = 1.0
         else:
-            offset = find_offset_xcorr(ref_audio, audio_data[vp], sr)
+            offset, peak_corr = find_offset_xcorr(ref_audio, audio_data[vp], sr)
             raw_offsets[vp] = offset
-            log(f"  {Path(vp).name}: offset {offset:.4f}s vs reference")
+            peak_correlations[vp] = peak_corr
+            log(f"  {Path(vp).name}: offset {offset:.4f}s vs reference (correlation: {peak_corr:.3f})")
 
     # Step 3: Shift so minimum offset = 0 (latest-starting camera becomes reference)
     min_offset = min(raw_offsets.values())
@@ -267,6 +274,7 @@ def compute_sync_offsets(video_paths: List[str],
         results[vp] = {
             "offset_seconds": adjusted[vp],
             "is_reference": is_ref,
+            "peak_correlation": peak_correlations[vp],
         }
         if not is_ref:
             log(f"  {Path(vp).name}: trim {adjusted[vp]:.4f}s from start")
