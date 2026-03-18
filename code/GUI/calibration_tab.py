@@ -890,7 +890,7 @@ class CalibrationTab:
             messagebox.showwarning("Warning", "Enter a calibration name")
             return
 
-        today = datetime.date.today().isoformat()
+        today = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M")
         filename = f"{name}_{today}.json"
         filepath = calib_dir / filename
 

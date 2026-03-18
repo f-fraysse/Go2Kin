@@ -50,7 +50,8 @@ def save_calibration(
     try:
         toml_script = Path(__file__).resolve().parents[2] / "tools" / "export_toml.py"
         if toml_script.exists():
-            subprocess.run([sys.executable, str(toml_script), str(filepath)], check=False)
+            toml_path = filepath.with_suffix(".toml")
+            subprocess.run([sys.executable, str(toml_script), str(filepath), str(toml_path)], check=False)
     except Exception as e:
         logger.warning(f"TOML export failed: {e}")
 
