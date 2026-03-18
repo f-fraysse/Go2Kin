@@ -239,6 +239,9 @@ class Go2KinMainWindow:
 
         # Tab 3: Calibration
         self.create_calibration_tab()
+
+        # Tab 4: Processing
+        self.create_processing_tab()
     
     def create_camera_bottom_bar(self):
         """Create a fixed bottom panel with camera status, controls, and global settings"""
@@ -412,6 +415,15 @@ class Go2KinMainWindow:
             is_recording=lambda: self.recording,
         )
 
+    def create_processing_tab(self):
+        """Create the Pose2Sim processing tab"""
+        from GUI.processing_tab import ProcessingTab
+        self.processing_tab = ProcessingTab(
+            self.notebook, self.project_manager,
+            get_current_project=lambda: self.project_tab.get_current_project(),
+            get_current_session=lambda: self.project_tab.get_current_session(),
+        )
+
     def create_recording_tab(self):
         """Create the recording tab"""
         self.recording_frame = ttk.Frame(self.notebook)
@@ -546,11 +558,13 @@ class Go2KinMainWindow:
     # -- Recording tab helpers ------------------------------------------------
 
     def _on_tab_changed(self, event):
-        """Refresh recording dropdowns when the Recording tab is selected."""
+        """Refresh tab contents when switching tabs."""
         try:
             selected = self.notebook.index(self.notebook.select())
             if selected == 2:  # Recording tab
                 self.refresh_recording_dropdowns()
+            elif selected == 4:  # Processing tab
+                self.processing_tab.refresh_tree()
         except Exception:
             pass
 

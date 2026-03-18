@@ -19,11 +19,13 @@ code/
   audio_sync.py          # Audio-based multi-camera video synchronisation
   camera_profiles.py     # CameraProfileManager (profiles + settings references)
   project_manager.py     # ProjectManager (project/session/trial/subject file hierarchy)
+  pose2sim_builder.py    # Build Pose2Sim project dirs + run pipeline
   GUI/
     __init__.py           # Exports Go2KinMainWindow
     main_window.py        # Go2KinMainWindow + LivePreviewCapture
     project_tab.py        # ProjectTab (project/session/subject selection)
     calibration_tab.py    # CalibrationTab (tkinter calibration UI + integrated 3D viewer)
+    processing_tab.py     # ProcessingTab (Pose2Sim pipeline execution)
   goproUSB/
     goproUSB.py           # GPcam class (camera HTTP API client)
   calibration/            # Camera calibration (adapted from Caliscope, BSD-2-Clause)
@@ -49,6 +51,7 @@ config/
   camera_profiles/        # Per-camera JSON profiles (profile_{serial}.json)
   settings_references/    # Per-model/firmware setting definitions
   calibration/            # Calibration output (charuco_config.json, calibration.json)
+  pose2sim_config_template.toml  # Pose2Sim Config.toml template (from example_trial)
 tools/
   discover_camera_settings.py  # Run once per model/firmware to generate reference
   test_video_quality.py        # Easy Mode vs Pro Mode quality comparison test
@@ -69,8 +72,10 @@ go2kin_config_template.json # Template for go2kin_config.json (tracked in git)
 - **CameraProfileManager** (`camera_profiles.py`): Singleton managing per-camera profiles and per-model settings references
 - **ProjectManager** (`project_manager.py`): Manages project/session/trial/subject file hierarchy at `data_root` (configured in `go2kin_config.json`). GUI-agnostic — handles only filesystem and JSON operations. See `docs/project_manager.md` for full architecture doc.
 - **ProjectTab** (`GUI/project_tab.py`): Project/session/subject selection UI. Persists last selection to `go2kin_config.json`.
-- **Go2KinMainWindow** (`GUI/main_window.py`): 4-tab tkinter GUI (Project, Preview, Recording, Calibration) + fixed bottom camera bar
+- **Go2KinMainWindow** (`GUI/main_window.py`): 5-tab tkinter GUI (Project, Preview, Recording, Calibration, Processing) + fixed bottom camera bar
 - **LivePreviewCapture** (`GUI/main_window.py`): Threaded OpenCV capture from UDP stream
+- **ProcessingTab** (`GUI/processing_tab.py`): Pose2Sim pipeline execution with trial selection tree, real-time log output, and batch processing
+- **pose2sim_builder** (`pose2sim_builder.py`): Stages Go2Kin trial data into Pose2Sim directory structure and runs the pipeline. See `docs/pose2sim_integration.md` for full documentation.
 
 ## Hardware
 
