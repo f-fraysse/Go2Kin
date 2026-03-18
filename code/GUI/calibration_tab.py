@@ -7,35 +7,49 @@ extrinsic calibration, origin setting, and save/load.
 
 from __future__ import annotations
 
+import datetime
 import logging
+import shutil
 import threading
+import time
 import tkinter as tk
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Config paths
+# Config paths (charuco config stays global, not per-project)
 CALIBRATION_DIR = Path("config/calibration")
 CHARUCO_CONFIG_PATH = CALIBRATION_DIR / "charuco_config.json"
-CALIBRATION_PATH = CALIBRATION_DIR / "calibration.json"
 
 
 class CalibrationTab:
     """Calibration tab for the Go2Kin main window."""
 
-    def __init__(self, notebook: ttk.Notebook, config: dict):
+    def __init__(self, notebook: ttk.Notebook, config: dict,
+                 cameras=None, camera_status=None,
+                 project_manager=None, get_current_project=None,
+                 is_recording=None):
         self.notebook = notebook
         self.config = config
         self.frame = ttk.Frame(notebook)
         notebook.add(self.frame, text="Calibration")
+        self.cameras = cameras if cameras is not None else {}
+        self.camera_status = camera_status if camera_status is not None else {}
+        self.project_manager = project_manager
+        self.get_current_project = get_current_project or (lambda: None)
+        self.is_recording = is_recording or (lambda: False)
 
         # Lazy imports to avoid circular imports and slow startup
         self._charuco = None
         self._camera_array = None
         self._bundle = None
         self._intrinsic_results: dict[int, dict] = {}
+
+        # Recording state
+        self._calib_recording = False
+        self._calib_stop_event = threading.Event()
 
         self._create_widgets()
         self._load_charuco_config()
@@ -156,6 +170,12 @@ class CalibrationTab:
 
             ttk.Label(row_frame, text=f"Camera {cam_num}:", width=10).pack(side="left")
 
+            record_btn = ttk.Button(
+                row_frame, text="Record", width=7,
+                command=lambda cn=cam_num: self._toggle_intrinsic_record(cn),
+            )
+            record_btn.pack(side="left", padx=2)
+
             path_var = tk.StringVar(value="No file selected")
             ttk.Label(row_frame, textvariable=path_var, width=40, relief="sunken").pack(side="left", padx=5)
             ttk.Button(
@@ -174,6 +194,7 @@ class CalibrationTab:
                 "path_var": path_var,
                 "status_var": status_var,
                 "video_path": None,
+                "record_btn": record_btn,
             }
 
         # Progress
@@ -184,12 +205,30 @@ class CalibrationTab:
         section = ttk.LabelFrame(parent, text="Extrinsic Calibration", padding=10)
         section.pack(fill="x", padx=10, pady=5)
 
+        # Camera selection checkboxes (shared with origin recording)
+        sel_frame = ttk.Frame(section)
+        sel_frame.pack(fill="x", pady=2)
+        ttk.Label(sel_frame, text="Camera Selection:").pack(side="left")
+        self._calib_cam_vars: dict[int, tk.BooleanVar] = {}
+        self._calib_cam_checkboxes: dict[int, ttk.Checkbutton] = {}
+        for cam_num in range(1, 5):
+            var = tk.BooleanVar(value=False)
+            cb = ttk.Checkbutton(sel_frame, text=f"GoPro {cam_num}", variable=var, state="disabled")
+            cb.pack(side="left", padx=10)
+            self._calib_cam_vars[cam_num] = var
+            self._calib_cam_checkboxes[cam_num] = cb
+
         folder_frame = ttk.Frame(section)
         folder_frame.pack(fill="x", pady=2)
 
         ttk.Label(folder_frame, text="Synced folder:").pack(side="left")
         self._extrinsic_folder_var = tk.StringVar(value="No folder selected")
         ttk.Label(folder_frame, textvariable=self._extrinsic_folder_var, width=50, relief="sunken").pack(side="left", padx=5)
+        self._extrinsic_record_btn = ttk.Button(
+            folder_frame, text="Record", width=7,
+            command=lambda: self._toggle_multi_record("extrinsic"),
+        )
+        self._extrinsic_record_btn.pack(side="left", padx=2)
         ttk.Button(folder_frame, text="Browse", command=self._browse_extrinsic_folder).pack(side="left", padx=2)
 
         btn_frame = ttk.Frame(section)
@@ -209,6 +248,11 @@ class CalibrationTab:
         ttk.Label(folder_frame, text="Origin folder:").pack(side="left")
         self._origin_folder_var = tk.StringVar(value="No folder selected")
         ttk.Label(folder_frame, textvariable=self._origin_folder_var, width=50, relief="sunken").pack(side="left", padx=5)
+        self._origin_record_btn = ttk.Button(
+            folder_frame, text="Record", width=7,
+            command=lambda: self._toggle_multi_record("origin"),
+        )
+        self._origin_record_btn.pack(side="left", padx=2)
         ttk.Button(folder_frame, text="Browse", command=self._browse_origin_folder).pack(side="left", padx=2)
 
         btn_frame = ttk.Frame(section)
@@ -222,11 +266,22 @@ class CalibrationTab:
         section = ttk.LabelFrame(parent, text="Save / Load Calibration", padding=10)
         section.pack(fill="x", padx=10, pady=5)
 
-        btn_frame = ttk.Frame(section)
-        btn_frame.pack(fill="x", pady=5)
-        ttk.Button(btn_frame, text="Save Calibration", command=self._save_calibration).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Load Calibration", command=self._load_calibration).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Load Intrinsics Only", command=self._load_intrinsics).pack(side="left", padx=5)
+        # Save row: name entry + save button
+        save_frame = ttk.Frame(section)
+        save_frame.pack(fill="x", pady=2)
+        ttk.Label(save_frame, text="Name:").pack(side="left")
+        self._calib_name_var = tk.StringVar(value="")
+        ttk.Entry(save_frame, textvariable=self._calib_name_var, width=20).pack(side="left", padx=5)
+        ttk.Button(save_frame, text="Save Calibration", command=self._save_calibration).pack(side="left", padx=5)
+
+        # Load row
+        load_frame = ttk.Frame(section)
+        load_frame.pack(fill="x", pady=2)
+        ttk.Button(load_frame, text="Load Calibration", command=self._load_calibration).pack(side="left", padx=5)
+        ttk.Button(load_frame, text="Load Intrinsics Only", command=self._load_intrinsics).pack(side="left", padx=5)
+
+        # Delete temp videos
+        ttk.Button(load_frame, text="Delete Calibration Videos", command=self._delete_calib_videos).pack(side="left", padx=5)
 
         self._save_load_status = tk.StringVar(value="")
         ttk.Label(section, textvariable=self._save_load_status).pack(fill="x", pady=2)
@@ -296,6 +351,239 @@ class CalibrationTab:
             self._charuco_inverted.set(charuco.inverted)
         except Exception as e:
             logger.warning(f"Could not load charuco config: {e}")
+
+    # =================================================================
+    # Recording helpers
+    # =================================================================
+
+    def update_camera_checkboxes(self, cam_num: int, connected: bool):
+        """Update calibration camera selection checkbox on connect/disconnect."""
+        if cam_num in self._calib_cam_checkboxes:
+            if connected:
+                self._calib_cam_checkboxes[cam_num].config(state="normal")
+                self._calib_cam_vars[cam_num].set(True)
+            else:
+                self._calib_cam_checkboxes[cam_num].config(state="disabled")
+                self._calib_cam_vars[cam_num].set(False)
+
+    def _get_selected_cameras(self):
+        """Return list of (cam_num, GPcam) for checkbox-selected, connected cameras."""
+        result = []
+        for cam_num, var in self._calib_cam_vars.items():
+            if var.get() and self.camera_status.get(cam_num, False) and cam_num in self.cameras:
+                result.append((cam_num, self.cameras[cam_num]))
+        return result
+
+    def _check_record_preconditions(self, need_multi=False):
+        """Check common preconditions before recording. Returns True if OK."""
+        if self._calib_recording:
+            messagebox.showwarning("Warning", "A calibration recording is already in progress")
+            return False
+        if self.is_recording():
+            messagebox.showwarning("Warning", "Recording tab is active — stop it first")
+            return False
+        project = self.get_current_project()
+        if not project:
+            messagebox.showwarning("Warning", "No project selected. Select a project first.")
+            return False
+        if need_multi:
+            selected = self._get_selected_cameras()
+            if not selected:
+                messagebox.showwarning("Warning", "No cameras selected or connected")
+                return False
+        return True
+
+    def _make_timestamp(self):
+        return datetime.datetime.now().strftime("%Y%m%d_%H%M")
+
+    def _get_temp_video_dir(self):
+        """Return and create [project]/calibrations/temp_videos/ directory."""
+        project = self.get_current_project()
+        temp_dir = self.project_manager.get_project_path(project) / "calibrations" / "temp_videos"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        return temp_dir
+
+    # --- Intrinsic recording ---
+
+    def _toggle_intrinsic_record(self, cam_num: int):
+        entry = self._intrinsic_entries[cam_num]
+        if not self._calib_recording:
+            # Start recording
+            if not self._check_record_preconditions():
+                return
+            if not self.camera_status.get(cam_num, False) or cam_num not in self.cameras:
+                messagebox.showwarning("Warning", f"Camera {cam_num} is not connected")
+                return
+            camera = self.cameras[cam_num]
+            video_dir = self._get_temp_video_dir()
+            timestamp = self._make_timestamp()
+
+            self._calib_recording = True
+            self._calib_stop_event.clear()
+            entry["record_btn"].config(text="Stop")
+            self._intrinsic_progress.set(f"Recording Camera {cam_num}...")
+
+            def worker():
+                try:
+                    camera.shutterStart()
+                    self._calib_stop_event.wait()
+                    camera.shutterStop()
+                    while camera.camBusy() or camera.encodingActive():
+                        time.sleep(0.5)
+                    self.frame.after(0, lambda: self._intrinsic_progress.set(
+                        f"Downloading from Camera {cam_num}..."))
+                    filename = video_dir / f"intrinsic_{timestamp}_GP{cam_num}.mp4"
+                    camera.mediaDownloadLast(str(filename))
+                    camera.deleteAllFiles()
+                    self.frame.after(0, lambda: self._intrinsic_record_done(cam_num, filename))
+                except Exception as e:
+                    self.frame.after(0, lambda: self._intrinsic_record_error(cam_num, str(e)))
+                finally:
+                    self._calib_recording = False
+                    self.frame.after(0, lambda: entry["record_btn"].config(text="Record"))
+
+            threading.Thread(target=worker, daemon=True).start()
+        else:
+            # Stop recording
+            self._calib_stop_event.set()
+            entry["record_btn"].config(text="Stopping...")
+
+    def _intrinsic_record_done(self, cam_num, filepath):
+        entry = self._intrinsic_entries[cam_num]
+        entry["video_path"] = filepath
+        entry["path_var"].set(filepath.name)
+        self._intrinsic_progress.set(f"Camera {cam_num} recorded: {filepath.name}")
+
+    def _intrinsic_record_error(self, cam_num, error_msg):
+        self._intrinsic_progress.set(f"Camera {cam_num} recording error: {error_msg}")
+        messagebox.showerror("Recording Error", f"Camera {cam_num}: {error_msg}")
+
+    # --- Multi-camera recording (extrinsic / origin) ---
+
+    def _toggle_multi_record(self, purpose: str):
+        """Toggle recording for extrinsic or origin. purpose is 'extrinsic' or 'origin'."""
+        btn = self._extrinsic_record_btn if purpose == "extrinsic" else self._origin_record_btn
+        status_var = self._extrinsic_status if purpose == "extrinsic" else self._origin_status
+
+        if not self._calib_recording:
+            # Start recording
+            if not self._check_record_preconditions(need_multi=True):
+                return
+            cam_list = self._get_selected_cameras()
+            video_dir = self._get_temp_video_dir()
+            timestamp = self._make_timestamp()
+
+            self._calib_recording = True
+            self._calib_stop_event.clear()
+            btn.config(text="Stop")
+            status_var.set(f"Recording {purpose} ({len(cam_list)} cameras)...")
+
+            def worker():
+                try:
+                    self._multi_record_worker(cam_list, video_dir, purpose, timestamp, status_var)
+                except Exception as e:
+                    self.frame.after(0, lambda: status_var.set(f"Recording error: {e}"))
+                    self.frame.after(0, lambda: messagebox.showerror(
+                        "Recording Error", f"{purpose.title()} recording: {e}"))
+                finally:
+                    self._calib_recording = False
+                    self.frame.after(0, lambda: btn.config(text="Record"))
+
+            threading.Thread(target=worker, daemon=True).start()
+        else:
+            # Stop recording
+            self._calib_stop_event.set()
+            btn.config(text="Stopping...")
+
+    def _multi_record_worker(self, cam_list, video_dir, purpose, timestamp, status_var):
+        """Worker thread for multi-camera recording + auto-sync."""
+        # Start all cameras
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {executor.submit(cam.shutterStart): num for num, cam in cam_list}
+            for f in futures:
+                f.result(timeout=15)
+
+        # Wait for user to click Stop
+        self._calib_stop_event.wait()
+
+        self.frame.after(0, lambda: status_var.set("Stopping cameras and downloading..."))
+
+        # Stop + download all cameras
+        filenames = []
+        def stop_and_download(cam_num, camera):
+            camera.shutterStop()
+            while camera.camBusy() or camera.encodingActive():
+                time.sleep(0.5)
+            filename = video_dir / f"{purpose}_{timestamp}_GP{cam_num}.mp4"
+            camera.mediaDownloadLast(str(filename))
+            camera.deleteAllFiles()
+            return filename
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {executor.submit(stop_and_download, num, cam): num for num, cam in cam_list}
+            for f in futures:
+                filenames.append(f.result(timeout=300))
+
+        # Auto-sync
+        self.frame.after(0, lambda: status_var.set("Running audio sync..."))
+        synced_dir = self._run_calib_sync(filenames, video_dir, purpose, timestamp, status_var)
+
+        # Auto-populate the folder path
+        if purpose == "extrinsic":
+            folder_var = self._extrinsic_folder_var
+        else:
+            folder_var = self._origin_folder_var
+
+        if synced_dir:
+            self.frame.after(0, lambda: folder_var.set(str(synced_dir)))
+            self.frame.after(0, lambda: status_var.set(f"Synced {len(filenames)} files"))
+        else:
+            self.frame.after(0, lambda: status_var.set("Sync skipped (< 2 files)"))
+
+    def _run_calib_sync(self, filenames, video_dir, purpose, timestamp, status_var):
+        """Run audio sync on recorded calibration videos. Returns synced dir Path or None."""
+        from audio_sync import (check_ffmpeg, check_audio_track, compute_sync_offsets,
+                                trim_and_sync_videos, AudioSyncError)
+
+        video_paths = sorted([str(f) for f in filenames if f.exists()])
+        if len(video_paths) < 2:
+            return None
+
+        if not check_ffmpeg():
+            self.frame.after(0, lambda: status_var.set("ffmpeg not found — sync skipped"))
+            return None
+
+        # Verify audio tracks
+        for vp in video_paths:
+            if not check_audio_track(vp):
+                raise AudioSyncError(f"No audio track in: {Path(vp).name}")
+
+        # Compute sync offsets
+        offsets = compute_sync_offsets(video_paths, output_dir=str(video_dir))
+
+        # Log sync quality
+        sync_msgs = []
+        low_quality = False
+        for path, info in offsets.items():
+            name = Path(path).name
+            ref = " (REF)" if info["is_reference"] else ""
+            corr = info.get("peak_correlation", 0.0)
+            sync_msgs.append(f"{name}: {info['offset_seconds']:.4f}s corr={corr:.3f}{ref}")
+            if not info["is_reference"] and corr < 0.7:
+                low_quality = True
+
+        detail = " | ".join(sync_msgs)
+        if low_quality:
+            detail += " | WARNING: Low sync quality"
+        self.frame.after(0, lambda: status_var.set(detail))
+
+        # Trim and sync — trim_and_sync_videos creates a synced/ subfolder inside output_dir
+        sync_parent = video_dir / f"{purpose}_{timestamp}_sync"
+        sync_parent.mkdir(parents=True, exist_ok=True)
+        trim_and_sync_videos(video_paths, offsets, str(sync_parent))
+
+        synced_dir = sync_parent / "synced"
+        return synced_dir
 
     # =================================================================
     # Intrinsic calibration
@@ -578,10 +866,33 @@ class CalibrationTab:
     # Save/Load
     # =================================================================
 
+    def _get_calibrations_dir(self):
+        """Return [project]/calibrations/ directory, or None if no project selected."""
+        project = self.get_current_project()
+        if not project:
+            return None
+        calib_dir = self.project_manager.get_project_path(project) / "calibrations"
+        calib_dir.mkdir(parents=True, exist_ok=True)
+        return calib_dir
+
     def _save_calibration(self):
         if self._camera_array is None:
             messagebox.showwarning("Warning", "No calibration to save")
             return
+
+        calib_dir = self._get_calibrations_dir()
+        if calib_dir is None:
+            messagebox.showwarning("Warning", "No project selected. Select a project first.")
+            return
+
+        name = self._calib_name_var.get().strip()
+        if not name:
+            messagebox.showwarning("Warning", "Enter a calibration name")
+            return
+
+        today = datetime.date.today().isoformat()
+        filename = f"{name}_{today}.json"
+        filepath = calib_dir / filename
 
         try:
             import sys
@@ -589,23 +900,30 @@ class CalibrationTab:
             from calibration.persistence import save_calibration
 
             charuco = self._get_charuco()
-            save_calibration(CALIBRATION_PATH, self._camera_array, charuco)
-            self._save_load_status.set(f"Saved to {CALIBRATION_PATH}")
-            messagebox.showinfo("Success", f"Calibration saved to {CALIBRATION_PATH}")
+            save_calibration(filepath, self._camera_array, charuco)
+            self._save_load_status.set(f"Saved to {filepath.name}")
+            messagebox.showinfo("Success", f"Calibration saved to {filepath}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save: {e}")
 
     def _load_calibration(self):
+        calib_dir = self._get_calibrations_dir()
+        initialdir = str(calib_dir) if calib_dir else str(CALIBRATION_DIR)
+
+        filepath = filedialog.askopenfilename(
+            initialdir=initialdir,
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+            title="Load Calibration",
+        )
+        if not filepath:
+            return
+
         try:
             import sys
             sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
             from calibration.persistence import load_calibration
 
-            if not CALIBRATION_PATH.exists():
-                messagebox.showwarning("Warning", f"No calibration file found at {CALIBRATION_PATH}")
-                return
-
-            camera_array, charuco = load_calibration(CALIBRATION_PATH)
+            camera_array, charuco = load_calibration(Path(filepath))
             self._camera_array = camera_array
 
             # Update charuco GUI
@@ -631,24 +949,31 @@ class CalibrationTab:
             if camera_array.posed_cameras:
                 self._update_3d_viewer(camera_array)
 
-            self._save_load_status.set(f"Loaded from {CALIBRATION_PATH}")
+            self._save_load_status.set(f"Loaded from {Path(filepath).name}")
             messagebox.showinfo("Success", f"Calibration loaded ({len(camera_array.cameras)} cameras)")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load: {e}")
 
     def _load_intrinsics(self):
         """Load only intrinsic parameters from saved calibration file."""
+        calib_dir = self._get_calibrations_dir()
+        initialdir = str(calib_dir) if calib_dir else str(CALIBRATION_DIR)
+
+        filepath = filedialog.askopenfilename(
+            initialdir=initialdir,
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+            title="Load Intrinsics Only",
+        )
+        if not filepath:
+            return
+
         try:
             import sys
             from dataclasses import replace
             sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
             from calibration.persistence import load_calibration
 
-            if not CALIBRATION_PATH.exists():
-                messagebox.showwarning("Warning", f"No calibration file found at {CALIBRATION_PATH}")
-                return
-
-            camera_array, charuco = load_calibration(CALIBRATION_PATH)
+            camera_array, charuco = load_calibration(Path(filepath))
 
             # Update charuco GUI
             self._charuco_cols.set(charuco.columns)
@@ -679,7 +1004,24 @@ class CalibrationTab:
             self._update_3d_viewer(None)
             self._origin_status.set("")
 
-            self._save_load_status.set(f"Intrinsics loaded from {CALIBRATION_PATH}")
+            self._save_load_status.set(f"Intrinsics loaded from {Path(filepath).name}")
             messagebox.showinfo("Success", f"Intrinsics loaded for {len(self._intrinsic_results)} cameras")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load intrinsics: {e}")
+
+    def _delete_calib_videos(self):
+        """Delete all calibration temp videos for the current project."""
+        project = self.get_current_project()
+        if not project:
+            messagebox.showwarning("Warning", "No project selected")
+            return
+
+        temp_dir = self.project_manager.get_project_path(project) / "calibrations" / "temp_videos"
+        if not temp_dir.exists():
+            messagebox.showinfo("Info", "No calibration videos to delete")
+            return
+
+        if messagebox.askyesno("Confirm Delete",
+                               f"Delete all calibration videos?\n{temp_dir}"):
+            shutil.rmtree(temp_dir)
+            self._save_load_status.set("Calibration videos deleted")

@@ -403,7 +403,14 @@ class Go2KinMainWindow:
     def create_calibration_tab(self):
         """Create the calibration tab"""
         from GUI.calibration_tab import CalibrationTab
-        self.calibration_tab = CalibrationTab(self.notebook, self.config)
+        self.calibration_tab = CalibrationTab(
+            self.notebook, self.config,
+            cameras=self.cameras,
+            camera_status=self.camera_status,
+            project_manager=self.project_manager,
+            get_current_project=lambda: self.project_tab.get_current_project(),
+            is_recording=lambda: self.recording,
+        )
 
     def create_recording_tab(self):
         """Create the recording tab"""
@@ -1100,6 +1107,10 @@ class Go2KinMainWindow:
             else:
                 self.camera_selection_checkboxes[camera_num].config(state="disabled")
                 self.camera_selection_vars[camera_num].set(False)
+
+        # Update calibration tab camera checkboxes
+        if hasattr(self, 'calibration_tab'):
+            self.calibration_tab.update_camera_checkboxes(camera_num, connected)
 
         # Update preview camera dropdown when camera status changes
         self.update_preview_camera_dropdown()

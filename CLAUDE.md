@@ -149,10 +149,18 @@ The Calibration tab (4th tab) provides intrinsic and extrinsic camera calibratio
 
 ### Calibration Workflow
 1. **Charuco config**: Set board parameters in Calibration tab (or accept defaults). Print board, measure actual square size.
-2. **Intrinsic**: For each camera, select a video of charuco board → "Calibrate" → verify RMSE < 1.0px
-3. **Extrinsic**: Record all cameras simultaneously with charuco board visible. Audio sync → synced/ folder. Select synced folder → "Calibrate Extrinsics" → verify 3D camera positions
-4. **Set Origin**: Stand charuco vertically in portrait mode at lab origin (origin corner 790mm above floor), take short recording. Select folder → "Set Origin". Can also be re-run after loading a saved calibration (no need to redo extrinsic).
-5. **Save**: Save calibration to `config/calibration/calibration.json` (also auto-generates `camera_array_go2kin.toml` for Pose2Sim)
+2. **Intrinsic**: For each camera, click "Record" (or "Browse" for existing file) → "Calibrate" → verify RMSE < 1.0px
+3. **Extrinsic**: Select cameras in checkboxes → click "Record" (records all, auto-syncs) → "Calibrate Extrinsics" → verify 3D camera positions. Can also "Browse" to an existing synced folder.
+4. **Set Origin**: Click "Record" (uses same camera selection, auto-syncs) → "Set Origin". Can also "Browse". Can be re-run after loading a saved calibration (no need to redo extrinsic).
+5. **Save**: Enter a name → "Save Calibration" → saved to `[project]/calibrations/{name}_{date}.json` (also auto-generates `.toml` for Pose2Sim)
+6. **Load**: "Load Calibration" opens file dialog at `[project]/calibrations/` (can navigate to `config/calibration/` for legacy files)
+7. **Cleanup**: "Delete Calibration Videos" removes `[project]/calibrations/temp_videos/`
+
+### Calibration Recording
+- **Intrinsic**: Per-camera Record buttons. Single camera records, downloads to `temp_videos/intrinsic_{timestamp}_GP{N}.mp4`, auto-populates file path.
+- **Extrinsic/Origin**: Camera selection checkboxes (shared). All selected cameras record simultaneously → auto audio sync → synced folder auto-populated.
+- Recording in Calibration tab is mutually exclusive with Recording tab (conflict guard).
+- Temp video files include `YYYYMMDD_HHmm` timestamps — recordings are never overwritten.
 
 ### Pipeline Architecture
 ```

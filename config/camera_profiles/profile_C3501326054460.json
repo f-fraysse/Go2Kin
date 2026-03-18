@@ -2,7 +2,7 @@
   "serial_number": "C3501326054460",
   "model": "HERO12 Black",
   "firmware": "H23.01.02.32.00",
-  "last_connected": "2026-03-16T15:29:13.996832",
+  "last_connected": "2026-03-18T12:15:02.132133",
   "settings_reference_file": "settings_reference_HERO12_Black_H23_01_02_32_00.json",
   "current_settings": {
     "2": {
@@ -187,7 +187,7 @@
       "name": "Battery Present"
     },
     "2": {
-      "value": 4,
+      "value": 0,
       "name": "Internal Battery Bars"
     },
     "6": {
@@ -219,7 +219,7 @@
       "name": "Ready"
     },
     "83": {
-      "value": 1,
+      "value": 0,
       "name": "OTA Charged"
     },
     "93": {
@@ -243,7 +243,7 @@
       "name": "Preset"
     },
     "98": {
-      "value": 16777216,
+      "value": 100663296,
       "name": "Preset Modified"
     },
     "101": {
@@ -279,7 +279,7 @@
       "name": "Display Mod Status"
     },
     "111": {
-      "value": 0,
+      "value": 1,
       "name": "SD Card Write Speed Error"
     },
     "112": {
