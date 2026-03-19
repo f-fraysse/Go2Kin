@@ -526,7 +526,7 @@ class CalibrationTab:
 
         # Auto-sync
         self.frame.after(0, lambda: status_var.set("Running audio sync..."))
-        synced_dir = self._run_calib_sync(filenames, video_dir, purpose, timestamp, status_var)
+        synced_dir = self._run_calib_sync(video_dir, purpose, timestamp, status_var)
 
         # Auto-populate the folder path
         if purpose == "extrinsic":
@@ -536,16 +536,21 @@ class CalibrationTab:
 
         if synced_dir:
             self.frame.after(0, lambda: folder_var.set(str(synced_dir)))
-            self.frame.after(0, lambda: status_var.set(f"Synced {len(filenames)} files"))
+            n_synced = len([f for f in synced_dir.iterdir() if f.suffix.lower() == ".mp4"])
+            self.frame.after(0, lambda: status_var.set(f"Synced {n_synced} files"))
         else:
             self.frame.after(0, lambda: status_var.set("Sync skipped (< 2 files)"))
 
-    def _run_calib_sync(self, filenames, video_dir, purpose, timestamp, status_var):
+    def _run_calib_sync(self, video_dir, purpose, timestamp, status_var):
         """Run audio sync on recorded calibration videos. Returns synced dir Path or None."""
         from audio_sync import (check_ffmpeg, check_audio_track, compute_sync_offsets,
                                 trim_and_sync_videos, AudioSyncError)
 
-        video_paths = sorted([str(f) for f in filenames if f.exists()])
+        prefix = f"{purpose}_{timestamp}"
+        video_paths = sorted([
+            str(f) for f in video_dir.iterdir()
+            if f.suffix.lower() == ".mp4" and f.is_file() and f.name.startswith(prefix)
+        ])
         if len(video_paths) < 2:
             return None
 

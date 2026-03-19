@@ -1,8 +1,9 @@
 """
 Audio-based multi-camera video synchronisation.
 
-Extracts audio from GoPro MP4 files, uses full cross-correlation
-to find time offsets, and trims videos to sync.
+Extracts audio from GoPro MP4 files, uses GCC-PHAT (Generalized
+Cross-Correlation with Phase Transform) to find time offsets,
+and trims videos to sync.
 
 Requires: ffmpeg (in PATH), numpy, scipy
 """
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
-from scipy.signal import correlate
+from numpy.fft import rfft, irfft
 
 
 SAMPLE_RATE = 48000  # GoPro native AAC rate
@@ -163,20 +164,36 @@ def detect_clap(audio: np.ndarray, sample_rate: int,
     return int(first_hit + peak_offset)
 
 
-def find_offset_xcorr(ref_audio: np.ndarray, other_audio: np.ndarray,
-                      sample_rate: int) -> tuple:
+def find_offset_gcc_phat(ref_audio: np.ndarray, other_audio: np.ndarray,
+                         sample_rate: int) -> tuple:
     """
-    Find time offset between two audio signals using full cross-correlation.
+    Find time offset between two audio signals using GCC-PHAT.
     Returns (offset_seconds, peak_correlation) where offset is positive if
-    other started recording earlier, and peak_correlation is normalised 0-1.
+    other started recording earlier. Peak correlation is the raw GCC-PHAT
+    peak value (theoretical max ~1.0 when phases perfectly align).
     """
-    corr = correlate(other_audio, ref_audio, mode="full")
-    peak_idx = np.argmax(np.abs(corr))
-    # In 'full' mode, zero-lag is at index len(ref_audio) - 1
-    offset_samples = peak_idx - (len(ref_audio) - 1)
-    # Normalised peak correlation (0 to 1)
-    norm = np.sqrt(np.sum(ref_audio**2) * np.sum(other_audio**2))
-    peak_corr = float(abs(corr[peak_idx]) / max(norm, 1e-10))
+    n = len(ref_audio) + len(other_audio) - 1
+    # Next power of 2 for FFT efficiency
+    n_fft = 1 << (n - 1).bit_length()
+
+    X1 = rfft(other_audio, n=n_fft)
+    X2 = rfft(ref_audio, n=n_fft)
+
+    # Cross-power spectrum with PHAT weighting
+    G = X1 * np.conj(X2)
+    G /= (np.abs(G) + 1e-10)
+
+    gcc = irfft(G, n=n_fft)
+
+    peak_idx = np.argmax(gcc)
+    peak_corr = float(gcc[peak_idx])
+
+    # Lag handling: indices > n_fft//2 are negative lags (wrap-around)
+    if peak_idx > n_fft // 2:
+        offset_samples = peak_idx - n_fft
+    else:
+        offset_samples = peak_idx
+
     return offset_samples / sample_rate, peak_corr
 
 
@@ -219,7 +236,7 @@ def compute_sync_offsets(video_paths: List[str],
                          progress_callback: Optional[Callable] = None
                          ) -> Dict[str, dict]:
     """
-    Compute sync offsets for a list of video files using full cross-correlation.
+    Compute sync offsets for a list of video files using GCC-PHAT.
 
     Returns dict keyed by video path with:
       offset_seconds, is_reference
@@ -246,7 +263,7 @@ def compute_sync_offsets(video_paths: List[str],
     ref_path = video_paths[0]
     ref_audio = audio_data[ref_path]
     ref_name = Path(ref_path).name
-    log(f"Cross-correlating against reference: {ref_name}")
+    log(f"GCC-PHAT against reference: {ref_name}")
 
     raw_offsets = {}
     peak_correlations = {}
@@ -255,7 +272,7 @@ def compute_sync_offsets(video_paths: List[str],
             raw_offsets[vp] = 0.0
             peak_correlations[vp] = 1.0
         else:
-            offset, peak_corr = find_offset_xcorr(ref_audio, audio_data[vp], sr)
+            offset, peak_corr = find_offset_gcc_phat(ref_audio, audio_data[vp], sr)
             raw_offsets[vp] = offset
             peak_correlations[vp] = peak_corr
             log(f"  {Path(vp).name}: offset {offset:.4f}s vs reference (correlation: {peak_corr:.3f})")
