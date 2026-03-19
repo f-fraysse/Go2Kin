@@ -136,3 +136,7 @@ config/camera_profiles/profile_C3501326042700.json
 config/camera_profiles/profile_C3501326054100.json
 config/camera_profiles/profile_C3501326054460.json
 config/camera_profiles/profile_C3501326062418.json
+
+#batch file to launch from desktop
+Go2Kin.bat
+Go2Kin.ico
