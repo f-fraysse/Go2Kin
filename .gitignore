@@ -130,9 +130,9 @@ docs/phase2b_prompt.md
 docs/phase3_prompt.md
 docs/phase4_prompt.md
 
-#temp pip files before / after adding pose2sim
-before.txt
-after.txt
-
-
-
+# setup specific camera configs
+config/cameras.json
+config/camera_profiles/profile_C3501326042700.json
+config/camera_profiles/profile_C3501326054100.json
+config/camera_profiles/profile_C3501326054460.json
+config/camera_profiles/profile_C3501326062418.json
