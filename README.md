@@ -46,7 +46,12 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
    pip install onnxruntime-gpu==1.20.1
    ```
 
-3. Set up the application config:
+4. Install opensim:
+    ```
+    conda install -c opensim-org opensim
+    ```
+
+5. Set up the application config:
    ```
    cp go2kin_config_template.json go2kin_config.json
    ```
@@ -57,15 +62,15 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
 
    If you skip this step, Go2Kin will prompt you to select a data root folder on first launch.
 
-4. Connect GoPro cameras via USB and power them on.
+6. Connect GoPro cameras via USB and power them on.
 
-5. Run the settings discovery tool once per camera model/firmware to generate a settings reference file:
+7. Run the settings discovery tool once per camera model/firmware to generate a settings reference file:
    ```
    python tools/discover_camera_settings.py <camera_serial_number>
    ```
    This creates a reference file in `config/settings_references/` that maps setting IDs to human-readable names and available options.
 
-6. Configure camera serial numbers in `go2kin_config.json` (see step 3).
+8. Configure camera serial numbers in `go2kin_config.json` (see step 3).
 
 ## Usage
 
