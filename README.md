@@ -37,6 +37,15 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
    conda install -c conda-forge ffmpeg
    ```
 
+3. Install pose2sim as a submodule:
+    ```
+   git submodule init
+   git submodule update
+   pip install -e ./code/pose2sim
+   pip uninstall onnxruntime
+   pip install onnxruntime-gpu==1.20.1
+   ```
+
 3. Set up the application config:
    ```
    cp go2kin_config_template.json go2kin_config.json
