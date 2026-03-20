@@ -90,7 +90,7 @@ handle_LR_swap = false # Might be useful if cameras film from the sagittal plane
 undistort_points = true # Better if distorted image (parallel lines curvy on the edge or at least one param > 10^-2), but unnecessary (and slightly slower) if distortions are low
 
 display_detection = false # Real-time display of the videos with pose estimation
-overwrite_pose = false # Set to false if you don't want to recalculate pose estimation when it has already been done
+overwrite_pose = true # Set to false if you don't want to recalculate pose estimation when it has already been done
 save_video = 'none' # 'to_video' or 'to_images', 'none', or ['to_video', 'to_images']
 output_format = 'openpose' # 'openpose', 'mmpose', 'deeplabcut', 'none' or a list of them # /!\ only 'openpose' is supported for now
 

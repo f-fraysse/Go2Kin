@@ -225,3 +225,7 @@ Original files are never modified. `trial.json` is updated with `synced: true` o
 
 - **ffmpeg** must be installed and in PATH (included when installed via `conda install -c conda-forge ffmpeg`)
 - **numpy**, **scipy**, and **matplotlib** (included in `requirements.txt`)
+
+## TODO
+
+- [ ] Set FPS in Pose2Sim config from video files — currently "Process Selected" only sets subject height/weight in the config template, but doesn't detect or set the video FPS to match the recordings
