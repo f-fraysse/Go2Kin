@@ -241,5 +241,6 @@ Potential optimisations (low hanging fruit):
 Misc / small:
 - move Calibration tab before Recording tab
 - extract Recording tab into code/GUI/recording_tab.py to match other tabs
+- extract Live Preview tab same as above
 - only generate one TOML calibration, then delete export_toml.py (keep capacity to only save intrinsics)
 
