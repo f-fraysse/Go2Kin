@@ -229,3 +229,8 @@ Original files are never modified. `trial.json` is updated with `synced: true` o
 ## TODO
 
 - [ ] Set FPS in Pose2Sim config from video files — currently "Process Selected" only sets subject height/weight in the config template, but doesn't detect or set the video FPS to match the recordings
+
+Potential optimisations (low hanging fruit):
+- increase chunk size for file download from GoPros (8kB currently) (trivial change on goproUSB.py)
+- defer or remove the creation of "stitched preview" after sync (takes ~10sec)
+- concurrent pose estimation for estimate_pose_all() (one thread + ONNX session per camera) and add configurable "pose_processes" parameter
