@@ -392,15 +392,20 @@ class VisualisationTab:
         if self._trc_overlay.get() and self._trc_data is not None:
             frame = self._overlay_trc(frame, frame_idx)
 
-        # BGR -> RGB -> PIL -> fit to canvas -> PhotoImage
+        # BGR -> RGB, resize with OpenCV (much faster than PIL LANCZOS), then to PhotoImage
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        pil_img = Image.fromarray(frame_rgb)
 
         canvas_w = self.canvas.winfo_width()
         canvas_h = self.canvas.winfo_height()
         if canvas_w > 1 and canvas_h > 1:
-            pil_img = self._fit_image(pil_img, canvas_w, canvas_h)
+            h, w = frame_rgb.shape[:2]
+            scale = min(canvas_w / w, canvas_h / h)
+            new_w = max(1, int(w * scale))
+            new_h = max(1, int(h * scale))
+            frame_rgb = cv2.resize(frame_rgb, (new_w, new_h),
+                                   interpolation=cv2.INTER_LINEAR)
 
+        pil_img = Image.fromarray(frame_rgb)
         self._photo = ImageTk.PhotoImage(pil_img)
         self.canvas.delete("all")
         self.canvas.create_image(canvas_w // 2, canvas_h // 2,
