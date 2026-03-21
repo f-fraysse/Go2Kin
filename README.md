@@ -90,10 +90,7 @@ Select or create projects, sessions, and subjects. Your last selection is rememb
 ### Tab 2 — Live Preview
 Stream a live preview from one camera at a time for positioning and framing. Includes real-time digital zoom control (slider, +/-, text entry). Preview runs at 1080p/30fps/Linear regardless of recording settings.
 
-### Tab 3 — Recording
-Select a participant and calibration file for the trial, enter a trial name, and start/stop synchronized recording across selected cameras. Files are downloaded from each camera and saved to the project directory (`[project]/sessions/[session]/[trial]/video/`). After download, audio synchronisation runs automatically — synced files appear in `video/synced/`. A session/trial tree view at the bottom shows all recorded trials. See **Video Synchronisation** below for details.
-
-### Tab 4 — Calibration
+### Tab 3 — Calibration
 Multi-camera calibration using a printed charuco board. The calibration pipeline computes lens parameters (intrinsic) and camera positions/orientations (extrinsic) for 3D triangulation. Includes:
 
 - **Charuco Board Config** — set board dimensions, square size, ArUco dictionary. Save a printable board image.
@@ -101,6 +98,9 @@ Multi-camera calibration using a printed charuco board. The calibration pipeline
 - **Extrinsic Calibration** — multi-camera pose estimation from synced videos. Includes PnP solving, outlier rejection, graph bridging, triangulation, and bundle adjustment.
 - **Set Origin** — stand the charuco board vertically in portrait mode at the lab origin. Aligns the coordinate system using a Umeyama similarity transform. Can be re-run after loading a saved calibration.
 - **Save/Load** — persist calibration to `config/calibration/calibration.json` (also auto-exports `camera_array_go2kin.toml` for Pose2Sim compatibility).
+
+### Tab 4 — Recording
+Select a participant and calibration file for the trial, enter a trial name, and start/stop synchronized recording across selected cameras. Files are downloaded from each camera and saved to the project directory (`[project]/sessions/[session]/[trial]/video/`). After download, audio synchronisation runs automatically — synced files appear in `video/synced/`. A session/trial tree view at the bottom shows all recorded trials. See **Video Synchronisation** below for details.
 
 ### Tab 5 — Processing
 Run the [Pose2Sim](https://github.com/perfanalytics/pose2sim) pipeline on recorded trials. Select trials from a tree view (with session grouping and checkbox selection), then click **Process Selected** to run pose estimation, triangulation, filtering, and kinematics sequentially. Real-time log output streams in the GUI. Pose2Sim is included as a git submodule at `code/pose2sim/`.
@@ -243,7 +243,6 @@ Potential optimisations (low hanging fruit):
 - concurrent pose estimation for estimate_pose_all() (one thread + ONNX session per camera) and add configurable "pose_processes" parameter
 
 Misc / small:
-- move Calibration tab before Recording tab
 - extract Recording tab into code/GUI/recording_tab.py to match other tabs
 - extract Live Preview tab same as above
 - only generate one TOML calibration, then delete export_toml.py (keep capacity to only save intrinsics)

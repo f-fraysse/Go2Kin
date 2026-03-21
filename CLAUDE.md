@@ -72,7 +72,7 @@ go2kin_config_template.json # Template for go2kin_config.json (tracked in git)
 - **CameraProfileManager** (`camera_profiles.py`): Singleton managing per-camera profiles and per-model settings references
 - **ProjectManager** (`project_manager.py`): Manages project/session/trial/subject file hierarchy at `data_root` (configured in `go2kin_config.json`). GUI-agnostic — handles only filesystem and JSON operations. See `docs/project_manager.md` for full architecture doc.
 - **ProjectTab** (`GUI/project_tab.py`): Project/session/subject selection UI. Persists last selection to `go2kin_config.json`.
-- **Go2KinMainWindow** (`GUI/main_window.py`): 5-tab tkinter GUI (Project, Preview, Recording, Calibration, Processing) + fixed bottom camera bar
+- **Go2KinMainWindow** (`GUI/main_window.py`): 6-tab tkinter GUI (Project, Preview, Calibration, Recording, Processing, Visualisation) + fixed bottom camera bar
 - **LivePreviewCapture** (`GUI/main_window.py`): Threaded OpenCV capture from UDP stream
 - **ProcessingTab** (`GUI/processing_tab.py`): Pose2Sim pipeline execution with trial selection tree, real-time log output, and batch processing
 - **pose2sim_builder** (`pose2sim_builder.py`): Stages Go2Kin trial data into Pose2Sim directory structure and runs the pipeline. See `docs/pose2sim_integration.md` for full documentation.

@@ -234,11 +234,11 @@ class Go2KinMainWindow:
         # Tab 1: Live Preview
         self.create_live_preview_tab()
 
-        # Tab 2: Recording
-        self.create_recording_tab()
-
-        # Tab 3: Calibration
+        # Tab 2: Calibration
         self.create_calibration_tab()
+
+        # Tab 3: Recording
+        self.create_recording_tab()
 
         # Tab 4: Processing
         self.create_processing_tab()
