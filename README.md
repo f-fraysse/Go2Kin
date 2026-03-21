@@ -79,7 +79,7 @@ conda activate Go2Kin
 python code/go2kin.py
 ```
 
-The GUI has five tabs and a fixed bottom bar:
+The GUI has six tabs and a fixed bottom bar:
 
 ### Bottom Bar — Camera Status & Controls
 Always visible at the bottom of the window, regardless of which tab is selected. Shows per-camera connection status (green/red indicator), connect/disconnect toggle buttons, and battery status. Includes global Resolution and FPS dropdowns that apply to all connected cameras simultaneously. Camera serial numbers are read from `go2kin_config.json`.
@@ -113,6 +113,9 @@ The processing pipeline:
 
 Batch processing runs trials sequentially. A **Stop** button halts processing after the current step completes. See [`docs/pose2sim_integration.md`](docs/pose2sim_integration.md) for technical details.
 
+### Tab 6 — Visualisation (experimental)
+Slow and experimental. Plays back synced trial video with optional overlay of 2D pose keypoints (from per-camera detection) and 3D keypoints (triangulated markers reprojected via camera calibration). Useful for visually checking pose detection and triangulation quality. See [`docs/Visualisation.md`](docs/Visualisation.md) for technical details.
+
 ### Attribution
 
 The calibration pipeline is adapted from [Caliscope](https://github.com/mprib/caliscope) by Mac Prible, licensed under BSD-2-Clause. Caliscope is a full-featured multi-camera calibration and motion capture application. Go2Kin extracts the core calibration algorithms (charuco detection, intrinsic/extrinsic calibration, bundle adjustment, coordinate alignment) and replaces the UI and persistence layers: PySide6 with tkinter, pyvista with matplotlib, TOML with JSON, and numba JIT with pure numpy. See [`code/calibration/CALIBRATION.md`](code/calibration/CALIBRATION.md) for full technical documentation and per-file provenance.
@@ -139,6 +142,7 @@ code/
     project_tab.py        # Project tab (project/session/subject management)
     calibration_tab.py    # Calibration tab (charuco config, intrinsic, extrinsic, origin)
     processing_tab.py     # Processing tab (Pose2Sim pipeline execution)
+    visualisation_tab.py  # Visualisation tab (video playback + keypoint overlays)
   goproUSB/
     goproUSB.py           # GoPro HTTP API client (GPcam class)
   calibration/            # Camera calibration pipeline (adapted from Caliscope, BSD-2-Clause)

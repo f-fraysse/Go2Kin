@@ -242,6 +242,9 @@ class Go2KinMainWindow:
 
         # Tab 4: Processing
         self.create_processing_tab()
+
+        # Tab 5: Visualisation
+        self.create_visualisation_tab()
     
     def create_camera_bottom_bar(self):
         """Create a fixed bottom panel with camera status, controls, and global settings"""
@@ -419,6 +422,15 @@ class Go2KinMainWindow:
         """Create the Pose2Sim processing tab"""
         from GUI.processing_tab import ProcessingTab
         self.processing_tab = ProcessingTab(
+            self.notebook, self.project_manager,
+            get_current_project=lambda: self.project_tab.get_current_project(),
+            get_current_session=lambda: self.project_tab.get_current_session(),
+        )
+
+    def create_visualisation_tab(self):
+        """Create the visualisation/playback tab"""
+        from GUI.visualisation_tab import VisualisationTab
+        self.visualisation_tab = VisualisationTab(
             self.notebook, self.project_manager,
             get_current_project=lambda: self.project_tab.get_current_project(),
             get_current_session=lambda: self.project_tab.get_current_session(),
