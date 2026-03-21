@@ -11,7 +11,7 @@ GoPro control via USB HTTP API (inspired by https://github.com/drukasz/goproUSB 
 
 Calibration method taken from Caliscope (https://github.com/mprib/caliscope)
 
-Demo video - note this is Pose2Sim output (OpenSim visualisation) NOT the output of this repo! But this shows that good quality data can be obtained reliably with 4x GoPro and Caliscope calibration.
+Demo video - GoPro footage + OpenSim output
 
 https://github.com/user-attachments/assets/df12f3de-d97a-499a-bcfe-97afe6419e71
 
