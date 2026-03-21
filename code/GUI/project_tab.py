@@ -276,9 +276,15 @@ class ProjectTab:
 
         last_project = self.app_config.get("last_project", "")
         if last_project and last_project in projects:
-            self._select_project(last_project)
+            # Set project state without clearing last_session
+            # (_select_project would clear it and save to disk)
+            self._current_project = last_project
+            self.project_combo.set(last_project)
+            self._refresh_sessions()
+            self._refresh_subjects()
 
             sessions = list(self.session_combo["values"])
             last_session = self.app_config.get("last_session", "")
             if last_session and last_session in sessions:
-                self._select_session(last_session)
+                self._current_session = last_session
+                self.session_combo.set(last_session)
