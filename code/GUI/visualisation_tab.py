@@ -282,6 +282,7 @@ class VisualisationTab:
         """Switch to the selected camera view."""
         if cam_num == self._active_camera:
             return
+        saved_frame = max(self._current_frame_idx, 0)
         self._active_camera = cam_num
         # Update button appearance
         for n, btn in self._cam_buttons.items():
@@ -290,6 +291,10 @@ class VisualisationTab:
             elif n in self._available_cameras:
                 btn.configure(relief=tk.RAISED, bg="SystemButtonFace")
         self._load_video()
+        # Restore frame position (clamped to new video length)
+        if self._cap and self._total_frames > 0:
+            target = min(saved_frame, self._total_frames - 1)
+            self._display_frame(target)
 
     # =========================================================================
     # Video loading and display
@@ -439,7 +444,7 @@ class VisualisationTab:
         minutes = int(t_sec // 60)
         seconds = t_sec % 60
         self._frame_label.configure(
-            text=f"Frame: {frame_idx} / {total - 1}  |  {minutes}:{seconds:05.2f}")
+            text=f"Frame: {frame_idx + 1} / {total}  |  {minutes}:{seconds:05.2f}")
 
     def _update_info(self):
         """Update info label with trial metadata."""
@@ -453,8 +458,8 @@ class VisualisationTab:
             fps = f"{self._fps:.0f}" if self._fps else "?"
             w = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH)) if self._cap else 0
             h = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) if self._cap else 0
-            pose_2d = "yes" if self._pose_json_dir else "no"
-            pose_3d = "yes" if self._trc_data is not None else "no"
+            pose_2d = str(len(list(self._pose_json_dir.glob("*.json")))) if self._pose_json_dir else "no"
+            pose_3d = str(self._trc_data.shape[0]) if self._trc_data is not None else "no"
             self._info_label.configure(
                 text=f"Subject: {subject}\n"
                      f"FPS: {fps}  |  {w}x{h}\n"
