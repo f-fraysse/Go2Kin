@@ -46,6 +46,7 @@ class VisualisationTab:
         self._current_frame_idx = -1
         self._playing = False
         self._play_job = None
+        self._loop_enabled = True
         self._photo = None  # prevent GC of displayed image
 
         # 2D pose overlay state
@@ -157,9 +158,25 @@ class VisualisationTab:
         controls = ttk.Frame(right)
         controls.pack(fill=tk.X, padx=5, pady=5)
 
-        self.play_btn = ttk.Button(controls, text="Play", width=6,
+        self.rewind_btn = ttk.Button(controls, text="<<", width=3,
+                                     command=self._rewind, state=tk.DISABLED)
+        self.rewind_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        self.step_back_btn = ttk.Button(controls, text="-1", width=3,
+                                       command=self._step_back, state=tk.DISABLED)
+        self.step_back_btn.pack(side=tk.LEFT, padx=(0, 2))
+
+        self.play_btn = ttk.Button(controls, text="Play", width=5,
                                    command=self._toggle_play, state=tk.DISABLED)
-        self.play_btn.pack(side=tk.LEFT, padx=(0, 5))
+        self.play_btn.pack(side=tk.LEFT, padx=(0, 2))
+
+        self.step_fwd_btn = ttk.Button(controls, text="+1", width=3,
+                                       command=self._step_forward, state=tk.DISABLED)
+        self.step_fwd_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        self.loop_btn = tk.Button(controls, text="Loop", width=5,
+                                  command=self._toggle_loop, relief=tk.SUNKEN)
+        self.loop_btn.pack(side=tk.LEFT, padx=(0, 5))
 
         self.scrubber = ttk.Scale(controls, from_=0, to=0,
                                   orient=tk.HORIZONTAL,
@@ -331,6 +348,9 @@ class VisualisationTab:
         # Update scrubber
         self.scrubber.configure(to=max(0, self._total_frames - 1))
         self.play_btn.configure(state=tk.NORMAL)
+        self.rewind_btn.configure(state=tk.NORMAL)
+        self.step_back_btn.configure(state=tk.NORMAL)
+        self.step_fwd_btn.configure(state=tk.NORMAL)
 
         # Detect pose data (2D and 3D)
         self._detect_pose_data()
@@ -360,6 +380,9 @@ class VisualisationTab:
         self._cam_rvec = None
         self._cam_tvec = None
         self.play_btn.configure(state=tk.DISABLED)
+        self.rewind_btn.configure(state=tk.DISABLED)
+        self.step_back_btn.configure(state=tk.DISABLED)
+        self.step_fwd_btn.configure(state=tk.DISABLED)
         self.scrubber.configure(to=0)
         self._frame_label.configure(text="Frame: - / -")
         self._info_label.configure(text="No trial loaded")
@@ -478,6 +501,25 @@ class VisualisationTab:
         else:
             self._start_playback()
 
+    def _step_forward(self):
+        self._stop_playback()
+        if self._cap and self._current_frame_idx < self._total_frames - 1:
+            self._display_frame(self._current_frame_idx + 1)
+
+    def _step_back(self):
+        self._stop_playback()
+        if self._cap and self._current_frame_idx > 0:
+            self._display_frame(self._current_frame_idx - 1)
+
+    def _rewind(self):
+        self._stop_playback()
+        if self._cap:
+            self._display_frame(0)
+
+    def _toggle_loop(self):
+        self._loop_enabled = not self._loop_enabled
+        self.loop_btn.configure(relief=tk.SUNKEN if self._loop_enabled else tk.RAISED)
+
     def _start_playback(self):
         if not self._cap:
             return
@@ -498,8 +540,11 @@ class VisualisationTab:
 
         next_idx = self._current_frame_idx + 1
         if next_idx >= self._total_frames:
-            self._stop_playback()
-            return
+            if self._loop_enabled:
+                next_idx = 0
+            else:
+                self._stop_playback()
+                return
 
         t_start = time.perf_counter()
         self._display_frame(next_idx)

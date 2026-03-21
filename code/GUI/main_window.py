@@ -113,7 +113,7 @@ class Go2KinMainWindow:
     def __init__(self, root, project_manager=None, app_config=None, app_config_path=None):
         self.root = root
         self.root.title("Go2Kin - Multi-Camera GoPro Control")
-        self.root.geometry("900x700")
+        self.root.geometry("1400x900")
 
         # Project manager and app-level config
         self.project_manager = project_manager
