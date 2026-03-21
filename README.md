@@ -243,8 +243,7 @@ Potential optimisations (low hanging fruit):
 - concurrent pose estimation for estimate_pose_all() (one thread + ONNX session per camera) and add configurable "pose_processes" parameter
 
 Misc / small:
-- extract Recording tab into code/GUI/recording_tab.py to match other tabs
-- extract Live Preview tab same as above
+- extract Recording and Live Preview tabs into dedicated files (`recording_tab.py`, `preview_tab.py`) to match other tabs — reduces main_window.py by ~35%. See [`docs/extract_preview_recording_tabs.md`](docs/extract_preview_recording_tabs.md) for plan.
 - only generate one TOML calibration, then delete export_toml.py (keep capacity to only save intrinsics)
 - auto load latest active session and latest calibration when launching GUI
 - visualisation tab: does not handle 2d / 3d keypoints having different number of frames than video (e.g. if person is not detected at start of recording) - need to investigate what pose2sim does with video frames that do not return a pose / if it discards some video frames in whole pipeline
