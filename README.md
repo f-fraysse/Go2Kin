@@ -243,4 +243,4 @@ Misc / small:
 - extract Recording tab into code/GUI/recording_tab.py to match other tabs
 - extract Live Preview tab same as above
 - only generate one TOML calibration, then delete export_toml.py (keep capacity to only save intrinsics)
-
+- auto load latest active session and latest calibration when launching GUI
