@@ -1,0 +1,4 @@
+cd code/pose2sim
+git remote add myfork https://github.com/YourUsername/pose2sim.git
+git fetch myfork
+git merge myfork/parallel-pose-detection
