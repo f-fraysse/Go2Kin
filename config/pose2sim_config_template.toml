@@ -79,7 +79,7 @@ det_frequency = 4 # Run person detection only every N frames, and inbetween trac
                   # Equal to or greater than 1, can be as high as you want in simple uncrowded cases. Much faster, but might be less accurate. 
 device = 'CUDA' # 'auto', 'CPU', 'CUDA', 'MPS', 'ROCM'
 backend = 'onnxruntime' # 'auto', 'openvino', 'onnxruntime', 'opencv'
-parallel_pose_detection = 'off' # 'off' = sequential (default), 'auto' = one thread per video,
+parallel_pose_detection = 'auto' # 'off' = sequential (default), 'auto' = one thread per video,
                                 # or an integer (e.g., 2) to specify the number of threads.
                                 # Each thread loads its own ONNX model into VRAM (~0.5-2GB each).
                                 # Higher thread counts (4+) need good CPU, GPU, and VRAM.

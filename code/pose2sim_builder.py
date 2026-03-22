@@ -11,9 +11,15 @@ import re
 import shutil
 import sys
 import threading
+import time
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Regex to strip ANSI escape codes (cursor movement, colors, etc.)
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+# Extract tqdm description key (text before ":  NN%")
+_TQDM_KEY_RE = re.compile(r'^(.*?):\s+\d+%')
 
 # Path to the Config.toml template shipped with Go2Kin
 _TEMPLATE_PATH = Path(__file__).parent.parent / "config" / "pose2sim_config_template.toml"
@@ -149,50 +155,94 @@ def build_pose2sim_project(project_manager, project, session, trial_name,
 
 
 class _LogForwarder(logging.Handler):
-    """Logging handler that forwards records to a callback function."""
+    """Logging handler that forwards records to a callback and terminal."""
 
-    def __init__(self, callback):
+    def __init__(self, callback, terminal_stream=None):
         super().__init__()
         self.callback = callback
+        self.terminal_stream = terminal_stream
 
     def emit(self, record):
         try:
             msg = self.format(record)
             self.callback(msg)
+            if self.terminal_stream:
+                self.terminal_stream.write(msg + "\n")
+                self.terminal_stream.flush()
         except Exception:
             pass
 
 
 class _StreamRedirector:
-    """Redirects a stream (stdout/stderr) to a callback."""
+    """Redirects a stream (stdout/stderr) to a callback, with tqdm awareness."""
 
-    def __init__(self, callback, original):
+    _THROTTLE_INTERVAL = 0.15  # max ~7 GUI updates/sec per progress bar
+
+    def __init__(self, callback, progress_callback, original):
         self.callback = callback
+        self.progress_callback = progress_callback
         self.original = original
+        self._last_progress_times = {}  # per-key throttle timestamps
 
     def write(self, text):
-        if text and text.strip():
-            self.callback(text.rstrip())
+        # Always pass through to terminal unmodified
         if self.original:
             self.original.write(text)
+
+        if not text or not text.strip():
+            return
+
+        # Strip ANSI escape codes for GUI processing (cursor-up, colors, etc.)
+        clean = _ANSI_RE.sub('', text)
+        if not clean.strip():
+            return
+
+        # Detect tqdm: any \r in the cleaned text indicates progress bar updates
+        if "\r" in clean:
+            # Split on \r, process each non-empty segment as a progress line
+            segments = clean.split("\r")
+            now = time.time()
+            for seg in segments:
+                line = seg.strip()
+                if not line:
+                    continue
+                # Extract key from tqdm description (e.g. "Processing dancing_GP2.mp4")
+                m = _TQDM_KEY_RE.match(line)
+                key = m.group(1).strip() if m else "_progress"
+                # Per-key throttle
+                last = self._last_progress_times.get(key, 0)
+                if now - last >= self._THROTTLE_INTERVAL:
+                    self._last_progress_times[key] = now
+                    if self.progress_callback:
+                        self.progress_callback(key, line)
+        else:
+            # Normal output — forward each non-empty line
+            for line in clean.splitlines():
+                cleaned = line.strip()
+                if cleaned:
+                    self.callback(cleaned)
 
     def flush(self):
         if self.original:
             self.original.flush()
 
 
-def run_pose2sim_pipeline(processed_path, log_callback=None, stop_event=None):
+def run_pose2sim_pipeline(processed_path, log_callback=None,
+                          progress_callback=None, stop_event=None):
     """Run the Pose2Sim pipeline on a prepared directory.
 
     Args:
         processed_path: Path to the processed/ directory with Config.toml
-        log_callback: Optional callable(str) for log messages
+        log_callback: Optional callable(str) for log messages (appends new line)
+        progress_callback: Optional callable(key, msg) for progress updates (replaces line by key)
         stop_event: Optional threading.Event to request stop between steps
 
     Returns:
         True on success, False on failure or stop
     """
     log = log_callback or (lambda msg: None)
+    # Fallback: if no progress_callback, just append via log_callback (ignore key)
+    progress = progress_callback or (lambda key, msg: log(msg))
     original_cwd = os.getcwd()
     handler = None
     old_stdout = sys.stdout
@@ -203,11 +253,11 @@ def run_pose2sim_pipeline(processed_path, log_callback=None, stop_event=None):
 
         # Set up log forwarding
         if log_callback:
-            handler = _LogForwarder(log_callback)
+            handler = _LogForwarder(log_callback, terminal_stream=old_stderr)
             handler.setLevel(logging.DEBUG)
             logging.getLogger().addHandler(handler)
-            sys.stdout = _StreamRedirector(log_callback, old_stdout)
-            sys.stderr = _StreamRedirector(log_callback, old_stderr)
+            sys.stdout = _StreamRedirector(log_callback, progress, old_stdout)
+            sys.stderr = _StreamRedirector(log_callback, progress, old_stderr)
 
         # Import Pose2Sim (submodule at code/pose2sim/)
         pose2sim_path = str(Path(__file__).parent / "pose2sim")

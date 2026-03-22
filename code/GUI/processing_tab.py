@@ -34,6 +34,7 @@ class ProcessingTab:
         self._trial_map = {}          # iid -> (session, trial_name)
         self._processing = False
         self._stop_event = threading.Event()
+        self._progress_marks = {}     # key -> tk.Text mark name (for tqdm bars)
 
         # Build UI
         self.frame = ttk.Frame(notebook)
@@ -231,8 +232,40 @@ class ProcessingTab:
 
         self.root.after(0, update_text)
 
+    def log_progress(self, key, message):
+        """Thread-safe progress update — each key gets its own updating line."""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        log_message = f"[{timestamp}] {message}\n"
+        # Sanitize key for use as a tk.Text mark name
+        mark_name = f"prog_{hash(key) & 0xFFFFFFFF}"
+
+        def update_text():
+            self.log_text.config(state="normal")
+            if mark_name in self._progress_marks:
+                # Replace existing progress line at mark position
+                try:
+                    mark_pos = self.log_text.index(mark_name)
+                    line_end = f"{mark_pos} lineend +1c"
+                    self.log_text.delete(mark_pos, line_end)
+                    self.log_text.insert(mark_name, log_message)
+                except tk.TclError:
+                    # Mark was lost — fall back to append
+                    self.log_text.insert(tk.END, log_message)
+            else:
+                # Append new progress line and set a mark at its start
+                insert_pos = self.log_text.index("end -1c")
+                self.log_text.insert(tk.END, log_message)
+                self.log_text.mark_set(mark_name, insert_pos)
+                self.log_text.mark_gravity(mark_name, "left")
+                self._progress_marks[mark_name] = True
+            self.log_text.see(tk.END)
+            self.log_text.config(state="disabled")
+
+        self.root.after(0, update_text)
+
     def _clear_log(self):
         """Clear the log text widget."""
+        self._progress_marks.clear()
         self.log_text.config(state="normal")
         self.log_text.delete("1.0", tk.END)
         self.log_text.config(state="disabled")
@@ -306,10 +339,12 @@ class ProcessingTab:
                 continue
 
             # Run pipeline
+            self._progress_marks.clear()
             self.log(f"Processing {session}/{trial_name}...")
             ok = run_pose2sim_pipeline(
                 processed_path,
                 log_callback=self.log,
+                progress_callback=self.log_progress,
                 stop_event=self._stop_event,
             )
 
