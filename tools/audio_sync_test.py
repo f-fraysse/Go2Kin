@@ -16,20 +16,20 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 # === CONFIGURE THESE ===
-VIDEO_DIR = Path(r"D:\Markerless_Projects\tests_Francois\sessions\test_full_pipeline\audio_sync_soft\video")
+VIDEO_DIR = Path(r"D:\Markerless_Projects\tests_Francois\sessions\test_full_pipeline\audio_sync_manual_001\video")
 VIDEO_FILES = [
-    VIDEO_DIR / "audio_sync_soft_GP1.MP4",
-    VIDEO_DIR / "audio_sync_soft_GP2.MP4",
-    VIDEO_DIR / "audio_sync_soft_GP3.MP4",
-    VIDEO_DIR / "audio_sync_soft_GP4.MP4",
+    VIDEO_DIR / "audio_sync_manual_001_GP1.MP4",
+    VIDEO_DIR / "audio_sync_manual_001_GP2.MP4",
+    VIDEO_DIR / "audio_sync_manual_001_GP3.MP4",
+    VIDEO_DIR / "audio_sync_manual_001_GP4.MP4",
 ]
 SAMPLE_RATE = 48000
 FPS = 100
 FFMPEG = r"D:\Miniconda3\envs\Go2Kin\Library\bin\ffmpeg"
 SCRIPT_DIR = Path(__file__).parent
 SMOOTHING_WINDOW = 240  # 5 ms at 48 kHz
-CLAP_COOLDOWN = int(0.4 * SAMPLE_RATE)  # 0.4s between claps
-PEAK_HEIGHT_FACTOR = 0.3
+CLAP_COOLDOWN = int(0.3 * SAMPLE_RATE)  # 0.3s between claps
+PEAK_HEIGHT_FACTOR = 0.2
 
 
 def extract_audio_to_wav(video_path, output_wav):

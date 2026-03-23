@@ -24,6 +24,8 @@ from goproUSB import GPcam
 # Add code directory to path for camera_profiles
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from camera_profiles import get_profile_manager
+import sounddevice as sd
+import numpy as np
 
 class LivePreviewCapture:
     """Simplified video capture class for live preview with threading optimization"""
@@ -141,6 +143,10 @@ class Go2KinMainWindow:
         self.recording_thread = None
         self.start_time = None
         self._bar_timer_running = False
+
+        # Sync sound (generated on the fly — HDMI primer + two claps)
+        self._sync_sound_sr = 44100
+        self._sync_sound_data = self._generate_sync_sound()
         
         # Live preview state
         self.preview_active = False
@@ -314,6 +320,11 @@ class Go2KinMainWindow:
         settings_frame = ttk.Frame(bar_frame)
         settings_frame.pack(side=tk.RIGHT)
 
+        self.sync_sound_enabled = tk.BooleanVar(value=False)
+        self.sync_sound_checkbox = ttk.Checkbutton(settings_frame, text="Sync sound",
+                        variable=self.sync_sound_enabled, state="disabled")
+        self.sync_sound_checkbox.pack(side=tk.LEFT, padx=(0, 12))
+
         self.rec_delay_enabled = tk.BooleanVar(value=False)
         ttk.Checkbutton(settings_frame, text="Rec. delay",
                         variable=self.rec_delay_enabled).pack(side=tk.LEFT, padx=(0, 0))
@@ -431,6 +442,7 @@ class Go2KinMainWindow:
             run_rec_delay=self._run_rec_delay,
             start_bar_timer=self._start_bar_timer,
             stop_bar_timer=self._stop_bar_timer,
+            play_sync_sound=self._play_sync_sound,
         )
 
     def create_processing_tab(self):
@@ -536,6 +548,7 @@ class Go2KinMainWindow:
 
         self.progress_text = tk.Text(text_frame, height=8, state="disabled",
                                    font=("Consolas", 9), wrap=tk.WORD)
+        self.progress_text.tag_configure("warning", foreground="red")
         scrollbar = ttk.Scrollbar(text_frame, orient="vertical", command=self.progress_text.yview)
         self.progress_text.configure(yscrollcommand=scrollbar.set)
         self.progress_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -1639,6 +1652,9 @@ class Go2KinMainWindow:
             self.root.after(0, self.start_timer)
             self.root.after(0, self._start_bar_timer)
 
+            # Play sync sound (1s delay + two claps) if enabled
+            self._play_sync_sound()
+
             # Wait for stop signal
             while self.recording:
                 time.sleep(0.5)
@@ -1709,28 +1725,22 @@ class Go2KinMainWindow:
                     raise AudioSyncError(f"No audio track in: {name}")
                 self.log_progress(f"  Audio confirmed: {name}")
 
-            # Compute sync offsets (now includes peak_correlation)
-            self.log_progress("Analysing audio for cross-correlation sync...")
+            # Compute sync offsets (onset-based dual-clap detection)
+            self.log_progress("Analysing audio for onset-based sync...")
             offsets = compute_sync_offsets(
                 video_paths,
                 output_dir=str(video_dir),
                 progress_callback=lambda msg: self.log_progress(f"  {msg}")
             )
 
-            # Log offset + correlation results
-            low_quality = False
+            # Check for warnings
             for path, info in offsets.items():
-                name = Path(path).name
-                ref = " (REFERENCE)" if info["is_reference"] else ""
-                corr = info.get("peak_correlation", 0.0)
-                self.log_progress(
-                    f"  {name}: trim {info['offset_seconds']:.4f}s  "
-                    f"correlation: {corr:.3f}{ref}")
-                if not info["is_reference"] and corr < 0.7:
-                    low_quality = True
+                if info.get("status") == "WARN":
+                    name = Path(path).name
                     self.log_progress(
-                        f"  WARNING: Low sync quality for {name} (correlation = {corr:.3f}). "
-                        f"Consider re-recording with a louder clap.")
+                        f"  WARNING: Inconsistent clap offsets for {name}. "
+                        f"Consider re-recording with clearer claps.",
+                        tag="warning")
 
             # Trim and sync videos
             self.log_progress("Trimming videos (stream copy, no re-encoding)...")
@@ -1775,6 +1785,33 @@ class Go2KinMainWindow:
                             self.rec_delay_countdown_label.config(text=str(r)))
             time.sleep(1)
         self.root.after(0, lambda: self.rec_delay_countdown_label.config(text=""))
+
+    def _generate_sync_sound(self):
+        """Generate sync sound: 1.5s HDMI primer + two 10ms clap impulses."""
+        sr = self._sync_sound_sr
+        # 1.5s near-silent primer to wake HDMI audio devices
+        primer = (np.random.randn(int(sr * 1.5)) * 0.001).astype(np.float32)
+        # 10ms 1kHz sine burst
+        t = np.arange(int(sr * 0.01)) / sr
+        impulse = (np.sin(2 * np.pi * 1000 * t) * 0.98).astype(np.float32)
+        # Gaps
+        gap = np.zeros(int(sr * 0.5), dtype=np.float32)
+        tail = np.zeros(int(sr * 0.5), dtype=np.float32)
+        return np.concatenate([primer, impulse, gap, impulse, tail])
+
+    def _play_sync_sound(self):
+        """Play sync sound (primer + two claps). Call from background thread."""
+        if not self.sync_sound_enabled.get():
+            return
+        if self._sync_sound_data is None:
+            return
+        try:
+            print("Sync sound: playing...")
+            sd.play(self._sync_sound_data, self._sync_sound_sr)
+            sd.wait()
+            print("Sync sound: playback complete")
+        except Exception as e:
+            print(f"Sync sound playback failed: {e}")
 
     def _start_bar_timer(self):
         """Start the bottom bar mm:ss timer (red label). Called from GUI thread."""
@@ -1858,14 +1895,17 @@ class Go2KinMainWindow:
         self.trial_name_var.set(new_name)
         self.log_progress(f"Trial name updated to: {new_name}")
 
-    def log_progress(self, message):
+    def log_progress(self, message, tag=None):
         """Log a message to the progress text area (thread-safe)."""
         timestamp = datetime.now().strftime("%H:%M:%S")
         log_message = f"[{timestamp}] {message}\n"
 
         def update_text():
             self.progress_text.config(state="normal")
-            self.progress_text.insert(tk.END, log_message)
+            if tag:
+                self.progress_text.insert(tk.END, log_message, tag)
+            else:
+                self.progress_text.insert(tk.END, log_message)
             self.progress_text.see(tk.END)
             self.progress_text.config(state="disabled")
 

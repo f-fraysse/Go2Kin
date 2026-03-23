@@ -132,14 +132,17 @@ go2kin_config_template.json # Template for go2kin_config.json (tracked in git)
 Audio synchronisation runs automatically after each recording completes and files are downloaded. No manual button or file selection required.
 1. After all MP4 files download, sync starts automatically (skipped if fewer than 2 files)
 2. Extracts first 3 seconds of audio from each file (ffmpeg pipe → numpy)
-3. Full cross-correlation (`scipy.signal.correlate`) of entire audio signals to find precise time offsets
-4. `compute_sync_offsets()` returns offset + normalised `peak_correlation` (0–1) per camera pair. If any pair < 0.7, a warning is logged
-5. Reference = camera that started recording last (largest offset). Other files trimmed from start to align
-6. All files trimmed to shortest common duration (time-based)
-7. Frame equalization: counts frames in each output, trims excess files to the minimum frame count (`-frames:v N -c copy`)
-8. Output: `video/synced/` subfolder with trimmed files + `stitched_videos.mp4` (auto-sized grid preview, 480x480 per camera) + `audio_waveforms.png` (diagnostic plot)
-9. Uses ffmpeg stream-copy for trimming (no re-encoding, lossless). Stitched preview re-encodes at low resolution.
-10. `trial.json` updated with `synced: true` on success, `synced: false` on failure
+3. Onset-based sync: Hilbert envelope → smoothed derivative (5ms window) → threshold crossing detection (20% of peak, 0.3s cooldown)
+4. Detects 1–2 clap onsets per camera. Dual-clap mode enables consistency check (clap1 vs clap2 offsets must agree within 1 frame)
+5. `compute_sync_offsets()` returns `offset_seconds`, `is_reference`, and `status` (REF/PASS/WARN/PASS (1 clap)) per camera. FPS read from video via ffprobe
+6. Reference = camera with earliest clap onset. Other files trimmed from start to align
+7. All files trimmed to shortest common duration (time-based)
+8. Frame equalization: counts frames in each output, trims excess files to the minimum frame count (`-frames:v N -c copy`)
+9. Output: `video/synced/` subfolder with trimmed files + `stitched_videos.mp4` (auto-sized grid preview, 480x480 per camera) + `sync_onsets.png` (onset detection plot)
+10. Uses ffmpeg stream-copy for trimming (no re-encoding, lossless). Stitched preview re-encodes at low resolution.
+11. `trial.json` updated with `synced: true` on success, `synced: false` on failure
+12. Console log shows step-by-step onset detection with summary table. Warnings displayed in red if any camera has inconsistent clap offsets.
+13. **Sync sound** (disabled): Bottom bar checkbox for automatic speaker-generated clap playback. Currently disabled — requires a louder/closer speaker than the lab HDMI monitor.
 
 ## Camera Calibration
 
@@ -188,4 +191,4 @@ Synced folder MP4 filenames must follow `{trial}_GP{N}.mp4` convention (e.g., `T
 ## Known Issues / TODO
 
 - **Video quality investigation (paused)**: Downloaded videos appear smoothed/processed. Confirmed the correct MP4 is downloaded (not LRV). Added High bitrate (182), 8-Bit depth (183), and Standard profile (184) to connect settings. Protune settings (Sharpness 117, Color 116, etc.) are not officially exposed via the HTTP API. Next step: run `tools/test_video_quality.py` to compare Easy Mode vs Pro Mode output, and/or set Protune options manually on camera LCD.
-- **Audio sync offset accuracy (investigating)**: Cross-correlation offset values sometimes appear inconsistent with visual inspection of audio waveforms. Sync functionality works correctly (files are trimmed and aligned), but the computed offsets may not be optimal. Will revisit the correlation algorithm — potential areas: normalisation method, audio extraction duration, or sample rate handling.
+- **Sync sound feature (disabled)**: Automatic speaker-generated clap playback for hands-free sync. Implemented but disabled — lab HDMI speaker at ~7m is too quiet for GoPro mics. Needs testing with a louder/closer speaker.

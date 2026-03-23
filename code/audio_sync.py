@@ -1,9 +1,8 @@
 """
 Audio-based multi-camera video synchronisation.
 
-Extracts audio from GoPro MP4 files, uses GCC-PHAT (Generalized
-Cross-Correlation with Phase Transform) to find time offsets,
-and trims videos to sync.
+Extracts audio from GoPro MP4 files, detects clap onsets using
+Hilbert envelope + derivative threshold crossing, and trims videos to sync.
 
 Requires: ffmpeg (in PATH), numpy, scipy
 """
@@ -16,11 +15,14 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
-from numpy.fft import rfft, irfft
+from scipy.signal import hilbert
 
 
 SAMPLE_RATE = 48000  # GoPro native AAC rate
-AUDIO_DURATION = 3.0  # seconds to analyse for cross-correlation sync
+AUDIO_DURATION = 3.0  # seconds to analyse for onset detection
+SMOOTHING_WINDOW = 240  # 5 ms at 48 kHz
+CLAP_COOLDOWN_SECONDS = 0.3  # minimum gap between claps
+PEAK_HEIGHT_FACTOR = 0.2  # threshold = 20% of max derivative
 
 
 class AudioSyncError(Exception):
@@ -128,107 +130,112 @@ def extract_audio(video_path: str, duration: float = AUDIO_DURATION,
     return samples, SAMPLE_RATE
 
 
-def detect_clap(audio: np.ndarray, sample_rate: int,
-                threshold_factor: float = 3.0) -> Optional[int]:
+# ──────────────────────────────────────────────
+# Onset detection algorithm
+# ──────────────────────────────────────────────
+
+def compute_envelope(audio: np.ndarray,
+                     smoothing_window: int = SMOOTHING_WINDOW) -> np.ndarray:
+    """Hilbert envelope with moving-average smoothing."""
+    analytic = hilbert(audio)
+    env = np.abs(analytic)
+    kernel = np.ones(smoothing_window) / smoothing_window
+    return np.convolve(env, kernel, mode="same")
+
+
+def compute_derivative(envelope: np.ndarray) -> np.ndarray:
+    """First derivative of envelope, clipped to positive only (rising edges)."""
+    deriv = np.concatenate(([0], np.diff(envelope)))
+    return np.maximum(deriv, 0)
+
+
+def detect_onsets(derivative: np.ndarray, sample_rate: int,
+                  peak_height_factor: float = PEAK_HEIGHT_FACTOR,
+                  clap_cooldown_seconds: float = CLAP_COOLDOWN_SECONDS
+                  ) -> Tuple[int, Optional[int]]:
     """
-    Detect a hand clap transient in the audio signal.
+    Detect one or two clap onsets via threshold crossing on the derivative.
 
-    Returns sample index of the clap peak, or None if no clap found.
-    Algorithm: envelope smoothing → threshold at N× background median → peak refinement.
+    Returns (clap1_sample_idx, clap2_sample_idx_or_None).
+    Raises AudioSyncError if no clap found.
     """
-    # Compute envelope
-    envelope = np.abs(audio)
+    threshold = peak_height_factor * derivative.max()
+    cooldown = int(clap_cooldown_seconds * sample_rate)
 
-    # Smooth with ~10ms rolling window
-    window_size = int(sample_rate * 0.01)  # 480 samples at 48kHz
-    kernel = np.ones(window_size) / window_size
-    smoothed = np.convolve(envelope, kernel, mode="same")
+    # Clap 1: first threshold crossing
+    clap1 = None
+    for j in range(len(derivative)):
+        if derivative[j] > threshold:
+            clap1 = j
+            break
+    if clap1 is None:
+        raise AudioSyncError("No clap onset detected — threshold never crossed")
 
-    # Background noise level (median of smoothed envelope)
-    background = np.median(smoothed)
-    if background < 1e-6:
-        background = 1e-6  # avoid division by zero in silent audio
+    # Clap 2: first threshold crossing after cooldown
+    clap2 = None
+    for j in range(clap1 + cooldown, len(derivative)):
+        if derivative[j] > threshold:
+            clap2 = j
+            break
 
-    # Find first sample exceeding threshold
-    threshold = background * threshold_factor
-    candidates = np.where(smoothed > threshold)[0]
-
-    if len(candidates) == 0:
-        return None
-
-    # Refine: find actual peak within 50ms window after first candidate
-    first_hit = candidates[0]
-    window_end = min(first_hit + int(sample_rate * 0.05), len(audio))
-    peak_offset = np.argmax(np.abs(audio[first_hit:window_end]))
-
-    return int(first_hit + peak_offset)
+    return clap1, clap2
 
 
-def find_offset_gcc_phat(ref_audio: np.ndarray, other_audio: np.ndarray,
-                         sample_rate: int) -> tuple:
+def save_onset_plot(audio_tracks: List[np.ndarray],
+                    envelopes: List[np.ndarray],
+                    onsets: List[Tuple[int, Optional[int]]],
+                    filenames: List[str],
+                    sample_rate: int,
+                    output_path: str) -> str:
     """
-    Find time offset between two audio signals using GCC-PHAT.
-    Returns (offset_seconds, peak_correlation) where offset is positive if
-    other started recording earlier. Peak correlation is the raw GCC-PHAT
-    peak value (theoretical max ~1.0 when phases perfectly align).
-    """
-    n = len(ref_audio) + len(other_audio) - 1
-    # Next power of 2 for FFT efficiency
-    n_fft = 1 << (n - 1).bit_length()
-
-    X1 = rfft(other_audio, n=n_fft)
-    X2 = rfft(ref_audio, n=n_fft)
-
-    # Cross-power spectrum with PHAT weighting
-    G = X1 * np.conj(X2)
-    G /= (np.abs(G) + 1e-10)
-
-    gcc = irfft(G, n=n_fft)
-
-    peak_idx = np.argmax(gcc)
-    peak_corr = float(gcc[peak_idx])
-
-    # Lag handling: indices > n_fft//2 are negative lags (wrap-around)
-    if peak_idx > n_fft // 2:
-        offset_samples = peak_idx - n_fft
-    else:
-        offset_samples = peak_idx
-
-    return offset_samples / sample_rate, peak_corr
-
-
-def save_audio_waveform_plot(audio_data: Dict[str, np.ndarray],
-                             sample_rate: int, output_dir: str) -> str:
-    """
-    Save a waveform plot of each camera's audio to output_dir/synced/audio_waveforms.png.
-    Returns path to the saved image.
+    Save onset detection summary plot (raw waveform + envelope + onset markers).
+    Cropped to 0.3s before first clap to 0.3s after last clap.
+    Returns path to saved image.
     """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    synced_dir = Path(output_dir) / "synced"
-    synced_dir.mkdir(exist_ok=True)
+    n_cams = len(audio_tracks)
 
-    n = len(audio_data)
-    fig, axes = plt.subplots(n, 1, figsize=(14, 2.5 * n), sharex=True)
-    if n == 1:
+    # Compute crop bounds across all tracks
+    all_clap1 = [o[0] for o in onsets]
+    all_clap2 = [o[1] for o in onsets if o[1] is not None]
+    earliest = min(all_clap1)
+    latest = max(all_clap2) if all_clap2 else max(all_clap1)
+
+    crop_start = max(0, earliest - int(0.3 * sample_rate))
+    crop_end = min(max(len(a) for a in audio_tracks),
+                   latest + int(0.3 * sample_rate))
+
+    fig, axes = plt.subplots(n_cams, 1, figsize=(14, 2.5 * n_cams), sharex=True)
+    if n_cams == 1:
         axes = [axes]
-    fig.suptitle(f"Audio Waveforms - First {AUDIO_DURATION:.0f} Seconds", fontsize=14)
 
-    for i, (vp, audio) in enumerate(audio_data.items()):
+    for i in range(n_cams):
+        audio = audio_tracks[i]
+        env = envelopes[i]
         t = np.arange(len(audio)) / sample_rate
-        axes[i].plot(t, audio, linewidth=0.3, color="steelblue")
-        axes[i].set_ylabel(Path(vp).stem)
-        axes[i].set_ylim(-1, 1)
-        axes[i].grid(True, alpha=0.3)
 
-    axes[-1].set_xlabel("Time (seconds)")
+        axes[i].plot(t, audio, linewidth=0.3, color="grey", alpha=0.3)
+        axes[i].plot(t[:len(env)], env, linewidth=1.5, color="tab:blue")
+
+        c1, c2 = onsets[i]
+        axes[i].axvline(c1 / sample_rate, color="red", linestyle="--", label="Clap 1")
+        if c2 is not None:
+            axes[i].axvline(c2 / sample_rate, color="blue", linestyle="--", label="Clap 2")
+
+        axes[i].set_title(filenames[i])
+        axes[i].set_ylabel("Envelope")
+        axes[i].legend(loc="upper right", fontsize=8)
+
+    axes[-1].set_xlabel("Time (s)")
+    axes[0].set_xlim(crop_start / sample_rate, crop_end / sample_rate)
+    fig.suptitle("Detected Clap Onsets")
     plt.tight_layout()
-    out_path = synced_dir / "audio_waveforms.png"
-    plt.savefig(str(out_path), dpi=150)
+    plt.savefig(output_path, dpi=150)
     plt.close(fig)
-    return str(out_path)
+    return output_path
 
 
 def compute_sync_offsets(video_paths: List[str],
@@ -236,65 +243,211 @@ def compute_sync_offsets(video_paths: List[str],
                          progress_callback: Optional[Callable] = None
                          ) -> Dict[str, dict]:
     """
-    Compute sync offsets for a list of video files using GCC-PHAT.
+    Compute sync offsets using envelope onset detection (dual-clap with
+    consistency check). FPS read from first video via ffprobe.
 
     Returns dict keyed by video path with:
-      offset_seconds, is_reference
+      offset_seconds, is_reference, status
     """
     def log(msg):
         if progress_callback:
             progress_callback(msg)
 
-    # Step 1: Extract audio from all cameras
-    audio_data = {}
-    for vp in video_paths:
-        name = Path(vp).name
-        log(f"Extracting audio: {name}")
+    n_cams = len(video_paths)
+    filenames = [Path(vp).name for vp in video_paths]
+
+    # Get FPS from first video
+    fps = get_frame_rate(video_paths[0])
+    log(f"Video FPS: {fps:.0f}")
+
+    # ── Step 0: Load audio ──
+    log("=" * 60)
+    log("Step 0: Load audio")
+    log("=" * 60)
+
+    audio_tracks = []
+    for i, vp in enumerate(video_paths):
         audio, sr = extract_audio(vp)
-        audio_data[vp] = audio
+        audio_tracks.append(audio)
+        log(f"  {filenames[i]}: {len(audio)} samples, {len(audio)/sr:.2f}s")
 
-    # Save waveform plot if output_dir provided
-    if output_dir:
-        log("Saving audio waveform plot...")
-        save_audio_waveform_plot(audio_data, sr, output_dir)
-        log("  Created: synced/audio_waveforms.png")
+    # ── Step 1: Compute envelope ──
+    log("")
+    log("=" * 60)
+    log("Step 1: Compute envelope")
+    log("=" * 60)
 
-    # Step 2: Cross-correlate all cameras against first (arbitrary reference)
-    ref_path = video_paths[0]
-    ref_audio = audio_data[ref_path]
-    ref_name = Path(ref_path).name
-    log(f"GCC-PHAT against reference: {ref_name}")
+    envelopes = []
+    for i, audio in enumerate(audio_tracks):
+        env = compute_envelope(audio)
+        envelopes.append(env)
+        log(f"  {filenames[i]}: envelope max = {env.max():.4f}")
 
-    raw_offsets = {}
-    peak_correlations = {}
-    for vp in video_paths:
-        if vp == ref_path:
-            raw_offsets[vp] = 0.0
-            peak_correlations[vp] = 1.0
+    # ── Step 2: First derivative ──
+    log("")
+    log("=" * 60)
+    log("Step 2: First derivative of envelope")
+    log("=" * 60)
+
+    derivatives = []
+    for i, env in enumerate(envelopes):
+        deriv = compute_derivative(env)
+        derivatives.append(deriv)
+        log(f"  {filenames[i]}: derivative max = {deriv.max():.6f}")
+
+    # ── Step 3: Detect clap onsets ──
+    log("")
+    log("=" * 60)
+    log("Step 3: Detect clap onsets")
+    log("=" * 60)
+
+    onsets = []
+    for i, deriv in enumerate(derivatives):
+        try:
+            c1, c2 = detect_onsets(deriv, sr)
+        except AudioSyncError:
+            raise AudioSyncError(
+                f"{filenames[i]}: no clap onset detected — "
+                f"ensure a clear clap is audible in the first {AUDIO_DURATION:.0f} seconds"
+            )
+        onsets.append((c1, c2))
+        t1 = c1 / sr
+        if c2 is not None:
+            t2_str = f"{c2 / sr:.4f}s (sample {c2})"
         else:
-            offset, peak_corr = find_offset_gcc_phat(ref_audio, audio_data[vp], sr)
-            raw_offsets[vp] = offset
-            peak_correlations[vp] = peak_corr
-            log(f"  {Path(vp).name}: offset {offset:.4f}s vs reference (correlation: {peak_corr:.3f})")
+            t2_str = "N/A"
+            log(f"  WARNING: {filenames[i]} — clap 2 not found, single-clap fallback")
+        log(f"  {filenames[i]}: clap1 = {t1:.4f}s (sample {c1}), clap2 = {t2_str}")
 
-    # Step 3: Shift so minimum offset = 0 (latest-starting camera becomes reference)
-    min_offset = min(raw_offsets.values())
-    adjusted = {vp: off - min_offset for vp, off in raw_offsets.items()}
+    # ── Step 4: Compute offsets from onset times ──
+    log("")
+    log("=" * 60)
+    log("Step 4: Compute offsets from onset times")
+    log("=" * 60)
 
-    # Identify the reference (the one with offset 0 after adjustment)
-    ref_vp = min(adjusted, key=adjusted.get)
-    log(f"Sync reference: {Path(ref_vp).name} (latest start)")
+    # Determine available claps
+    available_claps = [0]
+    if all(o[1] is not None for o in onsets):
+        available_claps.append(1)
+    else:
+        log("  WARNING: Not all cameras have 2 claps — single-clap mode")
 
-    results = {}
-    for vp in video_paths:
-        is_ref = (vp == ref_vp)
-        results[vp] = {
-            "offset_seconds": adjusted[vp],
-            "is_reference": is_ref,
-            "peak_correlation": peak_correlations[vp],
+    # Per clap: ref = camera with earliest onset
+    offsets_by_clap = {i: {} for i in range(n_cams)}
+    ref_cams = {}
+
+    for c in available_claps:
+        clap_indices = [o[c] for o in onsets]
+        ref = int(np.argmin(clap_indices))
+        ref_cams[c] = ref
+        log(f"  Clap {c+1} reference: {filenames[ref]} (onset at sample {onsets[ref][c]})")
+
+        for cam in range(n_cams):
+            offset_samples = onsets[cam][c] - onsets[ref][c]
+            offset_ms = offset_samples / (sr / 1000.0)
+            offset_frames = offset_ms / (1000.0 / fps)
+            offsets_by_clap[cam][c] = {
+                "offset_samples": offset_samples,
+                "offset_ms": offset_ms,
+                "offset_frames": offset_frames,
+            }
+            if cam != ref:
+                log(f"    {filenames[cam]}: {offset_samples:+d} samples = "
+                    f"{offset_ms:+.3f} ms = {offset_frames:+.3f} frames@{fps:.0f}fps")
+
+    # ── Step 5: Consistency check ──
+    log("")
+    log("=" * 60)
+    log("Step 5: Consistency check")
+    log("=" * 60)
+
+    consistency_threshold_ms = 1000.0 / fps  # 1 frame
+    log(f"  Threshold: {consistency_threshold_ms:.1f} ms (1 frame at {fps:.0f} fps)")
+
+    ref_cam = ref_cams[0]
+    final_offsets = {}
+
+    for cam in range(n_cams):
+        if cam == ref_cam:
+            final_offsets[cam] = {"offset_ms": 0.0, "offset_frames": 0.0, "status": "REF"}
+            continue
+
+        o1 = offsets_by_clap[cam][0]["offset_ms"]
+        if len(available_claps) == 2:
+            o2 = offsets_by_clap[cam][1]["offset_ms"]
+            diff_ms = abs(o1 - o2)
+            status = "PASS" if diff_ms <= consistency_threshold_ms else "WARN"
+            if status == "WARN":
+                log(f"  WARNING: {filenames[cam]} — clap1={o1:+.3f}ms, clap2={o2:+.3f}ms, "
+                    f"diff={diff_ms:.3f}ms > {consistency_threshold_ms:.1f}ms")
+            log(f"  {filenames[cam]}: clap1={o1:+.3f}ms, clap2={o2:+.3f}ms, "
+                f"diff={diff_ms:.3f}ms -> {status}, final={o1:+.3f}ms")
+        else:
+            status = "PASS (1 clap)"
+            log(f"  {filenames[cam]}: single clap offset = {o1:+.3f} ms")
+
+        final_offsets[cam] = {
+            "offset_ms": o1,
+            "offset_frames": o1 / (1000.0 / fps),
+            "status": status,
         }
-        if not is_ref:
-            log(f"  {Path(vp).name}: trim {adjusted[vp]:.4f}s from start")
+
+    # ── Summary table ──
+    log("")
+    log("=" * 60)
+    log("Summary")
+    log("=" * 60)
+
+    header = (f"{'Camera':<30} | {'Clap1 Lag(ms)':>13} | {'Clap2 Lag(ms)':>13} | "
+              f"{'Diff(ms)':>9} | {'Status':>12} | {'Final Lag(ms)':>14} | {'Final(frames)':>14}")
+    log(header)
+    log("-" * len(header))
+
+    for cam in range(n_cams):
+        name = filenames[cam]
+        if cam == ref_cam:
+            name += "*"
+
+        o1 = offsets_by_clap[cam][0]["offset_ms"]
+        if len(available_claps) == 2:
+            o2 = offsets_by_clap[cam][1]["offset_ms"]
+            diff = abs(o1 - o2)
+            o2_str = f"{o2:+.3f}"
+            diff_str = f"{diff:.3f}"
+        else:
+            o2_str = "--"
+            diff_str = "--"
+
+        fo = final_offsets[cam]
+        row = (f"{name:<30} | {o1:>+13.3f} | {o2_str:>13} | "
+               f"{diff_str:>9} | {fo['status']:>12} | {fo['offset_ms']:>+14.3f} | "
+               f"{fo['offset_frames']:>+14.3f}")
+        log(row)
+
+    log(f"\n(* = reference camera, clap 1 used for final offset)")
+    log(f"FPS for frame conversion: {fps:.0f}")
+
+    # Save onset plot
+    if output_dir:
+        synced_dir = Path(output_dir) / "synced"
+        synced_dir.mkdir(exist_ok=True)
+        plot_path = str(synced_dir / "sync_onsets.png")
+        log("Saving onset plot...")
+        save_onset_plot(audio_tracks, envelopes, onsets, filenames, sr, plot_path)
+        log(f"  Created: synced/sync_onsets.png")
+
+    # Build return dict keyed by video path
+    # Convert clap1-based offsets to seconds for trimming
+    results = {}
+    for cam, vp in enumerate(video_paths):
+        fo = final_offsets[cam]
+        is_ref = (cam == ref_cam)
+        offset_seconds = fo["offset_ms"] / 1000.0
+        results[vp] = {
+            "offset_seconds": offset_seconds,
+            "is_reference": is_ref,
+            "status": fo["status"],
+        }
 
     return results
 
@@ -388,19 +541,6 @@ def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
                 log(f"  {Path(out_path).name}: trimmed {frame_counts[out_path]} -> {min_frames}")
     else:
         log(f"All files have {min_frames} frames")
-
-    # Generate timestamps.csv
-    fps = get_frame_rate(output_files[0])
-    num_cameras = len(output_files)
-    csv_path = synced_dir / "timestamps.csv"
-    log(f"Generating timestamps.csv ({min_frames} frames x {num_cameras} cameras, {fps:.2f} fps)...")
-    with open(csv_path, "w", newline="") as f:
-        f.write("cam_id,frame_time\n")
-        for frame_idx in range(min_frames):
-            frame_time = frame_idx / fps
-            for cam_id in range(1, num_cameras + 1):
-                f.write(f"{cam_id},{frame_time:.8f}\n")
-    log(f"  Created: timestamps.csv")
 
     return output_files
 

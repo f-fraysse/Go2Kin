@@ -31,7 +31,8 @@ class CalibrationTab:
                  cameras=None, camera_status=None,
                  project_manager=None, get_current_project=None,
                  is_recording=None, run_rec_delay=None,
-                 start_bar_timer=None, stop_bar_timer=None):
+                 start_bar_timer=None, stop_bar_timer=None,
+                 play_sync_sound=None):
         self.notebook = notebook
         self.config = config
         self.frame = ttk.Frame(notebook)
@@ -44,6 +45,7 @@ class CalibrationTab:
         self.run_rec_delay = run_rec_delay or (lambda: None)
         self.start_bar_timer = start_bar_timer or (lambda: None)
         self.stop_bar_timer = stop_bar_timer or (lambda: None)
+        self.play_sync_sound = play_sync_sound or (lambda: None)
 
         # Lazy imports to avoid circular imports and slow startup
         self._charuco = None
@@ -432,6 +434,7 @@ class CalibrationTab:
                     self.run_rec_delay()
                     camera.shutterStart()
                     self.frame.after(0, self.start_bar_timer)
+                    self.play_sync_sound()
                     self._calib_stop_event.wait()
                     camera.shutterStop()
                     while camera.camBusy() or camera.encodingActive():
@@ -517,6 +520,9 @@ class CalibrationTab:
         # Start bar timer after all cameras confirmed
         self.frame.after(0, self.start_bar_timer)
 
+        # Play sync sound (1s delay + two claps) if enabled
+        self.play_sync_sound()
+
         # Wait for user to click Stop
         self._calib_stop_event.wait()
 
@@ -586,14 +592,14 @@ class CalibrationTab:
         for path, info in offsets.items():
             name = Path(path).name
             ref = " (REF)" if info["is_reference"] else ""
-            corr = info.get("peak_correlation", 0.0)
-            sync_msgs.append(f"{name}: {info['offset_seconds']:.4f}s corr={corr:.3f}{ref}")
-            if not info["is_reference"] and corr < 0.7:
+            status = info.get("status", "")
+            sync_msgs.append(f"{name}: {info['offset_seconds']:.4f}s {status}{ref}")
+            if status == "WARN":
                 low_quality = True
 
         detail = " | ".join(sync_msgs)
         if low_quality:
-            detail += " | WARNING: Low sync quality"
+            detail += " | WARNING: Inconsistent clap offsets"
         self.frame.after(0, lambda: status_var.set(detail))
 
         # Trim and sync — trim_and_sync_videos creates a synced/ subfolder inside output_dir
