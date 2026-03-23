@@ -30,7 +30,8 @@ class CalibrationTab:
     def __init__(self, notebook: ttk.Notebook, config: dict,
                  cameras=None, camera_status=None,
                  project_manager=None, get_current_project=None,
-                 is_recording=None):
+                 is_recording=None, run_rec_delay=None,
+                 start_bar_timer=None, stop_bar_timer=None):
         self.notebook = notebook
         self.config = config
         self.frame = ttk.Frame(notebook)
@@ -40,6 +41,9 @@ class CalibrationTab:
         self.project_manager = project_manager
         self.get_current_project = get_current_project or (lambda: None)
         self.is_recording = is_recording or (lambda: False)
+        self.run_rec_delay = run_rec_delay or (lambda: None)
+        self.start_bar_timer = start_bar_timer or (lambda: None)
+        self.stop_bar_timer = stop_bar_timer or (lambda: None)
 
         # Lazy imports to avoid circular imports and slow startup
         self._charuco = None
@@ -425,7 +429,9 @@ class CalibrationTab:
 
             def worker():
                 try:
+                    self.run_rec_delay()
                     camera.shutterStart()
+                    self.frame.after(0, self.start_bar_timer)
                     self._calib_stop_event.wait()
                     camera.shutterStop()
                     while camera.camBusy() or camera.encodingActive():
@@ -440,6 +446,7 @@ class CalibrationTab:
                     self.frame.after(0, lambda: self._intrinsic_record_error(cam_num, str(e)))
                 finally:
                     self._calib_recording = False
+                    self.frame.after(0, self.stop_bar_timer)
                     self.frame.after(0, lambda: entry["record_btn"].config(text="Record"))
 
             threading.Thread(target=worker, daemon=True).start()
@@ -487,6 +494,7 @@ class CalibrationTab:
                         "Recording Error", f"{purpose.title()} recording: {e}"))
                 finally:
                     self._calib_recording = False
+                    self.frame.after(0, self.stop_bar_timer)
                     self.frame.after(0, lambda: btn.config(text="Record"))
 
             threading.Thread(target=worker, daemon=True).start()
@@ -497,11 +505,17 @@ class CalibrationTab:
 
     def _multi_record_worker(self, cam_list, video_dir, purpose, timestamp, status_var):
         """Worker thread for multi-camera recording + auto-sync."""
+        # Run recording delay countdown if enabled
+        self.run_rec_delay()
+
         # Start all cameras
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {executor.submit(cam.shutterStart): num for num, cam in cam_list}
             for f in futures:
                 f.result(timeout=15)
+
+        # Start bar timer after all cameras confirmed
+        self.frame.after(0, self.start_bar_timer)
 
         # Wait for user to click Stop
         self._calib_stop_event.wait()

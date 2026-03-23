@@ -140,6 +140,7 @@ class Go2KinMainWindow:
         self.recording = False
         self.recording_thread = None
         self.start_time = None
+        self._bar_timer_running = False
         
         # Live preview state
         self.preview_active = False
@@ -291,27 +292,38 @@ class Go2KinMainWindow:
                 'battery_label': battery_label,
             }
 
-        # Global settings (right side)
+        # Resolution dropdown (left-aligned after camera controls)
+        ttk.Label(cameras_frame, text="Res:").pack(side=tk.LEFT, padx=(20, 0))
+        self.global_res_var = tk.StringVar()
+        res_combo = ttk.Combobox(cameras_frame, textvariable=self.global_res_var,
+                                 values=["1080", "2.7K", "4K"],
+                                 state="readonly", width=5)
+        res_combo.pack(side=tk.LEFT, padx=(3, 0))
+        res_combo.bind('<<ComboboxSelected>>', self.on_global_resolution_change)
+
+        # FPS dropdown
+        ttk.Label(cameras_frame, text="FPS:").pack(side=tk.LEFT, padx=(8, 0))
+        self.global_fps_var = tk.StringVar()
+        fps_combo = ttk.Combobox(cameras_frame, textvariable=self.global_fps_var,
+                                 values=["25", "50", "100", "200"],
+                                 state="readonly", width=5)
+        fps_combo.pack(side=tk.LEFT, padx=(3, 0))
+        fps_combo.bind('<<ComboboxSelected>>', self.on_global_fps_change)
+
+        # Recording delay controls (right side)
         settings_frame = ttk.Frame(bar_frame)
         settings_frame.pack(side=tk.RIGHT)
 
-        # FPS dropdown
-        self.global_fps_var = tk.StringVar()
-        fps_combo = ttk.Combobox(settings_frame, textvariable=self.global_fps_var,
-                                 values=["25", "50", "100", "200"],
-                                 state="readonly", width=5)
-        fps_combo.pack(side=tk.RIGHT, padx=(3, 0))
-        ttk.Label(settings_frame, text="FPS:").pack(side=tk.RIGHT, padx=(8, 0))
-        fps_combo.bind('<<ComboboxSelected>>', self.on_global_fps_change)
-
-        # Resolution dropdown
-        self.global_res_var = tk.StringVar()
-        res_combo = ttk.Combobox(settings_frame, textvariable=self.global_res_var,
-                                 values=["1080", "2.7K", "4K"],
-                                 state="readonly", width=5)
-        res_combo.pack(side=tk.RIGHT, padx=(3, 0))
-        ttk.Label(settings_frame, text="Res:").pack(side=tk.RIGHT)
-        res_combo.bind('<<ComboboxSelected>>', self.on_global_resolution_change)
+        self.rec_delay_enabled = tk.BooleanVar(value=False)
+        ttk.Checkbutton(settings_frame, text="Rec. delay",
+                        variable=self.rec_delay_enabled).pack(side=tk.LEFT, padx=(0, 0))
+        self.rec_delay_seconds = tk.StringVar(value="3")
+        ttk.Entry(settings_frame, textvariable=self.rec_delay_seconds,
+                  width=3).pack(side=tk.LEFT, padx=(3, 0))
+        ttk.Label(settings_frame, text="sec").pack(side=tk.LEFT, padx=(2, 0))
+        self.rec_delay_countdown_label = tk.Label(
+            settings_frame, text="", font=("Arial", 16, "bold"), fg="red")
+        self.rec_delay_countdown_label.pack(side=tk.LEFT, padx=(6, 0))
 
     def toggle_camera_connection(self, camera_num):
         """Toggle connect/disconnect for a camera"""
@@ -416,6 +428,9 @@ class Go2KinMainWindow:
             project_manager=self.project_manager,
             get_current_project=lambda: self.project_tab.get_current_project(),
             is_recording=lambda: self.recording,
+            run_rec_delay=self._run_rec_delay,
+            start_bar_timer=self._start_bar_timer,
+            stop_bar_timer=self._stop_bar_timer,
         )
 
     def create_processing_tab(self):
@@ -1584,11 +1599,11 @@ class Go2KinMainWindow:
         self.participant_combo.config(state="disabled")
         self.calibration_combo.config(state="disabled")
         self.new_participant_btn.config(state="disabled")
-        self.start_timer()
 
     def _stop_recording(self):
         """Signal the recording worker to stop."""
         self.recording = False
+        self._stop_bar_timer()
         self.record_toggle_btn.config(text="Stopping...", state="disabled")
         self.log_progress("Stopping recording...")
 
@@ -1601,6 +1616,9 @@ class Go2KinMainWindow:
         try:
             self.log_progress(f"Starting recording on cameras: {camera_list}")
             self.log_progress(f"Trial directory: {video_dir}")
+
+            # Run recording delay countdown if enabled
+            self._run_rec_delay()
 
             # Start recording on all cameras
             with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
@@ -1616,6 +1634,10 @@ class Go2KinMainWindow:
                         self.log_progress(f"  GoPro {camera_num} recording started")
                     except Exception as e:
                         self.log_progress(f"  Failed to start GoPro {camera_num}: {e}")
+
+            # Start timers after all cameras confirmed
+            self.root.after(0, self.start_timer)
+            self.root.after(0, self._start_bar_timer)
 
             # Wait for stop signal
             while self.recording:
@@ -1738,6 +1760,42 @@ class Go2KinMainWindow:
             except Exception:
                 pass
 
+    def _run_rec_delay(self):
+        """Run recording delay countdown if enabled. Called from background threads."""
+        if not self.rec_delay_enabled.get():
+            return
+        try:
+            delay = int(self.rec_delay_seconds.get())
+        except (ValueError, TypeError):
+            return
+        if delay <= 0:
+            return
+        for remaining in range(delay, 0, -1):
+            self.root.after(0, lambda r=remaining:
+                            self.rec_delay_countdown_label.config(text=str(r)))
+            time.sleep(1)
+        self.root.after(0, lambda: self.rec_delay_countdown_label.config(text=""))
+
+    def _start_bar_timer(self):
+        """Start the bottom bar mm:ss timer (red label). Called from GUI thread."""
+        self._bar_timer_start = time.time()
+        self._bar_timer_running = True
+        self._update_bar_timer()
+
+    def _update_bar_timer(self):
+        """Update the bottom bar timer display every second."""
+        if self._bar_timer_running:
+            elapsed = int(time.time() - self._bar_timer_start)
+            minutes = elapsed // 60
+            seconds = elapsed % 60
+            self.rec_delay_countdown_label.config(text=f"{minutes:02d}:{seconds:02d}")
+            self.root.after(1000, self._update_bar_timer)
+
+    def _stop_bar_timer(self):
+        """Stop the bottom bar timer and clear the label."""
+        self._bar_timer_running = False
+        self.rec_delay_countdown_label.config(text="")
+
     def start_camera_recording(self, camera_num, camera):
         """Start recording on a single camera (settings already applied via GUI)."""
         camera.shutterStart()
@@ -1780,6 +1838,7 @@ class Go2KinMainWindow:
         self.new_participant_btn.config(state="normal")
         self.open_folder_btn.config(state="normal")
         self.timer_var.set("Timer: 00:00:00")
+        self._stop_bar_timer()
 
         self.increment_trial_name()
         self.refresh_trial_tree()
