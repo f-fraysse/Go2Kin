@@ -201,15 +201,15 @@ Even when starting all cameras simultaneously, each GoPro begins recording at a 
 
 ### How to use
 
-1. At the start of each recording, perform a **loud hand clap** or other distinct sound within the first 3 seconds while all cameras are recording.
-2. After files are downloaded, synchronisation runs automatically. The progress log shows time offsets and peak cross-correlation quality for each camera pair.
-3. If any camera pair has a peak correlation below 0.7, a warning is displayed — consider re-recording with a louder clap.
+1. At the start of each recording, perform **two loud hand claps** within the first 3 seconds while all cameras are recording. Two claps enable a consistency check; a single clap also works but without cross-validation.
+2. After files are downloaded, synchronisation runs automatically. The progress log shows a step-by-step onset detection report with a summary table of offsets and consistency status per camera.
+3. If any camera shows status `WARN` (clap 1 and clap 2 offsets disagree by more than 1 frame), a red warning is displayed — consider re-recording with clearer claps.
 
 ### Output
 
 A `synced/` subfolder is created inside the trial's `video/` directory containing:
 - Trimmed MP4 files (same filenames as originals) — start-aligned and end-trimmed to identical duration
-- `audio_waveforms.png` — diagnostic plot of the first 3 seconds of audio from each camera
+- `sync_onsets.png` — diagnostic plot showing detected clap onsets on audio envelopes (cropped around claps)
 - `stitched_videos.mp4` — a 2x2 grid preview (960x960) of all cameras for quick visual verification of sync
 
 Original files are never modified. `trial.json` is updated with `synced: true` on success.
@@ -219,8 +219,10 @@ Original files are never modified. `trial.json` is updated with `synced: true` o
 | Step | Method | Detail |
 |------|--------|--------|
 | Audio extraction | ffmpeg pipe | First 3s extracted as 48kHz mono WAV via stdout pipe (no temp files) |
-| Sync alignment | Full cross-correlation | `scipy.signal.correlate` on entire audio signals for sub-millisecond accuracy — robust to multiple transients |
-| Reference selection | Latest start | Camera that started recording last (largest offset) is the reference; others trimmed from the start |
+| Envelope | Hilbert transform | Analytic signal → abs → 5ms moving average smoothing |
+| Onset detection | Derivative threshold | Positive-only first derivative, threshold at 20% of peak, 0.3s cooldown between claps |
+| Consistency check | Dual-clap | If both claps detected in all cameras, clap 1 vs clap 2 offsets must agree within 1 frame |
+| Reference selection | Earliest onset | Camera with earliest clap 1 onset is the reference; others offset relative to it |
 | End alignment | Common duration | All files trimmed to the shortest remaining duration after start alignment |
 | Video trimming | ffmpeg stream copy | `-ss` + `-t` + `-c copy` — no re-encoding, lossless, fast |
 | Stitched preview | ffmpeg xstack filter | 4 inputs downscaled to 480x480, arranged in 2x2 grid, encoded with built-in mpeg4 codec |
