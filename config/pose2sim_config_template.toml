@@ -79,7 +79,7 @@ det_frequency = 4 # Run person detection only every N frames, and inbetween trac
                   # Equal to or greater than 1, can be as high as you want in simple uncrowded cases. Much faster, but might be less accurate. 
 device = 'CUDA' # 'auto', 'CPU', 'CUDA', 'MPS', 'ROCM'
 backend = 'onnxruntime' # 'auto', 'openvino', 'onnxruntime', 'opencv'
-parallel_pose_detection = 'auto' # 'off' = sequential (default), 'auto' = one thread per video,
+parallel_pose_detection = 2 # 'off' = sequential (default), 'auto' = one thread per video,
                                 # or an integer (e.g., 2) to specify the number of threads.
                                 # Each thread loads its own ONNX model into VRAM (~0.5-2GB each).
                                 # Higher thread counts (4+) need good CPU, GPU, and VRAM.
@@ -93,7 +93,7 @@ deepsort_params = """{'max_age':30, 'n_init':3, 'nms_max_overlap':0.8, 'max_cosi
                   # Note: For faster and more robust tracking, use {'embedder_gpu': True, embedder':'torchreid'}, which uses the GPU and runs osnet_ain_x1_0 by default. requires `pip install torch torchvision torchreid gdown tensorboard`
 
 handle_LR_swap = false # Might be useful if cameras film from the sagittal plane and the right and left sides are hard to differenciate to your eye.
-undistort_points = true # Better if distorted image (parallel lines curvy on the edge or at least one param > 10^-2), but unnecessary (and slightly slower) if distortions are low
+undistort_points = false # Better if distorted image (parallel lines curvy on the edge or at least one param > 10^-2), but unnecessary (and slightly slower) if distortions are low
 
 display_detection = false # Real-time display of the videos with pose estimation
 overwrite_pose = true # Set to false if you don't want to recalculate pose estimation when it has already been done
