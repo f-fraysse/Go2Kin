@@ -143,6 +143,7 @@ Audio synchronisation runs automatically after each recording completes and file
 11. `trial.json` updated with `synced: true` on success, `synced: false` on failure
 12. Console log shows step-by-step onset detection with summary table. Warnings displayed in red if any camera has inconsistent clap offsets.
 13. **Sync sound** (disabled): Bottom bar checkbox for automatic speaker-generated clap playback. Currently disabled — requires a louder/closer speaker than the lab HDMI monitor.
+14. **Speed-of-sound compensation** (optional): If a calibration with camera positions is loaded and a sound source position is set in the Calibration tab, `compute_sync_offsets()` subtracts the differential sound propagation delay (distance / 340 m/s) from measured offsets. Logged as raw vs compensated in the console. Sound source position saved in calibration JSON (not TOML).
 
 ## Camera Calibration
 

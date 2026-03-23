@@ -1725,12 +1725,20 @@ class Go2KinMainWindow:
                     raise AudioSyncError(f"No audio track in: {name}")
                 self.log_progress(f"  Audio confirmed: {name}")
 
+            # Build camera positions for speed-of-sound compensation (if calibration loaded)
+            cam_positions = None
+            sound_pos = None
+            if hasattr(self, 'calibration_tab'):
+                cam_positions, sound_pos = self.calibration_tab._get_sync_compensation_data(video_paths)
+
             # Compute sync offsets (onset-based dual-clap detection)
             self.log_progress("Analysing audio for onset-based sync...")
             offsets = compute_sync_offsets(
                 video_paths,
                 output_dir=str(video_dir),
-                progress_callback=lambda msg: self.log_progress(f"  {msg}")
+                progress_callback=lambda msg: self.log_progress(f"  {msg}"),
+                camera_positions=cam_positions,
+                sound_source_position=sound_pos,
             )
 
             # Check for warnings

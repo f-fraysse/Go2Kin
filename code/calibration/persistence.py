@@ -24,6 +24,7 @@ def save_calibration(
     filepath: Path,
     camera_array: CameraArray,
     charuco: Charuco,
+    sound_source_position: list[float] | None = None,
 ) -> None:
     """Save calibration to JSON file.
 
@@ -31,6 +32,7 @@ def save_calibration(
         filepath: Path to output JSON file
         camera_array: Calibrated camera array
         charuco: Charuco board configuration
+        sound_source_position: Optional [x, y, z] in metres (for speed-of-sound compensation)
     """
     data = {
         "charuco": _charuco_to_dict(charuco),
@@ -39,6 +41,9 @@ def save_calibration(
             for cam_id, cam in camera_array.cameras.items()
         },
     }
+
+    if sound_source_position is not None:
+        data["sound_source_position"] = list(sound_source_position)
 
     filepath.parent.mkdir(parents=True, exist_ok=True)
     with open(filepath, "w") as f:
@@ -56,14 +61,14 @@ def save_calibration(
         logger.warning(f"TOML export failed: {e}")
 
 
-def load_calibration(filepath: Path) -> tuple[CameraArray, Charuco]:
+def load_calibration(filepath: Path) -> tuple[CameraArray, Charuco, list[float] | None]:
     """Load calibration from JSON file.
 
     Args:
         filepath: Path to JSON file
 
     Returns:
-        (CameraArray, Charuco)
+        (CameraArray, Charuco, sound_source_position or None)
     """
     with open(filepath) as f:
         data = json.load(f)
@@ -74,9 +79,10 @@ def load_calibration(filepath: Path) -> tuple[CameraArray, Charuco]:
         for cam_id, cam_dict in data["cameras"].items()
     }
     camera_array = CameraArray(cameras=cameras)
+    sound_source_position = data.get("sound_source_position")
 
     logger.info(f"Calibration loaded from {filepath}")
-    return camera_array, charuco
+    return camera_array, charuco, sound_source_position
 
 
 def save_charuco_config(filepath: Path, charuco: Charuco) -> None:

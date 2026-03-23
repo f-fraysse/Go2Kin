@@ -240,11 +240,18 @@ def save_onset_plot(audio_tracks: List[np.ndarray],
 
 def compute_sync_offsets(video_paths: List[str],
                          output_dir: Optional[str] = None,
-                         progress_callback: Optional[Callable] = None
+                         progress_callback: Optional[Callable] = None,
+                         camera_positions: Optional[Dict[str, List[float]]] = None,
+                         sound_source_position: Optional[List[float]] = None,
+                         speed_of_sound: float = 340.0,
                          ) -> Dict[str, dict]:
     """
     Compute sync offsets using envelope onset detection (dual-clap with
     consistency check). FPS read from first video via ffprobe.
+
+    Optional speed-of-sound compensation: if camera_positions (dict mapping
+    filename -> [x,y,z]) and sound_source_position ([x,y,z]) are provided,
+    subtracts the differential sound propagation delay from measured offsets.
 
     Returns dict keyed by video path with:
       offset_seconds, is_reference, status
@@ -391,6 +398,51 @@ def compute_sync_offsets(video_paths: List[str],
             "offset_frames": o1 / (1000.0 / fps),
             "status": status,
         }
+
+    # ── Step 6: Speed-of-sound compensation ──
+    log("")
+    log("=" * 60)
+    log("Step 6: Speed-of-sound compensation")
+    log("=" * 60)
+
+    if camera_positions and sound_source_position:
+        src = np.array(sound_source_position)
+        # Compute travel time to each camera
+        travel_times_ms = {}
+        for cam in range(n_cams):
+            fname = filenames[cam]
+            if fname in camera_positions:
+                cam_pos = np.array(camera_positions[fname])
+                dist = np.linalg.norm(cam_pos - src)
+                travel_times_ms[cam] = dist / speed_of_sound * 1000.0
+                log(f"  {fname}: dist={dist:.3f}m, travel={travel_times_ms[cam]:.3f}ms")
+            else:
+                log(f"  WARNING: No position for {fname} — skipping compensation")
+
+        if ref_cam in travel_times_ms:
+            ref_travel = travel_times_ms[ref_cam]
+            compensated = False
+            for cam in range(n_cams):
+                if cam == ref_cam or cam not in travel_times_ms:
+                    continue
+                natural_offset_ms = travel_times_ms[cam] - ref_travel
+                raw_ms = final_offsets[cam]["offset_ms"]
+                comp_ms = raw_ms - natural_offset_ms
+                final_offsets[cam]["offset_ms"] = comp_ms
+                final_offsets[cam]["offset_frames"] = comp_ms / (1000.0 / fps)
+                compensated = True
+                log(f"  {filenames[cam]}: raw={raw_ms:+.3f}ms, "
+                    f"propagation={natural_offset_ms:+.3f}ms, "
+                    f"compensated={comp_ms:+.3f}ms")
+            if compensated:
+                log(f"  Speed of sound: {speed_of_sound:.0f} m/s")
+        else:
+            log(f"  WARNING: No position for reference camera — skipping compensation")
+    else:
+        if camera_positions or sound_source_position:
+            log("  Skipping: need both camera positions and sound source position")
+        else:
+            log("  Skipping: no camera positions or sound source position provided")
 
     # ── Summary table ──
     log("")

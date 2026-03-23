@@ -97,6 +97,7 @@ Multi-camera calibration using a printed charuco board. The calibration pipeline
 - **Intrinsic Calibration** — per-camera lens calibration from a video of the board. Uses smart frame selection for orientation and spatial coverage diversity.
 - **Extrinsic Calibration** — multi-camera pose estimation from synced videos. Includes PnP solving, outlier rejection, graph bridging, triangulation, and bundle adjustment.
 - **Set Origin** — stand the charuco board vertically in portrait mode at the lab origin. Aligns the coordinate system using a Umeyama similarity transform. Can be re-run after loading a saved calibration.
+- **Sound Source Position** — optional X/Y/Z coordinates (in metres) of the sync sound source (speaker or clap location). Used for speed-of-sound compensation during audio sync. Displayed as a black cross in the 3D viewer.
 - **Save/Load** — persist calibration to `config/calibration/calibration.json` (also auto-exports `camera_array_go2kin.toml` for Pose2Sim compatibility).
 
 ### Tab 4 — Recording
@@ -226,6 +227,15 @@ Original files are never modified. `trial.json` is updated with `synced: true` o
 | End alignment | Common duration | All files trimmed to the shortest remaining duration after start alignment |
 | Video trimming | ffmpeg stream copy | `-ss` + `-t` + `-c copy` — no re-encoding, lossless, fast |
 | Stitched preview | ffmpeg xstack filter | 4 inputs downscaled to 480x480, arranged in 2x2 grid, encoded with built-in mpeg4 codec |
+| Speed-of-sound compensation | Optional | If calibration is loaded and a sound source position is set, subtracts differential sound propagation delay (distance / 340 m/s) from measured offsets |
+
+### Speed-of-sound compensation
+
+When cameras are at different distances from the clap/speaker, sound arrives at each microphone at slightly different times (e.g. 3m difference = ~8.8ms). At high frame rates (100+ fps) this can cause sub-frame sync errors.
+
+To correct for this, set the sound source position in the **Calibration tab** (Sound Source Position section — X, Y, Z in metres in the calibration coordinate system). When a calibration with camera positions is loaded and a sound source position is set, the sync algorithm automatically subtracts the differential propagation delay from measured offsets. Both raw and compensated offsets are logged in the console.
+
+The sound source position is saved in the calibration JSON file and restored when loading a calibration.
 
 ### Requirements
 

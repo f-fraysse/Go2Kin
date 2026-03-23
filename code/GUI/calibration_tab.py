@@ -110,7 +110,11 @@ class CalibrationTab:
         # Section 4: Set Origin
         self._create_origin_section(parent)
 
-        # Section 5: Save/Load
+        # Section 5: Sound Source Position (for speed-of-sound compensation)
+        self._sound_source_pos = None
+        self._create_sound_source_section(parent)
+
+        # Section 6: Save/Load
         self._create_save_load_section(parent)
 
         # 3D viewer in right panel
@@ -267,6 +271,51 @@ class CalibrationTab:
 
         self._origin_status = tk.StringVar(value="")
         ttk.Label(section, textvariable=self._origin_status).pack(fill="x", pady=2)
+
+    def _create_sound_source_section(self, parent):
+        section = ttk.LabelFrame(parent, text="Sound Source Position", padding=10)
+        section.pack(fill="x", padx=10, pady=5)
+
+        row = ttk.Frame(section)
+        row.pack(fill="x", pady=2)
+
+        self._sound_x_var = tk.StringVar(value="")
+        self._sound_y_var = tk.StringVar(value="")
+        self._sound_z_var = tk.StringVar(value="")
+
+        for label, var in [("X:", self._sound_x_var), ("Y:", self._sound_y_var), ("Z:", self._sound_z_var)]:
+            ttk.Label(row, text=label).pack(side="left", padx=(5, 0))
+            ttk.Entry(row, textvariable=var, width=8).pack(side="left", padx=2)
+
+        ttk.Label(row, text="(metres)").pack(side="left", padx=5)
+        ttk.Button(row, text="Set", width=5, command=self._set_sound_source).pack(side="left", padx=5)
+        ttk.Button(row, text="Clear", width=5, command=self._clear_sound_source).pack(side="left", padx=2)
+
+        self._sound_source_status = tk.StringVar(value="Not set")
+        ttk.Label(section, textvariable=self._sound_source_status).pack(fill="x", pady=2)
+
+    def _set_sound_source(self):
+        """Parse X/Y/Z entries and store the sound source position."""
+        try:
+            x = float(self._sound_x_var.get())
+            y = float(self._sound_y_var.get())
+            z = float(self._sound_z_var.get())
+        except ValueError:
+            from tkinter import messagebox
+            messagebox.showwarning("Warning", "Enter valid numbers for X, Y, Z")
+            return
+        self._sound_source_pos = [x, y, z]
+        self._sound_source_status.set(f"Set: ({x:.3f}, {y:.3f}, {z:.3f})")
+        self._update_3d_viewer(self._camera_array)
+
+    def _clear_sound_source(self):
+        """Clear the sound source position."""
+        self._sound_source_pos = None
+        self._sound_x_var.set("")
+        self._sound_y_var.set("")
+        self._sound_z_var.set("")
+        self._sound_source_status.set("Not set")
+        self._update_3d_viewer(self._camera_array)
 
     def _create_save_load_section(self, parent):
         section = ttk.LabelFrame(parent, text="Save / Load Calibration", padding=10)
@@ -583,8 +632,13 @@ class CalibrationTab:
             if not check_audio_track(vp):
                 raise AudioSyncError(f"No audio track in: {Path(vp).name}")
 
+        # Build camera positions for speed-of-sound compensation (if available)
+        cam_positions, sound_pos = self._get_sync_compensation_data(video_paths)
+
         # Compute sync offsets
-        offsets = compute_sync_offsets(video_paths, output_dir=str(video_dir))
+        offsets = compute_sync_offsets(video_paths, output_dir=str(video_dir),
+                                       camera_positions=cam_positions,
+                                       sound_source_position=sound_pos)
 
         # Log sync quality
         sync_msgs = []
@@ -609,6 +663,44 @@ class CalibrationTab:
 
         synced_dir = sync_parent / "synced"
         return synced_dir
+
+    def _get_sync_compensation_data(self, video_paths):
+        """Build camera_positions dict and sound_source_position for sync compensation.
+
+        Returns (camera_positions, sound_source_position) — either or both may be None.
+        camera_positions maps filename (e.g. 'trial_GP1.mp4') to [x, y, z] world coords.
+        """
+        import numpy as np
+        import re
+
+        if (self._camera_array is None or not self._camera_array.posed_cameras
+                or self._sound_source_pos is None):
+            return None, None
+
+        # Build cam_id -> world position
+        cam_world_pos = {}
+        for cam_id, cam in self._camera_array.posed_cameras.items():
+            if cam.rotation is not None and cam.translation is not None:
+                pos = -cam.rotation.T @ cam.translation
+                cam_world_pos[cam_id] = pos.tolist()
+
+        if not cam_world_pos:
+            return None, None
+
+        # Map filenames to camera positions via _GP{N} suffix
+        camera_positions = {}
+        for vp in video_paths:
+            fname = Path(vp).name
+            m = re.search(r"_GP(\d+)\.", fname)
+            if m:
+                cam_id = int(m.group(1))
+                if cam_id in cam_world_pos:
+                    camera_positions[fname] = cam_world_pos[cam_id]
+
+        if not camera_positions:
+            return None, None
+
+        return camera_positions, self._sound_source_pos
 
     # =================================================================
     # Intrinsic calibration
@@ -826,6 +918,13 @@ class CalibrationTab:
         ax.quiver(0, 0, 0, 0, 1, 0, length=1.0, arrow_length_ratio=0.1, color="green", linewidth=2)
         ax.quiver(0, 0, 0, 0, 0, 1, length=1.0, arrow_length_ratio=0.1, color="blue", linewidth=2)
 
+        # Sound source position marker
+        if self._sound_source_pos is not None:
+            sp = self._sound_source_pos
+            ax.scatter(sp[0], sp[1], sp[2], marker="x", s=200, c="black",
+                       linewidths=3, zorder=6)
+            ax.text(sp[0], sp[1], sp[2], "  Speaker", fontsize=9, color="black")
+
         self._viewer_fig.tight_layout()
         self._viewer_canvas.draw_idle()
 
@@ -925,7 +1024,8 @@ class CalibrationTab:
             from calibration.persistence import save_calibration
 
             charuco = self._get_charuco()
-            save_calibration(filepath, self._camera_array, charuco)
+            save_calibration(filepath, self._camera_array, charuco,
+                             sound_source_position=self._sound_source_pos)
             self._save_load_status.set(f"Saved to {filepath.name}")
             messagebox.showinfo("Success", f"Calibration saved to {filepath}")
         except Exception as e:
@@ -948,8 +1048,19 @@ class CalibrationTab:
             sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
             from calibration.persistence import load_calibration
 
-            camera_array, charuco = load_calibration(Path(filepath))
+            camera_array, charuco, sound_pos = load_calibration(Path(filepath))
             self._camera_array = camera_array
+
+            # Restore sound source position
+            if sound_pos is not None:
+                self._sound_source_pos = sound_pos
+                self._sound_x_var.set(f"{sound_pos[0]:.3f}")
+                self._sound_y_var.set(f"{sound_pos[1]:.3f}")
+                self._sound_z_var.set(f"{sound_pos[2]:.3f}")
+                self._sound_source_status.set(
+                    f"Set: ({sound_pos[0]:.3f}, {sound_pos[1]:.3f}, {sound_pos[2]:.3f})")
+            else:
+                self._clear_sound_source()
 
             # Update charuco GUI
             self._charuco_cols.set(charuco.columns)
@@ -998,7 +1109,7 @@ class CalibrationTab:
             sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
             from calibration.persistence import load_calibration
 
-            camera_array, charuco = load_calibration(Path(filepath))
+            camera_array, charuco, _ = load_calibration(Path(filepath))
 
             # Update charuco GUI
             self._charuco_cols.set(charuco.columns)
