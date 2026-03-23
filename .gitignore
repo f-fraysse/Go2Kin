@@ -119,7 +119,7 @@ code/caliscope/
 # Calibration output (machine-specific)
 config/calibration/
 
-#redesign plan March 26
+#design documents - for implementation only
 docs/redesign plan 13 03 2026.docx
 docs/redesign plan 16 03 2026.docx
 docs/redesign_plan_16_03_2026_updated.md
@@ -129,6 +129,7 @@ docs/phase2a_prompt.md
 docs/phase2b_prompt.md
 docs/phase3_prompt.md
 docs/phase4_prompt.md
+docs/audio_sync_spec.md
 
 # setup specific camera configs
 config/cameras.json
