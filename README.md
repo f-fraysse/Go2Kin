@@ -250,18 +250,15 @@ The sound source position is saved in the calibration JSON file and restored whe
 ## TODO
 
 To fix:
-- Set FPS in Pose2Sim config from video files — currently "Process Selected" only sets subject height/weight in the config template, but doesn't detect or set the video FPS to match the recordings
+- Set FPS in Pose2Sim config from video files — currently "Process Selected" only sets subject height/weight in the config template, but doesn't detect or set the video FPS to match the recordings - done, this is handled in pose2sim config file already, need to test working
 - check camera configs (double up between old system in config/ and go2kin_config in root)
-- check camera discovery tool (needed?)
+- check camera discovery tool (needed?) - fine to leave - resolution and FPS options can be populated manually if needed for now
 
 Potential optimisations (low hanging fruit):
-- increase chunk size for file download from GoPros (8kB currently) (trivial change on goproUSB.py)
 - defer or remove the creation of "stitched preview" after sync (takes ~10sec)
-- concurrent pose estimation for estimate_pose_all() (one thread + ONNX session per camera) and add configurable "pose_processes" parameter
 
 Misc / small:
 - extract Recording and Live Preview tabs into dedicated files (`recording_tab.py`, `preview_tab.py`) to match other tabs — reduces main_window.py by ~35%. See [`docs/extract_preview_recording_tabs.md`](docs/extract_preview_recording_tabs.md) for plan.
-- only generate one TOML calibration, then delete export_toml.py (keep capacity to only save intrinsics)
-- auto load latest active session and latest calibration when launching GUI
+- only generate one TOML calibration, then delete export_toml.py (keep capacity to only save intrinsics) 
 - visualisation tab: does not handle 2d / 3d keypoints having different number of frames than video (e.g. if person is not detected at start of recording) - need to investigate what pose2sim does with video frames that do not return a pose / if it discards some video frames in whole pipeline
 - make charuco board vertical offset editable by user (one/few times setup probably)
