@@ -403,7 +403,65 @@ Multiple tabs have fixed-size containers (subjects table, progress logs, trial l
 - **Settings/Config area**: for rarely-changed options that don't belong on workflow tabs
 - **Quick start guide**: one-page markdown for onboarding grad students (more valuable than onboarding UI)
 
-## Notes on log in GUI
+---
 
-currently inconsistent.
-need to fix the way log is done between console / terminal. At the moment i'm essentially trying to "pipe" / redirect the terminal output to the console. It does not work cleanly. Also, I have lost some terminal output (doesn't appear in either terminal or GUI console). I think I will just remove GUI log, make sure everything is back in terminal then think  about it once rest of UI is redesigned. Can just monitor terminal on the side in the meantime
+## Implementation Plan
+
+Repo: https://github.com/f-fraysse/Go2Kin
+
+### Prep: Extract Tabs into Dedicated Files
+Before any redesign work. Recording tab and Live Preview tab currently live inline — extract each into its own .py file, matching the pattern used by the other tabs. Pure refactor, no behavior changes. This makes every subsequent session cleaner since Claude Code can be pointed at one file per task.
+
+### Note: Logging
+**Do not implement GUI logging during the redesign.** Current GUI log piping is broken (lost output, tqdm rendering issues, third-party library output from multiple depths). For now: rip out all GUI log widgets and redirects. Verify that all output (own code + pose2sim + rtmlib + opensim) appears cleanly in the terminal. The shared log panel in Session 3 is a UI placeholder only — build the panel visually but leave it empty or showing a "see terminal for logs" message. Proper GUI logging is a separate task to tackle after the UI redesign is complete.
+
+### Session 1: Persistent Top Bar + Remove Project Tab
+- Build the top bar component: Project/Session/Participant dropdowns with "+" buttons, calibration status, gear icon
+- Implement cascading enablement (no project → downstream disabled)
+- Remove the Project tab entirely — move any remaining functionality to gear/manage menu
+- Update tab structure: Preview | Calibration | Recording | Processing | Visualisation
+
+### Session 2: Shared Trial List Component
+- Build the session trials list as a reusable component
+- Columns: trial name, sync status (✅/🟡)
+- Delete trial functionality
+- Wire it into Recording, Processing, and Visualisation tabs in the same position
+- Ensure selection state and list content stay consistent across tabs
+
+### Session 3: Shared Log Panel + Bottom Bar Updates
+- Build the fixed log panel above the camera bar, visible on all tabs
+- 3-4 lines visible, scrollable, filter buttons (cal/rec/proc)
+- Update bottom bar: replace sync sound checkbox with Manual/Speaker radio buttons
+- Remove per-tab log boxes (Recording progress log, Processing log)
+
+### Session 4: Calibration Tab Redesign
+- Collapsible Charuco Board Config section (collapsed by default)
+- Collapsible Intrinsic Calibration section (collapsed by default)
+- Extrinsic Calibration: single Record/Stop button → 5s countdown → auto-record → auto-download → auto-sync → auto-calibrate
+- Set Origin: same automated flow, enabled after extrinsics complete
+- Apply button: commits calibration, auto-saves with timestamp, updates top bar
+- Sound source position inline within Extrinsic and Origin sections
+- 3D camera plot on right side, updates as calibration progresses
+- Failure handling: sync fail popup, quality indicators (green/amber/red)
+- Auto-delete videos after processing
+
+### Session 5: Recording Tab Redesign
+- Big trial name field, auto-advances to next name with _0x increment
+- Big Record button, dramatic state change (red, timer, stop)
+- 5-second countdown before recording starts
+- Post-recording auto sync with status feedback
+- Trial setup: participant, calibration (with age hint), sound source (if Manual mode)
+- Camera selection checkboxes
+- Session trials list (from Session 2) showing sync status
+
+### Session 6: Processing Tab Redesign
+- Flat trial list for current session with sync + processing status columns
+- Select All / Deselect All, Delete
+- Big "Process Selected" button
+- Progress indicator (current step + progress bar)
+- Event-driven list updates (no refresh button)
+- Uses shared log panel (from Session 3)
+
+### Session 7: Visualisation + Live Preview
+- Visualisation: integrate shared trial list, clicking loads for playback, larger scrubber, expand abbreviations (2D/3D Keypoints), structured info panel
+- Live Preview: camera feed grid, zoom control, persistent warning about intrinsic recalibration
