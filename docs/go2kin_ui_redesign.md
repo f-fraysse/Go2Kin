@@ -402,3 +402,8 @@ Multiple tabs have fixed-size containers (subjects table, progress logs, trial l
 - **Guided first-run experience**: welcome screen for brand new users (only needed if distributing to strangers)
 - **Settings/Config area**: for rarely-changed options that don't belong on workflow tabs
 - **Quick start guide**: one-page markdown for onboarding grad students (more valuable than onboarding UI)
+
+## Notes on log in GUI
+
+currently inconsistent.
+need to fix the way log is done between console / terminal. At the moment i'm essentially trying to "pipe" / redirect the terminal output to the console. It does not work cleanly. Also, I have lost some terminal output (doesn't appear in either terminal or GUI console). I think I will just remove GUI log, make sure everything is back in terminal then think  about it once rest of UI is redesigned. Can just monitor terminal on the side in the meantime
