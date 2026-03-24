@@ -218,11 +218,7 @@ Tabs communicate via:
 
 ## Progress Log
 
-_Update after each session completes:_
-
-```
-### Session N — [date] ✅
-- Completed: ...
-- Deviations: ...
-- State: ...
-```
+### Session 0a — 2026-03-25 ✅
+- Completed: Log cleanup in main_window.py and processing_tab.py. Removed all GUI log widgets (Progress Log in Recording tab, Log in Processing tab). Replaced ~54 self.log_progress() calls and ~15 self.log() calls with print(). Removed _LogForwarder, _StreamRedirector, and related infrastructure from pose2sim_builder.py. Removed log_callback/progress_callback params from build_pose2sim_project() and run_pose2sim_pipeline(). Removed use_custom_logging override so Pose2Sim handles its own logging.
+- Deviations: Had to also clean up pose2sim_builder.py — passing print as log_callback caused infinite recursion because _StreamRedirector replaced sys.stdout. Resolved by removing all log redirection infrastructure (no longer needed without GUI log widgets).
+- State: App launches, no GUI log boxes. All output in terminal including Pose2Sim logging. Processing works end-to-end.

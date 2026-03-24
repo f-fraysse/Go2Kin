@@ -544,21 +544,6 @@ class Go2KinMainWindow:
                                font=("Arial", 14, "bold"))
         timer_label.pack(side=tk.LEFT, padx=(15, 0))
 
-        # --- Progress Log ---
-        progress_frame = ttk.LabelFrame(self.recording_frame, text="Progress Log", padding=10)
-        progress_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
-
-        text_frame = ttk.Frame(progress_frame)
-        text_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.progress_text = tk.Text(text_frame, height=8, state="disabled",
-                                   font=("Consolas", 9), wrap=tk.WORD)
-        self.progress_text.tag_configure("warning", foreground="red")
-        scrollbar = ttk.Scrollbar(text_frame, orient="vertical", command=self.progress_text.yview)
-        self.progress_text.configure(yscrollcommand=scrollbar.set)
-        self.progress_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
         # --- Session/Trial Tree View ---
         tree_frame = ttk.LabelFrame(self.recording_frame, text="Session Trials", padding=10)
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
@@ -794,7 +779,7 @@ class Go2KinMainWindow:
                 messagebox.showerror("Error", f"No serial number configured for GoPro {camera_num} in go2kin_config.json")
                 return
             
-            self.log_progress(f"Connecting to GoPro {camera_num} ({serial})...")
+            print(f"Connecting to GoPro {camera_num} ({serial})...")
             
             # Create camera instance
             camera = GPcam(serial)
@@ -811,7 +796,7 @@ class Go2KinMainWindow:
             if response.status_code != 200:
                 raise Exception("Camera not responding to keep-alive")
             
-            self.log_progress(f"✓ Camera connected, querying camera info...")
+            print(f"✓ Camera connected, querying camera info...")
             
             # Get camera info (model, firmware, serial)
             info_response = camera.getCameraInfo()
@@ -822,7 +807,7 @@ class Go2KinMainWindow:
             model = camera_info['model_name']
             firmware = camera_info['firmware_version']
             
-            self.log_progress(f"  Model: {model}, Firmware: {firmware}")
+            print(f"  Model: {model}, Firmware: {firmware}")
             
             # Get profile manager
             profile_mgr = get_profile_manager()
@@ -833,14 +818,14 @@ class Go2KinMainWindow:
             if existing_profile and 'current_zoom' in existing_profile:
                 saved_zoom = existing_profile.get('current_zoom', 0)
                 if saved_zoom > 0:
-                    self.log_progress(f"  Found saved zoom level: {saved_zoom}%")
+                    print(f"  Found saved zoom level: {saved_zoom}%")
             
             # Check if we have a settings reference for this model/firmware
             reference = profile_mgr.load_settings_reference(model, firmware)
             
             if reference is None:
-                self.log_progress(f"⚠ No settings reference found for {model} {firmware}")
-                self.log_progress(f"  Run: python tools/discover_camera_settings.py {serial}")
+                print(f"⚠ No settings reference found for {model} {firmware}")
+                print(f"  Run: python tools/discover_camera_settings.py {serial}")
                 messagebox.showwarning(
                     "Settings Reference Missing",
                     f"No settings reference found for {model} (firmware {firmware}).\n\n"
@@ -850,10 +835,10 @@ class Go2KinMainWindow:
                 )
                 # Continue without reference - basic functionality still works
             else:
-                self.log_progress(f"✓ Loaded settings reference for {model} {firmware}")
+                print(f"✓ Loaded settings reference for {model} {firmware}")
             
             # Force video mode to ensure video settings are available
-            self.log_progress(f"  Setting camera to video mode...")
+            print(f"  Setting camera to video mode...")
             camera.modeVideo()
             time.sleep(1)
             
@@ -881,11 +866,11 @@ class Go2KinMainWindow:
                 for setting_id, option_id, name, value_desc in settings_on_connect:
                     current_value = current_settings.get(str(setting_id), None)
                     if current_value != option_id:
-                        self.log_progress(f"  Setting {name} to {value_desc}...")
+                        print(f"  Setting {name} to {value_desc}...")
                         camera.setSetting(setting_id, option_id)
                         time.sleep(0.3)
                     else:
-                        self.log_progress(f"  {name} already {value_desc}")
+                        print(f"  {name} already {value_desc}")
 
             # Restore critical recording settings from saved profile
             # This ensures settings survive camera power-cycles between sessions
@@ -901,11 +886,11 @@ class Go2KinMainWindow:
                         saved_value = saved['value']
                         current_value = current_settings.get(setting_id, None)
                         if current_value != saved_value:
-                            self.log_progress(f"  Restoring {name} to {saved['value_name']}...")
+                            print(f"  Restoring {name} to {saved['value_name']}...")
                             camera.setSetting(int(setting_id), saved_value)
                             time.sleep(0.3)
                         else:
-                            self.log_progress(f"  {name} already {saved['value_name']}")
+                            print(f"  {name} already {saved['value_name']}")
 
             # Get current camera state
             state_response = camera.getState()
@@ -916,20 +901,20 @@ class Go2KinMainWindow:
             
             # Query current zoom level (status ID 75)
             current_zoom = state['status'].get('75', 0)  # Default to 0 if not found
-            self.log_progress(f"  Current zoom: {current_zoom}%")
+            print(f"  Current zoom: {current_zoom}%")
             
             # Restore saved zoom level if available and different from current
             if saved_zoom is not None and saved_zoom > 0 and saved_zoom != current_zoom:
-                self.log_progress(f"  Restoring saved zoom level: {saved_zoom}%...")
+                print(f"  Restoring saved zoom level: {saved_zoom}%...")
                 try:
                     response = camera.setDigitalZoom(saved_zoom)
                     if response.status_code == 200:
                         current_zoom = saved_zoom  # Update to restored value
-                        self.log_progress(f"  ✓ Zoom restored to {saved_zoom}%")
+                        print(f"  ✓ Zoom restored to {saved_zoom}%")
                     else:
-                        self.log_progress(f"  ⚠ Failed to restore zoom (status: {response.status_code})")
+                        print(f"  ⚠ Failed to restore zoom (status: {response.status_code})")
                 except Exception as zoom_err:
-                    self.log_progress(f"  ⚠ Failed to restore zoom: {zoom_err}")
+                    print(f"  ⚠ Failed to restore zoom: {zoom_err}")
             
             # Create or update camera profile
             profile = None
@@ -939,7 +924,7 @@ class Go2KinMainWindow:
                 # Add zoom level to profile
                 profile['current_zoom'] = current_zoom
                 
-                self.log_progress(f"✓ Camera profile updated")
+                print(f"✓ Camera profile updated")
                 
                 # Store reference and profile for this camera
                 self.camera_references[camera_num] = reference
@@ -948,10 +933,10 @@ class Go2KinMainWindow:
                 # Log some current settings
                 if '2' in profile['current_settings']:  # Video Resolution
                     res_setting = profile['current_settings']['2']
-                    self.log_progress(f"  Current resolution: {res_setting['value_name']}")
+                    print(f"  Current resolution: {res_setting['value_name']}")
                 if '3' in profile['current_settings']:  # FPS
                     fps_setting = profile['current_settings']['3']
-                    self.log_progress(f"  Current FPS: {fps_setting['value_name']}")
+                    print(f"  Current FPS: {fps_setting['value_name']}")
                 
                 # Populate dropdowns from profile
                 self.populate_dropdowns_from_profile(camera_num, profile)
@@ -964,7 +949,7 @@ class Go2KinMainWindow:
             self.camera_status[camera_num] = True
             self.update_camera_status(camera_num, True)
             
-            self.log_progress(f"✓ GoPro {camera_num} connected successfully")
+            print(f"✓ GoPro {camera_num} connected successfully")
 
             # Query initial battery level
             try:
@@ -979,7 +964,7 @@ class Go2KinMainWindow:
                 pass  # Non-critical
 
         except Exception as e:
-            self.log_progress(f"✗ Failed to connect GoPro {camera_num}: {e}")
+            print(f"✗ Failed to connect GoPro {camera_num}: {e}")
             messagebox.showerror("Connection Error", f"Failed to connect GoPro {camera_num}:\n{e}")
     
     def populate_dropdowns_from_profile(self, camera_num, profile):
@@ -988,18 +973,18 @@ class Go2KinMainWindow:
         if '2' in profile['current_settings']:
             current_res = profile['current_settings']['2']['value_name']
             self.global_res_var.set(current_res)
-            self.log_progress(f"  Resolution: {current_res}")
+            print(f"  Resolution: {current_res}")
 
         # Set current FPS from profile
         if '3' in profile['current_settings']:
             current_fps = profile['current_settings']['3']['value_name']
             self.global_fps_var.set(current_fps)
-            self.log_progress(f"  FPS: {current_fps}")
+            print(f"  FPS: {current_fps}")
 
     def on_global_resolution_change(self, event=None):
         """Handle global resolution dropdown change — apply to all connected cameras"""
         new_value = self.global_res_var.get()
-        self.log_progress(f"Applying resolution {new_value} to all cameras...")
+        print(f"Applying resolution {new_value} to all cameras...")
         for camera_num in list(self.cameras.keys()):
             if camera_num in self.camera_references:
                 self.apply_setting_to_camera(camera_num, 2, new_value, "Video Resolution")
@@ -1007,7 +992,7 @@ class Go2KinMainWindow:
     def on_global_fps_change(self, event=None):
         """Handle global FPS dropdown change — apply to all connected cameras"""
         new_value = self.global_fps_var.get()
-        self.log_progress(f"Applying FPS {new_value} to all cameras...")
+        print(f"Applying FPS {new_value} to all cameras...")
         for camera_num in list(self.cameras.keys()):
             if camera_num in self.camera_references:
                 self.apply_setting_to_camera(camera_num, 3, new_value, "Frames Per Second")
@@ -1039,7 +1024,7 @@ class Go2KinMainWindow:
             if response.status_code == 200:
                 # Success! Update profile
                 self.update_camera_profile_setting(camera_num, setting_id, option_id, display_name)
-                self.log_progress(f"✓ {setting_name} set to: {display_name}")
+                print(f"✓ {setting_name} set to: {display_name}")
 
                 # Re-apply zoom in case the setting change reset it
                 if camera_num in self.camera_profiles:
@@ -1049,18 +1034,18 @@ class Go2KinMainWindow:
                             camera.setDigitalZoom(saved_zoom)
                             time.sleep(0.2)
                         except Exception as e:
-                            self.log_progress(f"  ⚠ Note: Zoom may have been reset by setting change")
+                            print(f"  ⚠ Note: Zoom may have been reset by setting change")
                 
             elif response.status_code == 403:
                 # Invalid option - log details and show available options
                 try:
                     error_data = response.json()
                     error_code = error_data.get('error', 'unknown')
-                    self.log_progress(f"  Setting rejected (error code {error_code}): {error_data}")
+                    print(f"  Setting rejected (error code {error_code}): {error_data}")
                     available_options = error_data.get('supported_options', error_data.get('available_options', []))
                     self.show_invalid_setting_dialog(setting_name, available_options)
                 except Exception as e:
-                    self.log_progress(f"  Failed to parse 403 response: {e}")
+                    print(f"  Failed to parse 403 response: {e}")
                     messagebox.showerror("Setting Error",
                                        f"Cannot set {setting_name} to '{display_name}' with current camera state")
                 
@@ -1078,7 +1063,7 @@ class Go2KinMainWindow:
                 raise Exception(f"Unexpected response: {response.status_code}")
                 
         except Exception as e:
-            self.log_progress(f"✗ Failed to apply {setting_name}: {e}")
+            print(f"✗ Failed to apply {setting_name}: {e}")
             messagebox.showerror("Setting Error", f"Failed to apply {setting_name}:\n{e}")
     
     def update_camera_profile_setting(self, camera_num, setting_id, option_id, display_name):
@@ -1101,7 +1086,7 @@ class Go2KinMainWindow:
             profile_mgr.save_camera_profile(serial, profile)
             
         except Exception as e:
-            self.log_progress(f"⚠ Error updating profile: {e}")
+            print(f"⚠ Error updating profile: {e}")
     
     def show_invalid_setting_dialog(self, setting_name, available_options):
         """Show dialog with available options when setting is invalid"""
@@ -1144,9 +1129,9 @@ class Go2KinMainWindow:
                 if camera_num in self.camera_profiles:
                     del self.camera_profiles[camera_num]
                 
-                self.log_progress(f"✓ GoPro {camera_num} disconnected")
+                print(f"✓ GoPro {camera_num} disconnected")
         except Exception as e:
-            self.log_progress(f"✗ Error disconnecting GoPro {camera_num}: {e}")
+            print(f"✗ Error disconnecting GoPro {camera_num}: {e}")
     
     def update_camera_status(self, camera_num, connected):
         """Update the visual status indicator for a camera"""
@@ -1623,7 +1608,7 @@ class Go2KinMainWindow:
         self.recording = False
         self._stop_bar_timer()
         self.record_toggle_btn.config(text="Stopping...", state="disabled")
-        self.log_progress("Stopping recording...")
+        print("Stopping recording...")
 
     def recording_worker(self, camera_list):
         """Background worker for recording process."""
@@ -1632,8 +1617,8 @@ class Go2KinMainWindow:
         trial_name = info["trial_name"]
 
         try:
-            self.log_progress(f"Starting recording on cameras: {camera_list}")
-            self.log_progress(f"Trial directory: {video_dir}")
+            print(f"Starting recording on cameras: {camera_list}")
+            print(f"Trial directory: {video_dir}")
 
             # Run recording delay countdown if enabled
             self._run_rec_delay()
@@ -1649,9 +1634,9 @@ class Go2KinMainWindow:
                 for camera_num, future in futures:
                     try:
                         future.result(timeout=15)
-                        self.log_progress(f"  GoPro {camera_num} recording started")
+                        print(f"  GoPro {camera_num} recording started")
                     except Exception as e:
-                        self.log_progress(f"  Failed to start GoPro {camera_num}: {e}")
+                        print(f"  Failed to start GoPro {camera_num}: {e}")
 
             # Start timers after all cameras confirmed
             self.root.after(0, self.start_timer)
@@ -1665,7 +1650,7 @@ class Go2KinMainWindow:
                 time.sleep(0.5)
 
             # Stop recording and download files
-            self.log_progress("Stopping cameras and downloading files...")
+            print("Stopping cameras and downloading files...")
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
                 futures = []
@@ -1680,17 +1665,17 @@ class Go2KinMainWindow:
                 for camera_num, future in futures:
                     try:
                         future.result(timeout=300)
-                        self.log_progress(f"  GoPro {camera_num} file downloaded")
+                        print(f"  GoPro {camera_num} file downloaded")
                     except Exception as e:
-                        self.log_progress(f"  Error downloading GoPro {camera_num}: {e}")
+                        print(f"  Error downloading GoPro {camera_num}: {e}")
 
-            self.log_progress("Recording complete. Starting audio synchronisation...")
+            print("Recording complete. Starting audio synchronisation...")
 
             # Auto-sync
             self._auto_sync(info)
 
         except Exception as e:
-            self.log_progress(f"Recording error: {e}")
+            print(f"Recording error: {e}")
 
         finally:
             self.root.after(0, self.reset_recording_ui)
@@ -1712,13 +1697,13 @@ class Go2KinMainWindow:
         ])
 
         if len(mp4_files) < 2:
-            self.log_progress(f"Only {len(mp4_files)} video file(s) — skipping sync.")
+            print(f"Only {len(mp4_files)} video file(s) — skipping sync.")
             return
 
         try:
             # Check ffmpeg
             if not check_ffmpeg():
-                self.log_progress("ffmpeg not found — skipping sync. Install with: conda install -c conda-forge ffmpeg")
+                print("ffmpeg not found — skipping sync. Install with: conda install -c conda-forge ffmpeg")
                 return
 
             video_paths = [str(f) for f in mp4_files]
@@ -1728,7 +1713,7 @@ class Go2KinMainWindow:
                 name = Path(vp).name
                 if not check_audio_track(vp):
                     raise AudioSyncError(f"No audio track in: {name}")
-                self.log_progress(f"  Audio confirmed: {name}")
+                print(f"  Audio confirmed: {name}")
 
             # Build camera positions for speed-of-sound compensation (if calibration loaded)
             cam_positions = None
@@ -1737,11 +1722,11 @@ class Go2KinMainWindow:
                 cam_positions, sound_pos = self.calibration_tab._get_sync_compensation_data(video_paths)
 
             # Compute sync offsets (onset-based dual-clap detection)
-            self.log_progress("Analysing audio for onset-based sync...")
+            print("Analysing audio for onset-based sync...")
             offsets = compute_sync_offsets(
                 video_paths,
                 output_dir=str(video_dir),
-                progress_callback=lambda msg: self.log_progress(f"  {msg}"),
+                progress_callback=lambda msg: print(f"  {msg}"),
                 camera_positions=cam_positions,
                 sound_source_position=sound_pos,
             )
@@ -1750,34 +1735,33 @@ class Go2KinMainWindow:
             for path, info in offsets.items():
                 if info.get("status") == "WARN":
                     name = Path(path).name
-                    self.log_progress(
+                    print(
                         f"  WARNING: Inconsistent clap offsets for {name}. "
-                        f"Consider re-recording with clearer claps.",
-                        tag="warning")
+                        f"Consider re-recording with clearer claps.")
 
             # Trim and sync videos
-            self.log_progress("Trimming videos (stream copy, no re-encoding)...")
+            print("Trimming videos (stream copy, no re-encoding)...")
             output_files = trim_and_sync_videos(
                 video_paths, offsets, str(video_dir),
-                progress_callback=lambda msg: self.log_progress(f"  {msg}")
+                progress_callback=lambda msg: print(f"  {msg}")
             )
 
             # Create stitched preview
             synced_dir = str(self.project_manager.get_trial_synced_path(project, session, trial_name))
-            self.log_progress("Creating 2x2 stitched preview...")
+            print("Creating 2x2 stitched preview...")
             create_stitched_preview(
                 synced_dir,
-                progress_callback=lambda msg: self.log_progress(f"  {msg}")
+                progress_callback=lambda msg: print(f"  {msg}")
             )
 
             # Update trial.json
             self.project_manager.update_trial(project, session, trial_name, synced=True)
-            self.log_progress(
+            print(
                 f"Synchronisation complete! "
                 f"{len(output_files)} synced files + stitched preview in synced/ folder")
 
         except Exception as e:
-            self.log_progress(f"Sync error: {e}")
+            print(f"Sync error: {e}")
             try:
                 self.project_manager.update_trial(project, session, trial_name, synced=False)
             except Exception:
@@ -1906,23 +1890,7 @@ class Go2KinMainWindow:
             new_name = f"{current_name}_001"
 
         self.trial_name_var.set(new_name)
-        self.log_progress(f"Trial name updated to: {new_name}")
-
-    def log_progress(self, message, tag=None):
-        """Log a message to the progress text area (thread-safe)."""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        log_message = f"[{timestamp}] {message}\n"
-
-        def update_text():
-            self.progress_text.config(state="normal")
-            if tag:
-                self.progress_text.insert(tk.END, log_message, tag)
-            else:
-                self.progress_text.insert(tk.END, log_message)
-            self.progress_text.see(tk.END)
-            self.progress_text.config(state="disabled")
-
-        self.root.after(0, update_text)
+        print(f"Trial name updated to: {new_name}")
 
     def on_closing(self):
         """Handle window close event with graceful cleanup"""

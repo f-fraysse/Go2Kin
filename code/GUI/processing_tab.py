@@ -9,7 +9,7 @@ import logging
 import threading
 import tkinter as tk
 from tkinter import ttk
-from datetime import datetime
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class ProcessingTab:
         self._trial_map = {}          # iid -> (session, trial_name)
         self._processing = False
         self._stop_event = threading.Event()
-        self._progress_marks = {}     # key -> tk.Text mark name (for tqdm bars)
+
 
         # Build UI
         self.frame = ttk.Frame(notebook)
@@ -93,26 +93,6 @@ class ProcessingTab:
 
         # Click to toggle
         self.tree.bind("<ButtonRelease-1>", self._on_tree_click)
-
-        # --- Log Output ---
-        log_frame = ttk.LabelFrame(self.frame, text="Log", padding=10)
-        log_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
-
-        log_btn_row = ttk.Frame(log_frame)
-        log_btn_row.pack(fill=tk.X, pady=(0, 5))
-        ttk.Button(log_btn_row, text="Clear Log", command=self._clear_log).pack(
-            side=tk.LEFT)
-
-        text_container = ttk.Frame(log_frame)
-        text_container.pack(fill=tk.BOTH, expand=True)
-
-        self.log_text = tk.Text(text_container, height=10, state="disabled",
-                                font=("Consolas", 9), wrap=tk.WORD)
-        log_scroll = ttk.Scrollbar(text_container, orient="vertical",
-                                   command=self.log_text.yview)
-        self.log_text.configure(yscrollcommand=log_scroll.set)
-        self.log_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
         # --- Controls ---
         control_frame = ttk.Frame(self.frame)
@@ -216,61 +196,6 @@ class ProcessingTab:
             self._uncheck(iid)
 
     # -------------------------------------------------------------------------
-    # Logging
-    # -------------------------------------------------------------------------
-
-    def log(self, message):
-        """Thread-safe log message to the text widget."""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        log_message = f"[{timestamp}] {message}\n"
-
-        def update_text():
-            self.log_text.config(state="normal")
-            self.log_text.insert(tk.END, log_message)
-            self.log_text.see(tk.END)
-            self.log_text.config(state="disabled")
-
-        self.root.after(0, update_text)
-
-    def log_progress(self, key, message):
-        """Thread-safe progress update — each key gets its own updating line."""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        log_message = f"[{timestamp}] {message}\n"
-        # Sanitize key for use as a tk.Text mark name
-        mark_name = f"prog_{hash(key) & 0xFFFFFFFF}"
-
-        def update_text():
-            self.log_text.config(state="normal")
-            if mark_name in self._progress_marks:
-                # Replace existing progress line at mark position
-                try:
-                    mark_pos = self.log_text.index(mark_name)
-                    line_end = f"{mark_pos} lineend +1c"
-                    self.log_text.delete(mark_pos, line_end)
-                    self.log_text.insert(mark_name, log_message)
-                except tk.TclError:
-                    # Mark was lost — fall back to append
-                    self.log_text.insert(tk.END, log_message)
-            else:
-                # Append new progress line and set a mark at its start
-                insert_pos = self.log_text.index("end -1c")
-                self.log_text.insert(tk.END, log_message)
-                self.log_text.mark_set(mark_name, insert_pos)
-                self.log_text.mark_gravity(mark_name, "left")
-                self._progress_marks[mark_name] = True
-            self.log_text.see(tk.END)
-            self.log_text.config(state="disabled")
-
-        self.root.after(0, update_text)
-
-    def _clear_log(self):
-        """Clear the log text widget."""
-        self._progress_marks.clear()
-        self.log_text.config(state="normal")
-        self.log_text.delete("1.0", tk.END)
-        self.log_text.config(state="disabled")
-
-    # -------------------------------------------------------------------------
     # Processing controls
     # -------------------------------------------------------------------------
 
@@ -282,12 +207,12 @@ class ProcessingTab:
         selected = [(iid, *self._trial_map[iid]) for iid in self._checked
                      if iid in self._trial_map]
         if not selected:
-            self.log("No trials selected")
+            print("No trials selected")
             return
 
         project = self.get_current_project()
         if not project:
-            self.log("No project selected")
+            print("No project selected")
             return
 
         self._processing = True
@@ -305,7 +230,7 @@ class ProcessingTab:
     def _on_stop(self):
         """Request pipeline stop after current step."""
         self._stop_event.set()
-        self.log("Stop requested — will stop after current step completes")
+        print("Stop requested — will stop after current step completes")
 
     def _processing_worker(self, project, selected_trials):
         """Background thread: process selected trials sequentially."""
@@ -314,37 +239,33 @@ class ProcessingTab:
         total = len(selected_trials)
         success_count = 0
 
-        self.log(f"Starting processing of {total} trial(s)")
+        print(f"Starting processing of {total} trial(s)")
 
         for i, (iid, session, trial_name) in enumerate(selected_trials, 1):
             if self._stop_event.is_set():
-                self.log("Stopped by user")
+                print("Stopped by user")
                 break
 
-            self.log(f"\n{'='*50}")
-            self.log(f"[{i}/{total}] Setting up {session}/{trial_name}...")
+            print(f"\n{'='*50}")
+            print(f"[{i}/{total}] Setting up {session}/{trial_name}...")
 
             # Build
             try:
                 processed_path = build_pose2sim_project(
                     self.pm, project, session, trial_name,
-                    log_callback=self.log,
                 )
             except (ValueError, FileNotFoundError) as e:
-                self.log(f"SKIPPED {trial_name}: {e}")
+                print(f"SKIPPED {trial_name}: {e}")
                 continue
             except Exception as e:
-                self.log(f"SKIPPED {trial_name}: unexpected error: {e}")
+                print(f"SKIPPED {trial_name}: unexpected error: {e}")
                 logger.exception(f"Build failed for {trial_name}")
                 continue
 
             # Run pipeline
-            self._progress_marks.clear()
-            self.log(f"Processing {session}/{trial_name}...")
+            print(f"Processing {session}/{trial_name}...")
             ok = run_pose2sim_pipeline(
                 processed_path,
-                log_callback=self.log,
-                progress_callback=self.log_progress,
                 stop_event=self._stop_event,
             )
 
@@ -353,14 +274,14 @@ class ProcessingTab:
                 try:
                     self.pm.update_trial(project, session, trial_name, processed=True)
                 except Exception as e:
-                    self.log(f"Warning: could not update trial.json: {e}")
-                self.log(f"Completed {trial_name} successfully")
+                    print(f"Warning: could not update trial.json: {e}")
+                print(f"Completed {trial_name} successfully")
             else:
-                self.log(f"Failed processing {trial_name}")
+                print(f"Failed processing {trial_name}")
 
         # Summary
-        self.log(f"\n{'='*50}")
-        self.log(f"Processing complete: {success_count}/{total} trials successful")
+        print(f"\n{'='*50}")
+        print(f"Processing complete: {success_count}/{total} trials successful")
 
         # Re-enable UI on main thread
         def finish():
