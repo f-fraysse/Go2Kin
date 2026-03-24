@@ -32,7 +32,8 @@ class CalibrationTab:
                  project_manager=None, get_current_project=None,
                  is_recording=None, run_rec_delay=None,
                  start_bar_timer=None, stop_bar_timer=None,
-                 play_sync_sound=None):
+                 play_sync_sound=None,
+                 app_config=None, save_app_config=None):
         self.notebook = notebook
         self.config = config
         self.frame = ttk.Frame(notebook)
@@ -46,6 +47,8 @@ class CalibrationTab:
         self.start_bar_timer = start_bar_timer or (lambda: None)
         self.stop_bar_timer = stop_bar_timer or (lambda: None)
         self.play_sync_sound = play_sync_sound or (lambda: None)
+        self.app_config = app_config or {}
+        self._save_app_config = save_app_config or (lambda: None)
 
         # Lazy imports to avoid circular imports and slow startup
         self._charuco = None
@@ -1027,28 +1030,27 @@ class CalibrationTab:
             save_calibration(filepath, self._camera_array, charuco,
                              sound_source_position=self._sound_source_pos)
             self._save_load_status.set(f"Saved to {filepath.name}")
+
+            # Persist to app config
+            self.app_config["last_calibration"] = str(filepath)
+            self._save_app_config()
+
             messagebox.showinfo("Success", f"Calibration saved to {filepath}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save: {e}")
 
-    def _load_calibration(self):
-        calib_dir = self._get_calibrations_dir()
-        initialdir = str(calib_dir) if calib_dir else str(CALIBRATION_DIR)
+    def load_calibration_file(self, filepath: Path, silent: bool = False) -> bool:
+        """Load a calibration file and update GUI state.
 
-        filepath = filedialog.askopenfilename(
-            initialdir=initialdir,
-            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
-            title="Load Calibration",
-        )
-        if not filepath:
-            return
-
+        Returns True on success, False on failure.
+        If silent=True, logs instead of showing messageboxes.
+        """
         try:
             import sys
             sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
             from calibration.persistence import load_calibration
 
-            camera_array, charuco, sound_pos = load_calibration(Path(filepath))
+            camera_array, charuco, sound_pos = load_calibration(filepath)
             self._camera_array = camera_array
 
             # Restore sound source position
@@ -1085,10 +1087,57 @@ class CalibrationTab:
             if camera_array.posed_cameras:
                 self._update_3d_viewer(camera_array)
 
-            self._save_load_status.set(f"Loaded from {Path(filepath).name}")
-            messagebox.showinfo("Success", f"Calibration loaded ({len(camera_array.cameras)} cameras)")
+            self._save_load_status.set(f"Loaded from {filepath.name}")
+
+            # Persist to app config
+            self.app_config["last_calibration"] = str(filepath)
+            self._save_app_config()
+
+            if silent:
+                logger.info("Auto-loaded calibration: %s", filepath.name)
+            else:
+                messagebox.showinfo("Success", f"Calibration loaded ({len(camera_array.cameras)} cameras)")
+            return True
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to load: {e}")
+            if silent:
+                logger.warning("Failed to auto-load calibration %s: %s", filepath.name, e)
+            else:
+                messagebox.showerror("Error", f"Failed to load: {e}")
+            return False
+
+    def auto_load_calibration(self):
+        """Auto-load calibration on startup: prefer last_calibration, fall back to latest."""
+        # Try last_calibration from config
+        last_calib = self.app_config.get("last_calibration", "")
+        if last_calib:
+            calib_path = Path(last_calib)
+            if calib_path.exists():
+                self.load_calibration_file(calib_path, silent=True)
+                return
+
+        # Fall back to latest calibration in the current project
+        project = self.get_current_project()
+        if not project or not self.project_manager:
+            return
+        latest_name = self.project_manager.get_latest_calibration(project)
+        if latest_name:
+            calib_path = self.project_manager.get_calibration_path(project, latest_name, "json")
+            if calib_path.exists():
+                self.load_calibration_file(calib_path, silent=True)
+
+    def _load_calibration(self):
+        calib_dir = self._get_calibrations_dir()
+        initialdir = str(calib_dir) if calib_dir else str(CALIBRATION_DIR)
+
+        filepath = filedialog.askopenfilename(
+            initialdir=initialdir,
+            filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+            title="Load Calibration",
+        )
+        if not filepath:
+            return
+
+        self.load_calibration_file(Path(filepath))
 
     def _load_intrinsics(self):
         """Load only intrinsic parameters from saved calibration file."""

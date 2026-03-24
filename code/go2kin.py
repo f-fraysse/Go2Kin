@@ -28,6 +28,7 @@ def load_app_config():
         "gopro_serial_numbers": [],
         "last_project": "",
         "last_session": "",
+        "last_calibration": "",
     }
     try:
         if APP_CONFIG_PATH.exists():

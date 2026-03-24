@@ -157,7 +157,10 @@ class Go2KinMainWindow:
         # Create GUI
         self.create_widgets()
         self.load_camera_settings()
-        
+
+        # Auto-load last calibration
+        self.calibration_tab.auto_load_calibration()
+
         # Bind window close event
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
@@ -443,6 +446,8 @@ class Go2KinMainWindow:
             start_bar_timer=self._start_bar_timer,
             stop_bar_timer=self._stop_bar_timer,
             play_sync_sound=self._play_sync_sound,
+            app_config=self.app_config,
+            save_app_config=self.save_app_config,
         )
 
     def create_processing_tab(self):
