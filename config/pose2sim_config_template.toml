@@ -22,7 +22,7 @@ multi_person = false # true for trials with multiple participants. If false, onl
 participant_height = '1.69' # 'auto', float (eg 1.72), or list of floats (eg [1.72, 1.40])  # meters  # Only used for marker augmentation 
 participant_mass = 64.0             # float (eg 70.0), or list of floats (eg [70.0, 63.5])  # kg      # Only used for marker augmentation and scaling, no impact on results unless you need to further compute forces
 
-frame_rate = 50 # fps # int or 'auto'. If 'auto', finds from video (or defaults to 60 fps if you work with images) 
+frame_rate = 'auto' # fps # int or 'auto'. If 'auto', finds from video (or defaults to 60 fps if you work with images) 
 frame_range = 'all' # 'auto', 'all', or range like [10,300]. If 'auto', will trim around the frames with low reprojection error (useful if a person enters/exits the scene)
                      # If cameras are not synchronized, designates the frame range of the camera with the shortest recording time
                      # N.B.: If you want a time range instead, use frame_range = time_range * frame_rate
@@ -79,7 +79,7 @@ det_frequency = 4 # Run person detection only every N frames, and inbetween trac
                   # Equal to or greater than 1, can be as high as you want in simple uncrowded cases. Much faster, but might be less accurate. 
 device = 'CUDA' # 'auto', 'CPU', 'CUDA', 'MPS', 'ROCM'
 backend = 'onnxruntime' # 'auto', 'openvino', 'onnxruntime', 'opencv'
-parallel_pose_detection = 2 # 'off' = sequential (default), 'auto' = one thread per video,
+parallel_pose_detection = 'off' # 'off' = sequential (default), 'auto' = one thread per video,
                                 # or an integer (e.g., 2) to specify the number of threads.
                                 # Each thread loads its own ONNX model into VRAM (~0.5-2GB each).
                                 # Higher thread counts (4+) need good CPU, GPU, and VRAM.
