@@ -25,19 +25,25 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
 
 ## Setup
 
-1. Create and activate the Conda environment:
+1. Clone the repository:
+   ```
+   git clone https://github.com/f-fraysse/Go2Kin.git
+   cd Go2Kin
+   ```
+
+2. Create and activate the Conda environment:
    ```
    conda create -n Go2Kin python=3.10
    conda activate Go2Kin
    ```
 
-2. Install dependencies:
+3. Install dependencies:
    ```
    pip install -r requirements.txt
    conda install -c conda-forge ffmpeg
    ```
 
-3. Install pose2sim as a submodule:
+4. Install pose2sim as a submodule:
     ```
    git submodule init
    git submodule update
@@ -46,12 +52,12 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
    pip install onnxruntime-gpu==1.20.1
    ```
 
-4. Install opensim:
+5. Install opensim:
     ```
     conda install -c opensim-org opensim
     ```
 
-5. Set up the application config:
+6. Set up the application config:
    ```
    cp go2kin_config_template.json go2kin_config.json
    ```
@@ -62,20 +68,19 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
 
    If you skip this step, Go2Kin will prompt you to select a data root folder on first launch.
 
-6. Connect GoPro cameras via USB and power them on.
+7. Connect GoPro cameras via USB and power them on.
 
-7. Run the settings discovery tool once per camera model/firmware to generate a settings reference file:
+8. Run the settings discovery tool once per camera model/firmware to generate a settings reference file:
    ```
    python tools/discover_camera_settings.py <camera_serial_number>
    ```
    This creates a reference file in `config/settings_references/` that maps setting IDs to human-readable names and available options.
 
-8. Configure camera serial numbers in `go2kin_config.json` (see step 3).
+9. Configure camera serial numbers in `go2kin_config.json` (see step 6).
 
 ## Usage
 
 ```
-conda activate Go2Kin
 python code/go2kin.py
 ```
 
