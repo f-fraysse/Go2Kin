@@ -255,7 +255,7 @@ To fix:
 - check camera discovery tool (needed?) - fine to leave - resolution and FPS options can be populated manually if needed for now
 
 Potential optimisations (low hanging fruit):
-- defer or remove the creation of "stitched preview" after sync (takes ~10sec)
+- defer or remove the creation of "stitched preview" after sync (takes ~10sec) - we have clean audio sync now - maybe enforce need for 2 claps as this is how we check consistency
 
 Misc / small:
 - extract Recording and Live Preview tabs into dedicated files (`recording_tab.py`, `preview_tab.py`) to match other tabs — reduces main_window.py by ~35%. See [`docs/extract_preview_recording_tabs.md`](docs/extract_preview_recording_tabs.md) for plan.
