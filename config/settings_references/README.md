@@ -15,7 +15,7 @@ Reference files are automatically generated using the `tools/discover_camera_set
 2. Parses the 403 error response to extract available options
 3. Saves the settings and their options to a JSON file
 
-## ⚠️ Known Issue: Truncated Display Names
+## Known Issue: Truncated Display Names
 
 **The camera's 403 error response truncates some display names**, particularly for resolution options with aspect ratio variants. This causes duplicate names in the reference file.
 
