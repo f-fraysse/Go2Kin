@@ -1,8 +1,8 @@
 """
 Processing tab for running the Pose2Sim pipeline on recorded trials.
 
-Displays a tree of sessions/trials with checkboxes for selection,
-a log output area, and controls to run/stop the pipeline.
+Uses the shared SessionTrialsList component for trial selection and displays
+pipeline step progress with colored indicators.
 """
 
 import logging
@@ -13,13 +13,24 @@ from tkinter import ttk
 
 logger = logging.getLogger(__name__)
 
-# Unicode checkbox characters
-_UNCHECKED = "\u2610"  # ☐
-_CHECKED = "\u2611"    # ☑
+# Pipeline steps (must match run_pose2sim_pipeline step order)
+_PIPELINE_STEPS = [
+    "Calibration",
+    "Pose Estimation",
+    "Triangulation",
+    "Filtering",
+    "Kinematics",
+]
+
+# Pipeline step status emoji
+_ICON_PENDING = "\u26AB"       # ⚫
+_ICON_PROCESSING = "\U0001F504"  # 🔄
+_ICON_COMPLETE = "\U0001F7E2"   # 🟢
+_ICON_FAILED = "\U0001F534"     # 🔴
 
 
 class ProcessingTab:
-    """Pose2Sim processing tab with trial selection, log output, and pipeline controls."""
+    """Pose2Sim processing tab with shared trial list and pipeline progress."""
 
     def __init__(self, notebook, project_manager, get_current_project,
                  get_current_session):
@@ -30,11 +41,8 @@ class ProcessingTab:
         self.root = notebook.winfo_toplevel()
 
         # State
-        self._checked = set()         # Set of treeview item IDs that are checked
-        self._trial_map = {}          # iid -> (session, trial_name)
         self._processing = False
         self._stop_event = threading.Event()
-
 
         # Build UI
         self.frame = ttk.Frame(notebook)
@@ -43,208 +51,137 @@ class ProcessingTab:
 
     def _build_ui(self):
         """Create the tab layout."""
-        # Title
-        title = ttk.Label(self.frame, text="Pose2Sim Processing",
-                          font=("Arial", 16, "bold"))
-        title.pack(pady=(15, 10))
+        from GUI.components.session_trials_list import SessionTrialsList
 
-        # --- Trial Selection ---
-        select_frame = ttk.LabelFrame(self.frame, text="Select Trials", padding=10)
-        select_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
-
-        # Button row
-        btn_row = ttk.Frame(select_frame)
-        btn_row.pack(fill=tk.X, pady=(0, 5))
-
-        ttk.Button(btn_row, text="Select All", command=self._select_all).pack(
-            side=tk.LEFT, padx=(0, 5))
-        ttk.Button(btn_row, text="Deselect All", command=self._deselect_all).pack(
-            side=tk.LEFT, padx=(0, 5))
-        ttk.Button(btn_row, text="Refresh", command=self.refresh_tree).pack(
-            side=tk.LEFT)
-
-        # Treeview
-        tree_container = ttk.Frame(select_frame)
-        tree_container.pack(fill=tk.BOTH, expand=True)
-
-        self.tree = ttk.Treeview(
-            tree_container, height=8, show="tree headings",
-            columns=("subject", "calibration", "status"),
+        # --- Session Trials List (top, expandable) ---
+        self.trials_list = SessionTrialsList(
+            self.frame, self.pm,
+            self.get_current_project, self.get_current_session,
         )
-        self.tree.heading("#0", text="Session / Trial")
-        self.tree.heading("subject", text="Subject")
-        self.tree.heading("calibration", text="Calibration")
-        self.tree.heading("status", text="Status")
+        self.trials_list.frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(10, 5))
 
-        self.tree.column("#0", width=250, minwidth=150)
-        self.tree.column("subject", width=100, minwidth=80)
-        self.tree.column("calibration", width=150, minwidth=100)
-        self.tree.column("status", width=100, minwidth=80)
+        # --- Pipeline Progress ---
+        progress_frame = ttk.LabelFrame(self.frame, text="Pipeline Progress", padding=10)
+        progress_frame.pack(fill=tk.X, padx=20, pady=5)
 
-        tree_scroll = ttk.Scrollbar(tree_container, orient="vertical",
-                                    command=self.tree.yview)
-        self.tree.configure(yscrollcommand=tree_scroll.set)
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        # Context label (e.g. "Processing trial_003 (2/5)")
+        self.context_var = tk.StringVar(value="Ready")
+        self.context_label = ttk.Label(progress_frame, textvariable=self.context_var,
+                                       font=("Arial", 10))
+        self.context_label.pack(anchor=tk.W, pady=(0, 5))
 
-        # Tag for checked items
-        self.tree.tag_configure("checked", background="#d4edda")
-        self.tree.tag_configure("session", font=("Arial", 10, "bold"))
+        # Step indicators — horizontal row of circles + labels
+        steps_frame = ttk.Frame(progress_frame)
+        steps_frame.pack(fill=tk.X)
 
-        # Click to toggle
-        self.tree.bind("<ButtonRelease-1>", self._on_tree_click)
+        self._step_circles = []
+        for step_name in _PIPELINE_STEPS:
+            circle = tk.Label(steps_frame, text=_ICON_PENDING, font=("Segoe UI Emoji", 14))
+            circle.pack(side=tk.LEFT)
+            label = ttk.Label(steps_frame, text=step_name, font=("Arial", 9))
+            label.pack(side=tk.LEFT, padx=(2, 12))
+            self._step_circles.append(circle)
 
-        # --- Controls ---
+        # --- Process Button ---
         control_frame = ttk.Frame(self.frame)
-        control_frame.pack(fill=tk.X, padx=20, pady=(5, 15))
+        control_frame.pack(pady=15)
 
-        self.process_btn = ttk.Button(control_frame, text="Process Selected",
-                                      command=self._on_process)
-        self.process_btn.pack(side=tk.LEFT, padx=(0, 10))
-
-        self.stop_btn = ttk.Button(control_frame, text="Stop",
-                                   command=self._on_stop, state="disabled")
-        self.stop_btn.pack(side=tk.LEFT)
+        self.process_btn = tk.Button(
+            control_frame, text="PROCESS SELECTED",
+            font=("Arial", 18, "bold"),
+            bg="#4CAF50", fg="white",
+            activebackground="#388E3C", activeforeground="white",
+            width=20, height=2,
+            command=self._toggle_process,
+            relief="raised", bd=3,
+        )
+        self.process_btn.pack()
 
     # -------------------------------------------------------------------------
-    # Tree management
+    # Public API
     # -------------------------------------------------------------------------
 
-    def refresh_tree(self):
-        """Rebuild the treeview from the current project's data."""
-        # Clear existing
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        self._checked.clear()
-        self._trial_map.clear()
+    def refresh(self):
+        """Refresh the trials list."""
+        self.trials_list.refresh()
 
-        project = self.get_current_project()
-        if not project:
-            return
+    # -------------------------------------------------------------------------
+    # Pipeline progress helpers
+    # -------------------------------------------------------------------------
 
-        try:
-            tree_data = self.pm.get_project_tree(project)
-        except Exception:
-            return
+    def _reset_steps(self):
+        """Reset all step circles to ⚫ Pending."""
+        for circle in self._step_circles:
+            circle.config(text=_ICON_PENDING)
 
-        for session_name, session_info in tree_data.get("sessions", {}).items():
-            session_id = self.tree.insert(
-                "", tk.END, text=session_name, open=True,
-                tags=("session",)
-            )
+    def _set_step_state(self, index, icon):
+        """Set a step circle emoji (called via root.after from worker)."""
+        if 0 <= index < len(self._step_circles):
+            self._step_circles[index].config(text=icon)
 
-            for trial_name in session_info.get("trials", []):
-                # Load trial metadata
-                try:
-                    trial = self.pm.get_trial(project, session_name, trial_name)
-                except Exception:
-                    trial = {}
-
-                subject = trial.get("subject_id", "")
-                calib = trial.get("calibration_file", "")
-                synced = trial.get("synced", False)
-                processed = trial.get("processed", False)
-
-                if processed:
-                    status = "Processed"
-                elif synced:
-                    status = "Ready"
-                else:
-                    status = "Not synced"
-
-                display = f"{_UNCHECKED} {trial_name}"
-                iid = self.tree.insert(
-                    session_id, tk.END, text=display,
-                    values=(subject, calib, status),
-                )
-                self._trial_map[iid] = (session_name, trial_name)
-
-    def _on_tree_click(self, event):
-        """Toggle checkbox on trial click."""
-        iid = self.tree.identify_row(event.y)
-        if not iid or iid not in self._trial_map:
-            return  # Clicked on session header or empty space
-
-        if iid in self._checked:
-            self._uncheck(iid)
-        else:
-            self._check(iid)
-
-    def _check(self, iid):
-        """Mark a trial as checked."""
-        self._checked.add(iid)
-        session, trial_name = self._trial_map[iid]
-        current_text = self.tree.item(iid, "text")
-        new_text = current_text.replace(_UNCHECKED, _CHECKED, 1)
-        self.tree.item(iid, text=new_text, tags=("checked",))
-
-    def _uncheck(self, iid):
-        """Unmark a trial."""
-        self._checked.discard(iid)
-        current_text = self.tree.item(iid, "text")
-        new_text = current_text.replace(_CHECKED, _UNCHECKED, 1)
-        self.tree.item(iid, text=new_text, tags=())
-
-    def _select_all(self):
-        """Check all trials."""
-        for iid in self._trial_map:
-            self._check(iid)
-
-    def _deselect_all(self):
-        """Uncheck all trials."""
-        for iid in list(self._checked):
-            self._uncheck(iid)
+    def _set_context(self, text):
+        """Update context label (called via root.after from worker)."""
+        self.context_var.set(text)
 
     # -------------------------------------------------------------------------
     # Processing controls
     # -------------------------------------------------------------------------
 
+    def _toggle_process(self):
+        """Toggle between start processing and cancel."""
+        if self._processing:
+            self._on_cancel()
+        else:
+            self._on_process()
+
     def _on_process(self):
         """Start processing selected trials."""
-        if self._processing:
-            return
-
-        selected = [(iid, *self._trial_map[iid]) for iid in self._checked
-                     if iid in self._trial_map]
+        selected = self.trials_list.get_checked_trials()
         if not selected:
             print("No trials selected")
             return
 
         project = self.get_current_project()
-        if not project:
-            print("No project selected")
+        session = self.get_current_session()
+        if not project or not session:
+            print("No project/session selected")
             return
 
         self._processing = True
         self._stop_event.clear()
-        self.process_btn.config(state="disabled")
-        self.stop_btn.config(state="normal")
+        self._reset_steps()
+        self.process_btn.config(text="CANCEL", bg="#f44336",
+                                activebackground="#d32f2f")
 
         thread = threading.Thread(
             target=self._processing_worker,
-            args=(project, selected),
+            args=(project, session, selected),
             daemon=True,
         )
         thread.start()
 
-    def _on_stop(self):
+    def _on_cancel(self):
         """Request pipeline stop after current step."""
         self._stop_event.set()
-        print("Stop requested — will stop after current step completes")
+        print("Cancel requested — will stop after current step completes")
 
-    def _processing_worker(self, project, selected_trials):
+    def _processing_worker(self, project, session, trial_names):
         """Background thread: process selected trials sequentially."""
-        from pose2sim_builder import build_pose2sim_project, run_pose2sim_pipeline
+        from pose2sim_builder import build_pose2sim_project
 
-        total = len(selected_trials)
+        total = len(trial_names)
         success_count = 0
 
         print(f"Starting processing of {total} trial(s)")
 
-        for i, (iid, session, trial_name) in enumerate(selected_trials, 1):
+        for i, trial_name in enumerate(trial_names, 1):
             if self._stop_event.is_set():
-                print("Stopped by user")
+                print("Cancelled by user")
                 break
+
+            self.root.after(0, self._reset_steps)
+            self.root.after(0, self._set_context,
+                            f"Processing {trial_name} ({i}/{total})")
 
             print(f"\n{'='*50}")
             print(f"[{i}/{total}] Setting up {session}/{trial_name}...")
@@ -262,12 +199,9 @@ class ProcessingTab:
                 logger.exception(f"Build failed for {trial_name}")
                 continue
 
-            # Run pipeline
+            # Run pipeline with step-by-step progress
             print(f"Processing {session}/{trial_name}...")
-            ok = run_pose2sim_pipeline(
-                processed_path,
-                stop_event=self._stop_event,
-            )
+            ok = self._run_pipeline_with_progress(processed_path)
 
             if ok:
                 success_count += 1
@@ -280,14 +214,77 @@ class ProcessingTab:
                 print(f"Failed processing {trial_name}")
 
         # Summary
+        summary = f"Complete: {success_count}/{total} trials successful"
         print(f"\n{'='*50}")
-        print(f"Processing complete: {success_count}/{total} trials successful")
+        print(f"Processing {summary.lower()}")
 
         # Re-enable UI on main thread
         def finish():
             self._processing = False
-            self.process_btn.config(state="normal")
-            self.stop_btn.config(state="disabled")
-            self.refresh_tree()
+            self.process_btn.config(text="PROCESS SELECTED", bg="#4CAF50",
+                                    activebackground="#388E3C")
+            self._set_context(summary)
+            self.trials_list.refresh()
 
         self.root.after(0, finish)
+
+    def _run_pipeline_with_progress(self, processed_path):
+        """Run Pose2Sim pipeline, updating step circles after each step.
+
+        Returns True on success, False on failure or cancel.
+        """
+        import os
+        import sys
+
+        original_cwd = os.getcwd()
+
+        try:
+            os.chdir(str(processed_path))
+
+            # Import Pose2Sim (submodule at code/pose2sim/)
+            from pathlib import Path
+            pose2sim_path = str(Path(__file__).resolve().parent.parent / "pose2sim")
+            if pose2sim_path not in sys.path:
+                sys.path.insert(0, pose2sim_path)
+
+            from Pose2Sim import Pose2Sim as P2S
+
+            steps = [
+                ("Calibration", P2S.calibration),
+                ("Pose Estimation", P2S.poseEstimation),
+                ("Triangulation", P2S.triangulation),
+                ("Filtering", P2S.filtering),
+                ("Kinematics", P2S.kinematics),
+            ]
+
+            for step_idx, (step_name, step_fn) in enumerate(steps):
+                if self._stop_event.is_set():
+                    print(f"Pipeline stopped before {step_name}")
+                    return False
+
+                # Mark current step as 🔄 Processing
+                self.root.after(0, self._set_step_state, step_idx, _ICON_PROCESSING)
+
+                print(f"--- Starting {step_name} ---")
+                try:
+                    step_fn()
+                except Exception as e:
+                    print(f"ERROR in {step_name}: {e}")
+                    logger.exception(f"Pose2Sim {step_name} failed")
+                    # Mark failed step as 🔴 Failed
+                    self.root.after(0, self._set_step_state, step_idx, _ICON_FAILED)
+                    return False
+
+                # Mark completed step as 🟢 Complete
+                self.root.after(0, self._set_step_state, step_idx, _ICON_COMPLETE)
+
+            print("Pipeline completed successfully")
+            return True
+
+        except Exception as e:
+            print(f"Pipeline error: {e}")
+            logger.exception("Pose2Sim pipeline failed")
+            return False
+
+        finally:
+            os.chdir(original_cwd)

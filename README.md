@@ -262,3 +262,8 @@ Misc / small:
 - only generate one TOML calibration, then delete export_toml.py (keep capacity to only save intrinsics) 
 - visualisation tab: does not handle 2d / 3d keypoints having different number of frames than video (e.g. if person is not detected at start of recording) - need to investigate what pose2sim does with video frames that do not return a pose / if it discards some video frames in whole pipeline
 - make charuco board vertical offset editable by user (one/few times setup probably)
+- check how calibration age in top bar (should be date only)
+- bigger tabs / tab names, more visible in UI
+- remove scrollable left panel in Calibration (does not need to be scrollable anymore)
+- delete camera selection check boxes in recording. When pressing Record, record with all connected cameras.
+- replaced colored circles outside of TreeView/Canvas widgets with actual unicode symbols (like done in Processing / Pipeline Progress panel)

@@ -291,4 +291,12 @@ Tabs communicate via:
   - Fixed STOP button not working: buttons were left in `state="disabled"` from countdown phase when switching to STOP mode.
 - State: App launches, calibration tab functional with pipeline layout. Automated extrinsic and origin flows work end-to-end. 41 unit tests pass.
 
+### Session 5 — 2026-03-26 ✅
+- Completed: Processing tab redesign with shared SessionTrialsList and pipeline progress indicators.
+  - Rewrote `code/GUI/processing_tab.py`: replaced custom Treeview with `SessionTrialsList` (identical appearance/position to Recording tab). Added pipeline progress section with 5 step labels (Calibration, Pose Estimation, Triangulation, Filtering, Kinematics) each with grey/green circle indicator. Large green "PROCESS SELECTED" button (same style as Recording tab's RECORD) toggles to red "CANCEL" during processing. Context label shows current trial + progress count.
+  - Pipeline execution now inline (replaced `run_pose2sim_pipeline` delegation) so step circles update in real-time after each step completes.
+  - Updated `code/GUI/main_window.py`: changed `refresh_tree()` → `refresh()` in `_refresh_active_tab()`.
+- Deviations: Pipeline steps displayed horizontally (not vertically) to keep the layout compact. Pipeline execution inlined rather than delegating to `run_pose2sim_pipeline()` to enable per-step UI updates.
+- State: App launches, processing tab has shared trial list matching recording tab. Pipeline steps show grey/green progress. 41 unit tests pass.
+
 ### TODO (future sessions)
