@@ -288,7 +288,8 @@ class Go2KinMainWindow:
         from GUI.top_bar import TopBar
         self.top_bar = TopBar(
             self.root, self.project_manager,
-            self.app_config, self.save_app_config
+            self.app_config, self.save_app_config,
+            on_selection_changed=self._on_top_bar_changed,
         )
 
     def create_calibration_tab(self):
@@ -337,6 +338,7 @@ class Go2KinMainWindow:
             self.project_manager, self.app_config,
             get_current_project=lambda: self.top_bar.get_current_project(),
             get_current_session=lambda: self.top_bar.get_current_session(),
+            get_current_participant=lambda: self.top_bar.get_current_participant(),
             save_camera_settings=self.save_camera_settings,
             save_app_config=self.save_app_config,
             get_calibration_tab=lambda: self.calibration_tab if hasattr(self, 'calibration_tab') else None,
@@ -372,12 +374,22 @@ class Go2KinMainWindow:
     
     def _on_tab_changed(self, event):
         """Refresh tab contents when switching tabs."""
+        self._refresh_active_tab()
+
+    def _on_top_bar_changed(self):
+        """Called when project or session changes in the top bar."""
+        self._refresh_active_tab()
+
+    def _refresh_active_tab(self):
+        """Refresh the currently visible tab's data."""
         try:
             tab_id = self.notebook.select()
             if hasattr(self, 'recording_tab') and tab_id == str(self.recording_tab.frame):
                 self.recording_tab.refresh_recording_dropdowns()
             elif hasattr(self, 'processing_tab') and tab_id == str(self.processing_tab.frame):
                 self.processing_tab.refresh_tree()
+            elif hasattr(self, 'visualisation_tab') and tab_id == str(self.visualisation_tab.frame):
+                self.visualisation_tab._populate_projects()
         except Exception:
             pass
 

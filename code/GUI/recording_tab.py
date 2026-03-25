@@ -21,6 +21,7 @@ class RecordingTab:
     def __init__(self, notebook, config, cameras, camera_status, camera_serials,
                  project_manager, app_config,
                  get_current_project, get_current_session,
+                 get_current_participant,
                  save_camera_settings, save_app_config,
                  get_calibration_tab,
                  rec_delay_enabled, rec_delay_seconds, rec_delay_countdown_label,
@@ -35,6 +36,7 @@ class RecordingTab:
         self.app_config = app_config
         self.get_current_project = get_current_project
         self.get_current_session = get_current_session
+        self.get_current_participant = get_current_participant
         self.save_camera_settings = save_camera_settings
         self.save_app_config = save_app_config
         self._get_calibration_tab = get_calibration_tab
@@ -64,264 +66,87 @@ class RecordingTab:
         self._create_widgets()
 
     def _create_widgets(self):
-        """Create the recording tab UI"""
-        # Title
-        title_label = ttk.Label(self.frame, text="Multi-Camera Recording",
-                               font=("Arial", 16, "bold"))
-        title_label.pack(pady=(15, 10))
+        """Create the recording tab UI — cockpit layout."""
+        from GUI.components.session_trials_list import SessionTrialsList
+
+        # --- Session Trials List (top, expandable) ---
+        self.trials_list = SessionTrialsList(
+            self.frame, self.project_manager,
+            self.get_current_project, self.get_current_session,
+        )
+        self.trials_list.frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(10, 5))
 
         # --- Trial Setup section ---
         setup_frame = ttk.LabelFrame(self.frame, text="Trial Setup", padding=10)
-        setup_frame.pack(fill=tk.X, padx=20, pady=(0, 5))
+        setup_frame.pack(fill=tk.X, padx=20, pady=5)
 
-        # Participant row
-        part_frame = ttk.Frame(setup_frame)
-        part_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(part_frame, text="Participant:", width=12).pack(side=tk.LEFT)
-        self.participant_var = tk.StringVar()
-        self.participant_combo = ttk.Combobox(part_frame, textvariable=self.participant_var,
-                                              state="readonly", width=25)
-        self.participant_combo.pack(side=tk.LEFT, padx=(5, 8))
-        self.new_participant_btn = ttk.Button(part_frame, text="New Participant",
-                                              command=self._on_new_participant)
-        self.new_participant_btn.pack(side=tk.LEFT)
-
-        # Calibration row
-        cal_frame = ttk.Frame(setup_frame)
-        cal_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(cal_frame, text="Calibration:", width=12).pack(side=tk.LEFT)
-        self.calibration_var = tk.StringVar()
-        self.calibration_combo = ttk.Combobox(cal_frame, textvariable=self.calibration_var,
-                                              state="readonly", width=25)
-        self.calibration_combo.pack(side=tk.LEFT, padx=(5, 8))
-        self.calibration_combo.bind("<<ComboboxSelected>>", self._on_calibration_selected)
-        self.calibration_age_label = ttk.Label(cal_frame, text="", foreground="gray")
-        self.calibration_age_label.pack(side=tk.LEFT, padx=5)
-
-        # Trial name row
+        # Trial name row (big, prominent)
         trial_frame = ttk.Frame(setup_frame)
         trial_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(trial_frame, text="Trial Name:", width=12).pack(side=tk.LEFT)
+        ttk.Label(trial_frame, text="Trial Name:", font=("Arial", 11)).pack(side=tk.LEFT)
         self.trial_name_var = tk.StringVar(value=self.config["recording"]["last_trial_name"])
-        self.trial_name_entry = ttk.Entry(trial_frame, textvariable=self.trial_name_var, width=28)
-        self.trial_name_entry.pack(side=tk.LEFT, padx=(5, 0))
+        self.trial_name_entry = ttk.Entry(trial_frame, textvariable=self.trial_name_var,
+                                          width=30, font=("Arial", 14))
+        self.trial_name_entry.pack(side=tk.LEFT, padx=(8, 0), fill=tk.X, expand=True)
 
-        # --- Camera Selection ---
-        selection_frame = ttk.LabelFrame(self.frame, text="Camera Selection", padding=10)
-        selection_frame.pack(fill=tk.X, padx=20, pady=5)
+        # Camera selection row
+        cam_frame = ttk.Frame(setup_frame)
+        cam_frame.pack(fill=tk.X, pady=3)
+        ttk.Label(cam_frame, text="Cameras:").pack(side=tk.LEFT)
 
         self.camera_selection_vars = {}
         self.camera_selection_checkboxes = {}
         for i in range(1, 5):
             var = tk.BooleanVar(value=False)
-            checkbox = ttk.Checkbutton(selection_frame, text=f"GoPro {i}", variable=var, state="disabled")
-            checkbox.pack(side=tk.LEFT, padx=15)
+            checkbox = ttk.Checkbutton(cam_frame, text=f"GoPro {i}", variable=var,
+                                       state="disabled")
+            checkbox.pack(side=tk.LEFT, padx=10)
             self.camera_selection_vars[i] = var
             self.camera_selection_checkboxes[i] = checkbox
 
-        # --- Recording Controls ---
+        # Sound source row (always visible — manual mode assumed for now)
+        self.sound_source_frame = ttk.Frame(setup_frame)
+        self.sound_source_frame.pack(fill=tk.X, pady=3)
+        ttk.Label(self.sound_source_frame, text="Sound source:").pack(side=tk.LEFT)
+
+        # Load defaults from app_config
+        sound_defaults = self.app_config.get("sound_source", {})
+        self.sound_x_var = tk.StringVar(value=sound_defaults.get("x", "0.0"))
+        self.sound_y_var = tk.StringVar(value=sound_defaults.get("y", "0.0"))
+        self.sound_z_var = tk.StringVar(value=sound_defaults.get("z", "0.0"))
+
+        for label, var in [("X", self.sound_x_var), ("Y", self.sound_y_var),
+                           ("Z", self.sound_z_var)]:
+            ttk.Label(self.sound_source_frame, text=f"  {label}:").pack(side=tk.LEFT)
+            ttk.Entry(self.sound_source_frame, textvariable=var, width=7).pack(side=tk.LEFT)
+
+        # --- Record Button + Timer ---
         control_frame = ttk.Frame(self.frame)
         control_frame.pack(pady=15)
 
-        self.record_toggle_btn = ttk.Button(control_frame, text="START RECORDING",
-                                            command=self.toggle_recording)
-        self.record_toggle_btn.pack(side=tk.LEFT, padx=(0, 15))
+        self.record_btn = tk.Button(
+            control_frame, text="RECORD",
+            font=("Arial", 18, "bold"),
+            bg="#28a745", fg="white",
+            activebackground="#218838", activeforeground="white",
+            width=20, height=2,
+            command=self.toggle_recording,
+            relief="raised", bd=3,
+        )
+        self.record_btn.pack(side=tk.LEFT, padx=(0, 20))
 
-        self.timer_var = tk.StringVar(value="Timer: 00:00:00")
-        timer_label = ttk.Label(control_frame, textvariable=self.timer_var,
-                               font=("Arial", 14, "bold"))
-        timer_label.pack(side=tk.LEFT, padx=(15, 0))
+        self.timer_var = tk.StringVar(value="00:00:00")
+        self.timer_label = tk.Label(control_frame, textvariable=self.timer_var,
+                                    font=("Arial", 24, "bold"), fg="#333333")
+        self.timer_label.pack(side=tk.LEFT)
 
-        # --- Session/Trial Tree View ---
-        tree_frame = ttk.LabelFrame(self.frame, text="Session Trials", padding=10)
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
-
-        self.trial_tree = ttk.Treeview(tree_frame, height=5, show="tree")
-        tree_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self.trial_tree.yview)
-        self.trial_tree.configure(yscrollcommand=tree_scroll.set)
-        self.trial_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-
-        # --- Open Trial Folder button ---
-        self.open_folder_btn = ttk.Button(self.frame, text="Open Trial Folder",
-                                        command=self.open_trial_folder, state="disabled")
-        self.open_folder_btn.pack(pady=8)
-
-    # -- Recording tab helpers ------------------------------------------------
+    # -- Refresh (backward-compatible alias) -----------------------------------
 
     def refresh_recording_dropdowns(self):
-        """Populate participant, calibration dropdowns and trial tree from ProjectManager."""
-        project = self.get_current_project()
+        """Refresh the session trials list. Called by main_window on tab switch."""
+        self.trials_list.refresh()
 
-        if not project:
-            self.participant_combo["values"] = []
-            self.participant_var.set("")
-            self.calibration_combo["values"] = []
-            self.calibration_var.set("")
-            self.calibration_age_label.config(text="Select a project first")
-            self._clear_trial_tree()
-            return
-
-        # Participant dropdown
-        try:
-            subjects = self.project_manager.list_subjects(project)
-            subject_ids = [s["subject_id"] for s in subjects]
-        except Exception:
-            subject_ids = []
-        prev = self.participant_var.get()
-        self.participant_combo["values"] = subject_ids
-        if prev in subject_ids:
-            self.participant_var.set(prev)
-        elif subject_ids:
-            self.participant_var.set(subject_ids[0])
-        else:
-            self.participant_var.set("")
-
-        # Calibration dropdown
-        try:
-            calibrations = self.project_manager.list_calibrations(project)
-        except Exception:
-            calibrations = []
-        self.calibration_combo["values"] = calibrations
-        if calibrations:
-            latest = self.project_manager.get_latest_calibration(project)
-            self.calibration_var.set(latest if latest else calibrations[0])
-            self._update_calibration_age_label()
-        else:
-            self.calibration_var.set("")
-            self.calibration_age_label.config(text="No calibration found", foreground="orange")
-
-        # Trial tree
-        self.refresh_trial_tree()
-
-    def _update_calibration_age_label(self):
-        """Update the calibration age display."""
-        project = self.get_current_project()
-        name = self.calibration_var.get()
-        if project and name:
-            try:
-                days = self.project_manager.get_calibration_age_days(project, name)
-                self.calibration_age_label.config(
-                    text=f"{days} day{'s' if days != 1 else ''} old",
-                    foreground="gray" if days < 14 else "orange"
-                )
-            except Exception:
-                self.calibration_age_label.config(text="", foreground="gray")
-        else:
-            self.calibration_age_label.config(text="", foreground="gray")
-
-    def _on_calibration_selected(self, event=None):
-        """Handle calibration dropdown selection."""
-        self._update_calibration_age_label()
-
-    def refresh_trial_tree(self):
-        """Refresh the session/trial tree view from ProjectManager."""
-        self._clear_trial_tree()
-        project = self.get_current_project()
-        if not project:
-            return
-        try:
-            tree_data = self.project_manager.get_project_tree(project)
-        except Exception:
-            return
-        for session_name, session_info in tree_data.get("sessions", {}).items():
-            session_id = self.trial_tree.insert("", tk.END, text=session_name, open=True)
-            for trial_name in session_info.get("trials", []):
-                self.trial_tree.insert(session_id, tk.END, text=trial_name)
-
-    def _clear_trial_tree(self):
-        """Remove all items from the trial tree view."""
-        for item in self.trial_tree.get_children():
-            self.trial_tree.delete(item)
-
-    def _on_new_participant(self):
-        """Show dialog to create a new participant/subject."""
-        project = self.get_current_project()
-        if not project:
-            messagebox.showwarning("No Project", "Select a project first.")
-            return
-
-        dlg = tk.Toplevel(self.root)
-        dlg.title("New Participant")
-        dlg.resizable(False, False)
-        dlg.grab_set()
-
-        fields = {}
-        labels = [
-            ("Subject ID", "subject_id"),
-            ("Initials", "initials"),
-            ("Age", "age"),
-            ("Height (m)", "height_m"),
-            ("Mass (kg)", "mass_kg"),
-        ]
-
-        for i, (label, key) in enumerate(labels):
-            ttk.Label(dlg, text=label).grid(row=i, column=0, padx=8, pady=4, sticky=tk.W)
-            entry = ttk.Entry(dlg, width=20)
-            entry.grid(row=i, column=1, padx=8, pady=4)
-            fields[key] = entry
-
-        row_sex = len(labels)
-        ttk.Label(dlg, text="Sex").grid(row=row_sex, column=0, padx=8, pady=4, sticky=tk.W)
-        sex_var = tk.StringVar(value="M")
-        sex_combo = ttk.Combobox(dlg, textvariable=sex_var, values=["M", "F", "Other"],
-                                 state="readonly", width=17)
-        sex_combo.grid(row=row_sex, column=1, padx=8, pady=4)
-
-        def on_ok():
-            try:
-                subject_id = fields["subject_id"].get().strip()
-                initials = fields["initials"].get().strip()
-                age = int(fields["age"].get().strip())
-                height_m = float(fields["height_m"].get().strip())
-                mass_kg = float(fields["mass_kg"].get().strip())
-                sex = sex_var.get()
-            except ValueError:
-                messagebox.showerror("Invalid Input",
-                                     "Age must be a whole number.\n"
-                                     "Height and Mass must be numbers.",
-                                     parent=dlg)
-                return
-
-            if not subject_id or not initials:
-                messagebox.showerror("Missing Fields",
-                                     "Subject ID and Initials are required.",
-                                     parent=dlg)
-                return
-
-            try:
-                self.project_manager.create_subject(
-                    project, subject_id, initials, age, sex, height_m, mass_kg
-                )
-            except ValueError as e:
-                messagebox.showerror("Error", str(e), parent=dlg)
-                return
-
-            dlg.destroy()
-            self.refresh_recording_dropdowns()
-            self.participant_var.set(subject_id)
-
-        btn_row = row_sex + 1
-        btn_frame = ttk.Frame(dlg)
-        btn_frame.grid(row=btn_row, column=0, columnspan=2, pady=10)
-        ttk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=8)
-        ttk.Button(btn_frame, text="Cancel", command=dlg.destroy).pack(side=tk.LEFT, padx=8)
-
-        dlg.update_idletasks()
-        dlg.geometry(f"+{self.root.winfo_rootx() + 100}+{self.root.winfo_rooty() + 100}")
-
-    def open_trial_folder(self):
-        """Open the most recent trial's video folder in file explorer."""
-        import subprocess
-        import os
-
-        folder = self._last_trial_video_dir
-        if folder and os.path.exists(str(folder)):
-            subprocess.Popen(f'explorer "{folder}"')
-        else:
-            messagebox.showinfo("No Trial", "No trial folder available yet.")
-
-    # -- Recording logic ------------------------------------------------------
+    # -- Recording logic -------------------------------------------------------
 
     def toggle_recording(self):
         """Toggle recording start/stop."""
@@ -336,10 +161,10 @@ class RecordingTab:
         project = self.get_current_project()
         session = self.get_current_session()
         if not project:
-            messagebox.showerror("Error", "No project selected. Go to the Project tab first.")
+            messagebox.showerror("Error", "No project selected. Use the top bar to create one.")
             return
         if not session:
-            messagebox.showerror("Error", "No session selected. Go to the Project tab first.")
+            messagebox.showerror("Error", "No session selected. Use the top bar to create one.")
             return
 
         trial_name = self.trial_name_var.get().strip()
@@ -355,9 +180,9 @@ class RecordingTab:
             messagebox.showerror("Error", "No cameras are connected and selected for recording.")
             return
 
-        # Participant and calibration (optional)
-        subject_id = self.participant_var.get() or ""
-        calibration_name = self.calibration_var.get() or "none"
+        # Participant from top bar, calibration = latest
+        subject_id = self.get_current_participant() or ""
+        calibration_name = self.project_manager.get_latest_calibration(project) or "none"
         cameras_used = [self.camera_serials.get(i, f"cam{i}") for i in available_cameras]
 
         # Create trial via ProjectManager
@@ -383,6 +208,13 @@ class RecordingTab:
         }
         self._last_trial_video_dir = video_dir
 
+        # Save sound source position to app_config for persistence
+        self.app_config["sound_source"] = {
+            "x": self.sound_x_var.get(),
+            "y": self.sound_y_var.get(),
+            "z": self.sound_z_var.get(),
+        }
+
         # Save settings and start
         self.save_camera_settings()
         self.recording = True
@@ -391,18 +223,17 @@ class RecordingTab:
         )
         self.recording_thread.start()
 
-        # Update UI
-        self.record_toggle_btn.config(text="STOP RECORDING")
+        # Update UI — dramatic state change
+        self.record_btn.config(text="STOP", bg="#dc3545", activebackground="#c82333")
+        self.timer_label.config(fg="#dc3545")
         self.trial_name_entry.config(state="disabled")
-        self.participant_combo.config(state="disabled")
-        self.calibration_combo.config(state="disabled")
-        self.new_participant_btn.config(state="disabled")
 
     def _stop_recording(self):
         """Signal the recording worker to stop."""
         self.recording = False
         self._stop_bar_timer()
-        self.record_toggle_btn.config(text="Stopping...", state="disabled")
+        self.record_btn.config(text="Stopping...", bg="#6c757d",
+                               activebackground="#5a6268", state="disabled")
         print("Stopping recording...")
 
     def recording_worker(self, camera_list):
@@ -510,12 +341,14 @@ class RecordingTab:
                     raise AudioSyncError(f"No audio track in: {name}")
                 print(f"  Audio confirmed: {name}")
 
-            # Build camera positions for speed-of-sound compensation (if calibration loaded)
+            # Build camera positions from calibration tab (if available)
             cam_positions = None
-            sound_pos = None
             calibration_tab = self._get_calibration_tab()
             if calibration_tab is not None:
-                cam_positions, sound_pos = calibration_tab._get_sync_compensation_data(video_paths)
+                cam_positions, _ = calibration_tab._get_sync_compensation_data(video_paths)
+
+            # Sound source position from recording tab UI
+            sound_pos = self._get_sound_source_position()
 
             # Compute sync offsets (onset-based dual-clap detection)
             print("Analysing audio for onset-based sync...")
@@ -563,7 +396,17 @@ class RecordingTab:
             except Exception:
                 pass
 
-    # -- Recording delay / sync sound / bar timer -----------------------------
+    def _get_sound_source_position(self):
+        """Read sound source X/Y/Z from UI fields. Returns [x, y, z] or None."""
+        try:
+            x = float(self.sound_x_var.get())
+            y = float(self.sound_y_var.get())
+            z = float(self.sound_z_var.get())
+            return [x, y, z]
+        except (ValueError, TypeError):
+            return None
+
+    # -- Recording delay / sync sound / bar timer ------------------------------
 
     def _run_rec_delay(self):
         """Run recording delay countdown if enabled. Called from background threads."""
@@ -628,7 +471,7 @@ class RecordingTab:
         self._bar_timer_running = False
         self.rec_delay_countdown_label.config(text="")
 
-    # -- Camera recording helpers ---------------------------------------------
+    # -- Camera recording helpers ----------------------------------------------
 
     def start_camera_recording(self, camera_num, camera):
         """Start recording on a single camera (settings already applied via GUI)."""
@@ -658,24 +501,22 @@ class RecordingTab:
             hours = elapsed // 3600
             minutes = (elapsed % 3600) // 60
             seconds = elapsed % 60
-            self.timer_var.set(f"Timer: {hours:02d}:{minutes:02d}:{seconds:02d}")
+            self.timer_var.set(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
             self.root.after(1000, self.update_timer)
         else:
-            self.timer_var.set("Timer: 00:00:00")
+            self.timer_var.set("00:00:00")
 
     def reset_recording_ui(self):
         """Reset recording UI after completion."""
-        self.record_toggle_btn.config(text="START RECORDING", state="normal")
+        self.record_btn.config(text="RECORD", bg="#28a745",
+                               activebackground="#218838", state="normal")
+        self.timer_label.config(fg="#333333")
         self.trial_name_entry.config(state="normal")
-        self.participant_combo.config(state="readonly")
-        self.calibration_combo.config(state="readonly")
-        self.new_participant_btn.config(state="normal")
-        self.open_folder_btn.config(state="normal")
-        self.timer_var.set("Timer: 00:00:00")
+        self.timer_var.set("00:00:00")
         self._stop_bar_timer()
 
         self.increment_trial_name()
-        self.refresh_trial_tree()
+        self.trials_list.refresh()
 
     def increment_trial_name(self):
         """Auto-increment trial name for next recording."""

@@ -10,11 +10,13 @@ from tkinter import ttk, simpledialog, messagebox
 class TopBar:
     """Persistent bar with project/session/participant dropdowns + calibration status."""
 
-    def __init__(self, parent, project_manager, app_config, save_config_callback):
+    def __init__(self, parent, project_manager, app_config, save_config_callback,
+                 on_selection_changed=None):
         self.parent = parent
         self.pm = project_manager
         self.app_config = app_config
         self.save_config = save_config_callback
+        self._on_selection_changed = on_selection_changed
 
         self._current_project = None
         self._current_session = None
@@ -184,6 +186,8 @@ class TopBar:
         self._refresh_sessions()
         self._refresh_participants()
         self._update_calibration_indicator()
+        if self._on_selection_changed:
+            self._on_selection_changed()
 
     def _on_project_selected(self, _event=None):
         name = self.project_combo.get()
@@ -195,6 +199,8 @@ class TopBar:
         self.session_combo.set(name)
         self.app_config["last_session"] = name
         self.save_config()
+        if self._on_selection_changed:
+            self._on_selection_changed()
 
     def _on_session_selected(self, _event=None):
         name = self.session_combo.get()

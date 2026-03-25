@@ -306,6 +306,15 @@ class ProjectManager:
         with open(json_path, "w") as f:
             json.dump(data, f, indent=2)
 
+    def delete_trial(self, project: str, session: str, trial_name: str) -> None:
+        """Delete a trial folder and all its contents."""
+        import shutil
+        trial_path = self.get_session_path(project, session) / trial_name
+        if not trial_path.is_dir():
+            raise FileNotFoundError(f"Trial not found: {trial_name}")
+        shutil.rmtree(trial_path)
+        logger.info(f"Deleted trial: {trial_path}")
+
     def get_trial_video_path(self, project: str, session: str, trial_name: str) -> Path:
         """Return path to trial's video/ folder."""
         return self.get_session_path(project, session) / trial_name / "video"

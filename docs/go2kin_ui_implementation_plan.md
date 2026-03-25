@@ -248,3 +248,18 @@ Tabs communicate via:
   - Modified `code/GUI/recording_tab.py`: renamed constructor param `sync_sound_enabled` → `sync_method_var`. Updated `_play_sync_sound()` to check `sync_method_var.get() != "speaker"` instead of `sync_sound_enabled.get()`.
 - Deviations: None. Followed plan exactly.
 - State: App launches, log placeholder visible above camera bar, Manual/Speaker radio buttons in camera bar. All 5 tabs work. 41 unit tests pass.
+
+### Session 3 — 2026-03-25 ✅
+- Completed: Shared trial list component + Recording tab redesign.
+  - Created `code/GUI/components/` package with `session_trials_list.py`: reusable `SessionTrialsList` widget with 5 columns (Trial, Participant, Sync, Calib, Processed), checkbox selection (unicode ☐/☑), Select All/Deselect All/Delete Selected buttons. Queries ProjectManager directly via callbacks.
+  - Added `delete_trial()` method to `code/project_manager.py` (shutil.rmtree with confirmation in UI).
+  - Rewrote `code/GUI/recording_tab.py` UI: removed participant/calibration dropdowns (now in top bar), removed Open Trial Folder button, removed old session→trial tree. New layout: SessionTrialsList at top, big trial name entry (Arial 14), camera checkboxes, sound source X/Y/Z fields (persisted to app_config, wired into auto-sync), large green tk.Button RECORD that turns red/STOP during recording, large timer display. All backend logic preserved unchanged.
+  - Added `get_current_participant` callback to RecordingTab constructor, wired from main_window via top bar.
+  - Added `on_selection_changed` callback to TopBar — fires when project or session changes, triggers `_refresh_active_tab()` in main_window to refresh whichever tab is currently visible (recording, processing, or visualisation).
+  - Added visualisation tab refresh to `_on_tab_changed()`.
+- Deviations: Sound source fields always visible (manual mode assumed for now; speaker mode bottom bar fields deferred). TopBar callback added to fix live refresh (not in original Session 3 plan but needed for correct behavior).
+- State: App launches, recording tab has new cockpit layout. Session trials list refreshes on tab switch and on top bar project/session change. 41 unit tests pass.
+
+### TODO (future sessions)
+- Session Trials list: use colored circle icons (●) for Sync/Calib/Processed status columns instead of text, matching the redesign doc's status indicator spec. Feasible in tkinter via treeview cell images or unicode filled circles with tag-based coloring.
+- Session Trials list: show newest trials on top (reverse sort order) across all tabs.
