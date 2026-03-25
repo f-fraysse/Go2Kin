@@ -260,6 +260,16 @@ Tabs communicate via:
 - Deviations: Sound source fields always visible (manual mode assumed for now; speaker mode bottom bar fields deferred). TopBar callback added to fix live refresh (not in original Session 3 plan but needed for correct behavior).
 - State: App launches, recording tab has new cockpit layout. Session trials list refreshes on tab switch and on top bar project/session change. 41 unit tests pass.
 
+### Session 3b — 2026-03-25 ✅
+- Completed: SessionTrialsList visual overhaul — colored status indicators + date column + sort order.
+  - Replaced `ttk.Treeview` with `tk.Canvas` + scrollable `tk.Frame` to enable per-cell colored text (tkinter's GDI renderer doesn't support color emoji in Treeview value columns).
+  - Sync/Cal/Proc columns now show colored `●` (U+25CF) circles: green = OK, red = not synced/failed, grey = pending/none. No text, just circles.
+  - Added "Date" column (between Trial and Participant) showing `YYYY-MM-DD HH:MM` from `trial.json` date+time fields.
+  - Trials sorted newest-first by date+time.
+  - Alternating row backgrounds (white/light grey), green highlight on checked rows.
+  - Column headers left-aligned. Fixed-width columns for Date, Participant, Sync, Cal, Proc; Trial column stretches.
+  - Same public API preserved (`refresh()`, `get_checked_trials()`, `frame`) — no caller changes needed.
+- Deviations: Header alignment required placing header inside the canvas interior frame (same grid as data rows). Circles kept at font size 16 (larger sizes stretch row height too much).
+- State: App launches, Recording tab shows colored status circles and date column. Newest trials on top. Processing tab will reuse same component in Session 5.
+
 ### TODO (future sessions)
-- Session Trials list: use colored circle icons (●) for Sync/Calib/Processed status columns instead of text, matching the redesign doc's status indicator spec. Feasible in tkinter via treeview cell images or unicode filled circles with tag-based coloring.
-- Session Trials list: show newest trials on top (reverse sort order) across all tabs.
