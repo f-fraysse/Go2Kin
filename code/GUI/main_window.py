@@ -135,6 +135,9 @@ class Go2KinMainWindow:
         # Fixed bottom bar (packed first so it stays at the bottom)
         self.create_camera_bottom_bar()
 
+        # Log placeholder panel (above camera bar)
+        self.create_log_panel()
+
         # Persistent top bar (project/session/participant selection)
         self.create_top_bar()
 
@@ -227,10 +230,12 @@ class Go2KinMainWindow:
         settings_frame = ttk.Frame(bar_frame)
         settings_frame.pack(side=tk.RIGHT)
 
-        self.sync_sound_enabled = tk.BooleanVar(value=False)
-        self.sync_sound_checkbox = ttk.Checkbutton(settings_frame, text="Sync sound",
-                        variable=self.sync_sound_enabled, state="disabled")
-        self.sync_sound_checkbox.pack(side=tk.LEFT, padx=(0, 12))
+        self.sync_method_var = tk.StringVar(value="manual")
+        ttk.Label(settings_frame, text="Sync:").pack(side=tk.LEFT, padx=(0, 3))
+        ttk.Radiobutton(settings_frame, text="Manual", variable=self.sync_method_var,
+                         value="manual").pack(side=tk.LEFT, padx=(0, 3))
+        ttk.Radiobutton(settings_frame, text="Speaker", variable=self.sync_method_var,
+                         value="speaker").pack(side=tk.LEFT, padx=(0, 12))
 
         self.rec_delay_enabled = tk.BooleanVar(value=False)
         ttk.Checkbutton(settings_frame, text="Rec. delay",
@@ -242,6 +247,27 @@ class Go2KinMainWindow:
         self.rec_delay_countdown_label = tk.Label(
             settings_frame, text="", font=("Arial", 16, "bold"), fg="red")
         self.rec_delay_countdown_label.pack(side=tk.LEFT, padx=(6, 0))
+
+    def create_log_panel(self):
+        """Create a placeholder log panel above the camera bar"""
+        log_frame = ttk.LabelFrame(self.root, text="Log", padding=(8, 4))
+        log_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 2))
+
+        # Filter labels (visual only — no functionality yet)
+        header = ttk.Frame(log_frame)
+        header.pack(fill=tk.X, pady=(0, 2))
+        for label_text in ["Cal", "Rec", "Proc"]:
+            btn = ttk.Label(header, text=f"[{label_text}]", font=("Arial", 8),
+                            foreground="grey")
+            btn.pack(side=tk.LEFT, padx=(0, 4))
+
+        # Placeholder text area
+        self.log_text = tk.Text(log_frame, height=3, state="disabled",
+                                bg="#f0f0f0", fg="#888888", relief="flat",
+                                font=("Consolas", 9))
+        self.log_text.configure(state="normal")
+        self.log_text.insert("1.0", "Output is shown in the terminal")
+        self.log_text.configure(state="disabled")
 
     def toggle_camera_connection(self, camera_num):
         """Toggle connect/disconnect for a camera"""
@@ -317,7 +343,7 @@ class Go2KinMainWindow:
             rec_delay_enabled=self.rec_delay_enabled,
             rec_delay_seconds=self.rec_delay_seconds,
             rec_delay_countdown_label=self.rec_delay_countdown_label,
-            sync_sound_enabled=self.sync_sound_enabled,
+            sync_method_var=self.sync_method_var,
         )
     
     def load_camera_settings(self):

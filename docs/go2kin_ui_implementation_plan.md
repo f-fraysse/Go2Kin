@@ -241,3 +241,10 @@ Tabs communicate via:
   - `code/GUI/project_tab.py` kept as unused reference (no longer imported).
 - Deviations: None. Followed plan exactly.
 - State: App launches, top bar visible with cascading dropdowns. Project tab gone. All 5 tabs work. Last selection auto-restores on launch. 41 unit tests pass.
+
+### Session 2 — 2026-03-25 ✅
+- Completed: Bottom bar updates + log placeholder.
+  - Modified `code/GUI/main_window.py`: replaced disabled sync sound checkbox with Manual/Speaker radio buttons bound to `self.sync_method_var` (StringVar, default "manual"). Added `create_log_panel()` method: `ttk.LabelFrame` with [Cal][Rec][Proc] filter labels (visual only) and disabled `tk.Text` placeholder showing "Output is shown in the terminal". Pack order: camera bar (BOTTOM), log panel (BOTTOM), top bar (TOP), notebook (BOTH expand).
+  - Modified `code/GUI/recording_tab.py`: renamed constructor param `sync_sound_enabled` → `sync_method_var`. Updated `_play_sync_sound()` to check `sync_method_var.get() != "speaker"` instead of `sync_sound_enabled.get()`.
+- Deviations: None. Followed plan exactly.
+- State: App launches, log placeholder visible above camera bar, Manual/Speaker radio buttons in camera bar. All 5 tabs work. 41 unit tests pass.

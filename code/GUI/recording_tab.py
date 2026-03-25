@@ -24,7 +24,7 @@ class RecordingTab:
                  save_camera_settings, save_app_config,
                  get_calibration_tab,
                  rec_delay_enabled, rec_delay_seconds, rec_delay_countdown_label,
-                 sync_sound_enabled):
+                 sync_method_var):
         self.notebook = notebook
         self.root = notebook.winfo_toplevel()
         self.config = config
@@ -43,7 +43,7 @@ class RecordingTab:
         self.rec_delay_enabled = rec_delay_enabled
         self.rec_delay_seconds = rec_delay_seconds
         self.rec_delay_countdown_label = rec_delay_countdown_label
-        self.sync_sound_enabled = sync_sound_enabled
+        self.sync_method_var = sync_method_var
 
         # Recording state
         self.recording = False
@@ -596,7 +596,7 @@ class RecordingTab:
 
     def _play_sync_sound(self):
         """Play sync sound (primer + two claps). Call from background thread."""
-        if not self.sync_sound_enabled.get():
+        if self.sync_method_var.get() != "speaker":
             return
         if self._sync_sound_data is None:
             return
