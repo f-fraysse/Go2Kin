@@ -232,3 +232,12 @@ Tabs communicate via:
   - Removed unused imports from main_window.py: cv2, PIL, queue, sounddevice, numpy, concurrent.futures.
 - Deviations: None. Followed plan exactly.
 - State: App launches, all 6 tabs work identically to before. File structure is now fully modular. 41 unit tests pass.
+
+### Session 1 — 2026-03-25 ✅
+- Completed: Persistent top bar replaces Project tab.
+  - Created `code/GUI/top_bar.py` with `TopBar` class: Project/Session/Participant dropdowns with cascading enablement, "+" buttons for creating new entities (project/session name dialogs, full subject form for participant), calibration status indicator (colored circle: green <1d, amber 1+d, red none), "Manage" button opening modal subject table dialog, auto-restore of last selection on launch.
+  - Modified `code/GUI/main_window.py`: replaced `create_project_tab()` with `create_top_bar()`, updated all lambda callbacks from `self.project_tab` to `self.top_bar`, added `get_current_participant()`, wired `on_calibration_saved` callback. Tab order now 5 tabs: Live Preview, Calibration, Recording, Processing, Visualisation.
+  - Modified `code/GUI/calibration_tab.py`: added `on_calibration_saved` callback parameter, called after save and load to refresh top bar calibration indicator.
+  - `code/GUI/project_tab.py` kept as unused reference (no longer imported).
+- Deviations: None. Followed plan exactly.
+- State: App launches, top bar visible with cascading dropdowns. Project tab gone. All 5 tabs work. Last selection auto-restores on launch. 41 unit tests pass.
