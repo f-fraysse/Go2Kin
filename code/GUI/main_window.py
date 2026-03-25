@@ -160,6 +160,9 @@ class Go2KinMainWindow:
         # Tab 4: Visualisation
         self.create_visualisation_tab()
 
+        # Start on Calibration tab
+        self.notebook.select(1)
+
         # Bind tab change to refresh tabs
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
     
