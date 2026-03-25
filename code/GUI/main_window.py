@@ -52,8 +52,9 @@ class Go2KinMainWindow:
         self.create_widgets()
         self.load_camera_settings()
 
-        # Auto-load last calibration
+        # Auto-load last calibration and refresh top bar status
         self.calibration_tab.auto_load_calibration()
+        self.top_bar.refresh_calibration_status()
 
         # Bind window close event
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -113,14 +114,20 @@ class Go2KinMainWindow:
 
     def get_current_project(self):
         """Return the currently selected project name, or None."""
-        if hasattr(self, "project_tab"):
-            return self.project_tab.get_current_project()
+        if hasattr(self, "top_bar"):
+            return self.top_bar.get_current_project()
         return None
 
     def get_current_session(self):
         """Return the currently selected session name, or None."""
-        if hasattr(self, "project_tab"):
-            return self.project_tab.get_current_session()
+        if hasattr(self, "top_bar"):
+            return self.top_bar.get_current_session()
+        return None
+
+    def get_current_participant(self):
+        """Return the currently selected participant ID, or None."""
+        if hasattr(self, "top_bar"):
+            return self.top_bar.get_current_participant()
         return None
 
     def create_widgets(self):
@@ -128,26 +135,26 @@ class Go2KinMainWindow:
         # Fixed bottom bar (packed first so it stays at the bottom)
         self.create_camera_bottom_bar()
 
+        # Persistent top bar (project/session/participant selection)
+        self.create_top_bar()
+
         # Create notebook for tabs
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 5))
 
-        # Tab 0: Project
-        self.create_project_tab()
-
-        # Tab 1: Live Preview
+        # Tab 0: Live Preview
         self.create_live_preview_tab()
 
-        # Tab 2: Calibration
+        # Tab 1: Calibration
         self.create_calibration_tab()
 
-        # Tab 3: Recording
+        # Tab 2: Recording
         self.create_recording_tab()
 
-        # Tab 4: Processing
+        # Tab 3: Processing
         self.create_processing_tab()
 
-        # Tab 5: Visualisation
+        # Tab 4: Visualisation
         self.create_visualisation_tab()
 
         # Bind tab change to refresh tabs
@@ -250,11 +257,11 @@ class Go2KinMainWindow:
             self.notebook, self.cameras, self.camera_status, self.camera_profiles
         )
     
-    def create_project_tab(self):
-        """Create the project management tab (first tab)"""
-        from GUI.project_tab import ProjectTab
-        self.project_tab = ProjectTab(
-            self.notebook, self.project_manager,
+    def create_top_bar(self):
+        """Create the persistent top bar with project/session/participant selection."""
+        from GUI.top_bar import TopBar
+        self.top_bar = TopBar(
+            self.root, self.project_manager,
             self.app_config, self.save_app_config
         )
 
@@ -266,7 +273,7 @@ class Go2KinMainWindow:
             cameras=self.cameras,
             camera_status=self.camera_status,
             project_manager=self.project_manager,
-            get_current_project=lambda: self.project_tab.get_current_project(),
+            get_current_project=lambda: self.top_bar.get_current_project(),
             is_recording=lambda: self.recording_tab.recording,
             run_rec_delay=lambda: self.recording_tab._run_rec_delay(),
             start_bar_timer=lambda: self.recording_tab._start_bar_timer(),
@@ -274,6 +281,7 @@ class Go2KinMainWindow:
             play_sync_sound=lambda: self.recording_tab._play_sync_sound(),
             app_config=self.app_config,
             save_app_config=self.save_app_config,
+            on_calibration_saved=lambda: self.top_bar.refresh_calibration_status(),
         )
 
     def create_processing_tab(self):
@@ -281,8 +289,8 @@ class Go2KinMainWindow:
         from GUI.processing_tab import ProcessingTab
         self.processing_tab = ProcessingTab(
             self.notebook, self.project_manager,
-            get_current_project=lambda: self.project_tab.get_current_project(),
-            get_current_session=lambda: self.project_tab.get_current_session(),
+            get_current_project=lambda: self.top_bar.get_current_project(),
+            get_current_session=lambda: self.top_bar.get_current_session(),
         )
 
     def create_visualisation_tab(self):
@@ -290,8 +298,8 @@ class Go2KinMainWindow:
         from GUI.visualisation_tab import VisualisationTab
         self.visualisation_tab = VisualisationTab(
             self.notebook, self.project_manager,
-            get_current_project=lambda: self.project_tab.get_current_project(),
-            get_current_session=lambda: self.project_tab.get_current_session(),
+            get_current_project=lambda: self.top_bar.get_current_project(),
+            get_current_session=lambda: self.top_bar.get_current_session(),
         )
 
     def create_recording_tab(self):
@@ -301,8 +309,8 @@ class Go2KinMainWindow:
             self.notebook, self.config,
             self.cameras, self.camera_status, self.camera_serials,
             self.project_manager, self.app_config,
-            get_current_project=lambda: self.project_tab.get_current_project(),
-            get_current_session=lambda: self.project_tab.get_current_session(),
+            get_current_project=lambda: self.top_bar.get_current_project(),
+            get_current_session=lambda: self.top_bar.get_current_session(),
             save_camera_settings=self.save_camera_settings,
             save_app_config=self.save_app_config,
             get_calibration_tab=lambda: self.calibration_tab if hasattr(self, 'calibration_tab') else None,

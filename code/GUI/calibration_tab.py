@@ -33,7 +33,8 @@ class CalibrationTab:
                  is_recording=None, run_rec_delay=None,
                  start_bar_timer=None, stop_bar_timer=None,
                  play_sync_sound=None,
-                 app_config=None, save_app_config=None):
+                 app_config=None, save_app_config=None,
+                 on_calibration_saved=None):
         self.notebook = notebook
         self.config = config
         self.frame = ttk.Frame(notebook)
@@ -49,6 +50,7 @@ class CalibrationTab:
         self.play_sync_sound = play_sync_sound or (lambda: None)
         self.app_config = app_config or {}
         self._save_app_config = save_app_config or (lambda: None)
+        self._on_calibration_saved = on_calibration_saved or (lambda: None)
 
         # Lazy imports to avoid circular imports and slow startup
         self._charuco = None
@@ -1036,6 +1038,7 @@ class CalibrationTab:
             self._save_app_config()
 
             messagebox.showinfo("Success", f"Calibration saved to {filepath}")
+            self._on_calibration_saved()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save: {e}")
 
@@ -1097,6 +1100,7 @@ class CalibrationTab:
                 logger.info("Auto-loaded calibration: %s", filepath.name)
             else:
                 messagebox.showinfo("Success", f"Calibration loaded ({len(camera_array.cameras)} cameras)")
+            self._on_calibration_saved()
             return True
         except Exception as e:
             if silent:
