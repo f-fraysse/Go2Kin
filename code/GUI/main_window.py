@@ -10,12 +10,8 @@ from tkinter import ttk, filedialog, messagebox
 import json
 import threading
 import time
-import queue
-import cv2
 from pathlib import Path
 from datetime import datetime
-import concurrent.futures
-from PIL import Image, ImageTk
 
 # Add goproUSB to path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'goproUSB'))
@@ -24,92 +20,6 @@ from goproUSB import GPcam
 # Add code directory to path for camera_profiles
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from camera_profiles import get_profile_manager
-import sounddevice as sd
-import numpy as np
-
-class LivePreviewCapture:
-    """Simplified video capture class for live preview with threading optimization"""
-    
-    def __init__(self, stream_url):
-        self.stream_url = stream_url
-        self.cap = None
-        self.running = False
-        self.frame_queue = queue.Queue(maxsize=2)  # Small queue to prevent buildup
-        self.capture_thread = None
-        
-    def start_capture(self):
-        """Start the optimized video capture with threading"""
-        if self.running:
-            return False
-            
-        # Create optimized VideoCapture
-        self.cap = cv2.VideoCapture()
-        
-        # Pre-configure properties for low latency
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimal buffer
-        self.cap.set(cv2.CAP_PROP_FPS, 30)        # Match camera FPS
-        
-        # Open with optimized FFmpeg parameters
-        stream_params = "?overrun_nonfatal=1&fifo_size=1000000&fflags=nobuffer&flags=low_delay"
-        success = self.cap.open(self.stream_url + stream_params, cv2.CAP_FFMPEG)
-        
-        if not success:
-            # Fallback to original parameters
-            stream_params = "?overrun_nonfatal=1&fifo_size=50000000"
-            success = self.cap.open(self.stream_url + stream_params, cv2.CAP_FFMPEG)
-        
-        if success:
-            self.running = True
-            self.capture_thread = threading.Thread(target=self._capture_frames, daemon=True)
-            self.capture_thread.start()
-            return True
-        else:
-            if self.cap:
-                self.cap.release()
-                self.cap = None
-            return False
-    
-    def _capture_frames(self):
-        """Background thread for continuous frame capture"""
-        while self.running and self.cap and self.cap.isOpened():
-            ret, frame = self.cap.read()
-            if ret:
-                # Drop old frames if queue is full (prevents buildup)
-                if self.frame_queue.full():
-                    try:
-                        self.frame_queue.get_nowait()
-                    except queue.Empty:
-                        pass
-                
-                try:
-                    self.frame_queue.put_nowait(frame)
-                except queue.Full:
-                    pass  # Drop frame if queue is full
-            else:
-                time.sleep(0.001)  # Brief pause on read failure
-    
-    def get_latest_frame(self):
-        """Get the latest frame for display (BGR format)"""
-        try:
-            return self.frame_queue.get_nowait()
-        except queue.Empty:
-            return None
-    
-    def stop_capture(self):
-        """Stop the video capture and cleanup"""
-        self.running = False
-        if self.capture_thread:
-            self.capture_thread.join(timeout=1.0)
-        if self.cap:
-            self.cap.release()
-            self.cap = None
-        
-        # Clear remaining frames
-        while not self.frame_queue.empty():
-            try:
-                self.frame_queue.get_nowait()
-            except queue.Empty:
-                break
 
 class Go2KinMainWindow:
     def __init__(self, root, project_manager=None, app_config=None, app_config_path=None):
@@ -137,22 +47,6 @@ class Go2KinMainWindow:
         self.camera_serials = {}
         for i in range(min(4, len(serials))):
             self.camera_serials[i + 1] = serials[i]
-        
-        # Recording state
-        self.recording = False
-        self.recording_thread = None
-        self.start_time = None
-        self._bar_timer_running = False
-
-        # Sync sound (generated on the fly — HDMI primer + two claps)
-        self._sync_sound_sr = 44100
-        self._sync_sound_data = self._generate_sync_sound()
-        
-        # Live preview state
-        self.preview_active = False
-        self.preview_capture = None
-        self.preview_camera_num = None
-        self.preview_update_job = None
         
         # Create GUI
         self.create_widgets()
@@ -255,6 +149,9 @@ class Go2KinMainWindow:
 
         # Tab 5: Visualisation
         self.create_visualisation_tab()
+
+        # Bind tab change to refresh tabs
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
     
     def create_camera_bottom_bar(self):
         """Create a fixed bottom panel with camera status, controls, and global settings"""
@@ -347,82 +244,11 @@ class Go2KinMainWindow:
             self.connect_camera(camera_num)
     
     def create_live_preview_tab(self):
-        """Create the functional live preview tab with maximized video display"""
-        self.preview_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.preview_frame, text="Live Preview")
-        
-        # Compact control bar - all controls on one line
-        control_bar = ttk.Frame(self.preview_frame)
-        control_bar.pack(fill=tk.X, padx=10, pady=5)
-        
-        # Left side: Preview controls
-        preview_controls = ttk.Frame(control_bar)
-        preview_controls.pack(side=tk.LEFT)
-        
-        ttk.Label(preview_controls, text="Camera:", font=("Arial", 9)).pack(side=tk.LEFT, padx=(0, 5))
-        self.preview_camera_var = tk.StringVar()
-        self.preview_combo = ttk.Combobox(preview_controls, textvariable=self.preview_camera_var,
-                                         state="readonly", width=10)
-        self.preview_combo.pack(side=tk.LEFT, padx=(0, 8))
-        
-        self.start_preview_btn = ttk.Button(preview_controls, text="▶ Start", 
-                                          command=self.start_preview)
-        self.start_preview_btn.pack(side=tk.LEFT, padx=(0, 4))
-        
-        self.stop_preview_btn = ttk.Button(preview_controls, text="⏹ Stop", 
-                                         command=self.stop_preview, state="disabled")
-        self.stop_preview_btn.pack(side=tk.LEFT, padx=(0, 10))
-        
-        # Status indicator (compact)
-        self.preview_status_var = tk.StringVar(value="Ready")
-        status_label = ttk.Label(preview_controls, textvariable=self.preview_status_var, 
-                               font=("Arial", 9), foreground="gray")
-        status_label.pack(side=tk.LEFT)
-        
-        # Right side: Zoom controls
-        zoom_controls = ttk.Frame(control_bar)
-        zoom_controls.pack(side=tk.RIGHT)
-        
-        # Minus button
-        self.zoom_minus_btn = ttk.Button(zoom_controls, text="−", width=2,
-                                        command=self.zoom_decrement, state="disabled")
-        self.zoom_minus_btn.pack(side=tk.LEFT, padx=(0, 3))
-        
-        # Slider (compact)
-        self.zoom_slider = tk.Scale(zoom_controls, from_=0, to=100, orient=tk.HORIZONTAL,
-                                   showvalue=False, state="disabled", length=150)
-        self.zoom_slider.pack(side=tk.LEFT)
-        self.zoom_slider.bind("<ButtonRelease-1>", self.on_zoom_slider_release)
-        
-        # Plus button
-        self.zoom_plus_btn = ttk.Button(zoom_controls, text="+", width=2,
-                                       command=self.zoom_increment, state="disabled")
-        self.zoom_plus_btn.pack(side=tk.LEFT, padx=(3, 8))
-        
-        # Zoom label
-        self.zoom_label_var = tk.StringVar(value="Zoom: 0%")
-        zoom_label = ttk.Label(zoom_controls, textvariable=self.zoom_label_var,
-                              font=("Arial", 9), width=10)
-        zoom_label.pack(side=tk.LEFT, padx=(0, 5))
-        
-        # Direct input (compact)
-        self.zoom_entry_var = tk.StringVar(value="0")
-        self.zoom_entry = ttk.Entry(zoom_controls, textvariable=self.zoom_entry_var,
-                                    width=4, state="disabled")
-        self.zoom_entry.pack(side=tk.LEFT)
-        self.zoom_entry.bind("<Return>", self.on_zoom_entry_enter)
-        
-        # Video display area - maximized with 16:9 aspect ratio
-        video_container = ttk.Frame(self.preview_frame)
-        video_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        # Video label for displaying frames (16:9 ratio maintained in update_video_display)
-        self.video_label = tk.Label(video_container, text="Select a connected camera and click Start",
-                                   bg="black", fg="white", font=("Arial", 12))
-        self.video_label.pack(expand=True, fill=tk.BOTH)
-        
-        # Update camera dropdown initially
-        self.update_preview_camera_dropdown()
+        """Create the live preview tab (delegated to LivePreviewTab)"""
+        from GUI.live_preview_tab import LivePreviewTab
+        self.live_preview_tab = LivePreviewTab(
+            self.notebook, self.cameras, self.camera_status, self.camera_profiles
+        )
     
     def create_project_tab(self):
         """Create the project management tab (first tab)"""
@@ -441,11 +267,11 @@ class Go2KinMainWindow:
             camera_status=self.camera_status,
             project_manager=self.project_manager,
             get_current_project=lambda: self.project_tab.get_current_project(),
-            is_recording=lambda: self.recording,
-            run_rec_delay=self._run_rec_delay,
-            start_bar_timer=self._start_bar_timer,
-            stop_bar_timer=self._stop_bar_timer,
-            play_sync_sound=self._play_sync_sound,
+            is_recording=lambda: self.recording_tab.recording,
+            run_rec_delay=lambda: self.recording_tab._run_rec_delay(),
+            start_bar_timer=lambda: self.recording_tab._start_bar_timer(),
+            stop_bar_timer=lambda: self.recording_tab._stop_bar_timer(),
+            play_sync_sound=lambda: self.recording_tab._play_sync_sound(),
             app_config=self.app_config,
             save_app_config=self.save_app_config,
         )
@@ -469,98 +295,22 @@ class Go2KinMainWindow:
         )
 
     def create_recording_tab(self):
-        """Create the recording tab"""
-        self.recording_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.recording_frame, text="Recording")
-
-        # Track current trial info for recording flow
-        self._current_trial_info = None
-        self._last_trial_video_dir = None
-
-        # Title
-        title_label = ttk.Label(self.recording_frame, text="Multi-Camera Recording",
-                               font=("Arial", 16, "bold"))
-        title_label.pack(pady=(15, 10))
-
-        # --- Trial Setup section ---
-        setup_frame = ttk.LabelFrame(self.recording_frame, text="Trial Setup", padding=10)
-        setup_frame.pack(fill=tk.X, padx=20, pady=(0, 5))
-
-        # Participant row
-        part_frame = ttk.Frame(setup_frame)
-        part_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(part_frame, text="Participant:", width=12).pack(side=tk.LEFT)
-        self.participant_var = tk.StringVar()
-        self.participant_combo = ttk.Combobox(part_frame, textvariable=self.participant_var,
-                                              state="readonly", width=25)
-        self.participant_combo.pack(side=tk.LEFT, padx=(5, 8))
-        self.new_participant_btn = ttk.Button(part_frame, text="New Participant",
-                                              command=self._on_new_participant)
-        self.new_participant_btn.pack(side=tk.LEFT)
-
-        # Calibration row
-        cal_frame = ttk.Frame(setup_frame)
-        cal_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(cal_frame, text="Calibration:", width=12).pack(side=tk.LEFT)
-        self.calibration_var = tk.StringVar()
-        self.calibration_combo = ttk.Combobox(cal_frame, textvariable=self.calibration_var,
-                                              state="readonly", width=25)
-        self.calibration_combo.pack(side=tk.LEFT, padx=(5, 8))
-        self.calibration_combo.bind("<<ComboboxSelected>>", self._on_calibration_selected)
-        self.calibration_age_label = ttk.Label(cal_frame, text="", foreground="gray")
-        self.calibration_age_label.pack(side=tk.LEFT, padx=5)
-
-        # Trial name row
-        trial_frame = ttk.Frame(setup_frame)
-        trial_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(trial_frame, text="Trial Name:", width=12).pack(side=tk.LEFT)
-        self.trial_name_var = tk.StringVar(value=self.config["recording"]["last_trial_name"])
-        self.trial_name_entry = ttk.Entry(trial_frame, textvariable=self.trial_name_var, width=28)
-        self.trial_name_entry.pack(side=tk.LEFT, padx=(5, 0))
-
-        # --- Camera Selection ---
-        selection_frame = ttk.LabelFrame(self.recording_frame, text="Camera Selection", padding=10)
-        selection_frame.pack(fill=tk.X, padx=20, pady=5)
-
-        self.camera_selection_vars = {}
-        self.camera_selection_checkboxes = {}
-        for i in range(1, 5):
-            var = tk.BooleanVar(value=False)
-            checkbox = ttk.Checkbutton(selection_frame, text=f"GoPro {i}", variable=var, state="disabled")
-            checkbox.pack(side=tk.LEFT, padx=15)
-            self.camera_selection_vars[i] = var
-            self.camera_selection_checkboxes[i] = checkbox
-
-        # --- Recording Controls ---
-        control_frame = ttk.Frame(self.recording_frame)
-        control_frame.pack(pady=15)
-
-        self.record_toggle_btn = ttk.Button(control_frame, text="START RECORDING",
-                                            command=self.toggle_recording)
-        self.record_toggle_btn.pack(side=tk.LEFT, padx=(0, 15))
-
-        self.timer_var = tk.StringVar(value="Timer: 00:00:00")
-        timer_label = ttk.Label(control_frame, textvariable=self.timer_var,
-                               font=("Arial", 14, "bold"))
-        timer_label.pack(side=tk.LEFT, padx=(15, 0))
-
-        # --- Session/Trial Tree View ---
-        tree_frame = ttk.LabelFrame(self.recording_frame, text="Session Trials", padding=10)
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
-
-        self.trial_tree = ttk.Treeview(tree_frame, height=5, show="tree")
-        tree_scroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self.trial_tree.yview)
-        self.trial_tree.configure(yscrollcommand=tree_scroll.set)
-        self.trial_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-
-        # --- Open Trial Folder button ---
-        self.open_folder_btn = ttk.Button(self.recording_frame, text="Open Trial Folder",
-                                        command=self.open_trial_folder, state="disabled")
-        self.open_folder_btn.pack(pady=8)
-
-        # Bind tab change to refresh dropdowns
-        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        """Create the recording tab (delegated to RecordingTab)"""
+        from GUI.recording_tab import RecordingTab
+        self.recording_tab = RecordingTab(
+            self.notebook, self.config,
+            self.cameras, self.camera_status, self.camera_serials,
+            self.project_manager, self.app_config,
+            get_current_project=lambda: self.project_tab.get_current_project(),
+            get_current_session=lambda: self.project_tab.get_current_session(),
+            save_camera_settings=self.save_camera_settings,
+            save_app_config=self.save_app_config,
+            get_calibration_tab=lambda: self.calibration_tab if hasattr(self, 'calibration_tab') else None,
+            rec_delay_enabled=self.rec_delay_enabled,
+            rec_delay_seconds=self.rec_delay_seconds,
+            rec_delay_countdown_label=self.rec_delay_countdown_label,
+            sync_sound_enabled=self.sync_sound_enabled,
+        )
     
     def load_camera_settings(self):
         """Load last-used resolution/fps into global dropdowns"""
@@ -581,194 +331,21 @@ class Go2KinMainWindow:
                 "fps": fps
             }
 
-        self.config["recording"]["last_trial_name"] = self.trial_name_var.get()
+        if hasattr(self, 'recording_tab'):
+            self.config["recording"]["last_trial_name"] = self.recording_tab.trial_name_var.get()
 
         self.save_config()
     
-    # -- Recording tab helpers ------------------------------------------------
-
     def _on_tab_changed(self, event):
         """Refresh tab contents when switching tabs."""
         try:
-            selected = self.notebook.index(self.notebook.select())
-            if selected == 2:  # Recording tab
-                self.refresh_recording_dropdowns()
-            elif selected == 4:  # Processing tab
+            tab_id = self.notebook.select()
+            if hasattr(self, 'recording_tab') and tab_id == str(self.recording_tab.frame):
+                self.recording_tab.refresh_recording_dropdowns()
+            elif hasattr(self, 'processing_tab') and tab_id == str(self.processing_tab.frame):
                 self.processing_tab.refresh_tree()
         except Exception:
             pass
-
-    def refresh_recording_dropdowns(self):
-        """Populate participant, calibration dropdowns and trial tree from ProjectManager."""
-        project = self.get_current_project()
-
-        if not project:
-            self.participant_combo["values"] = []
-            self.participant_var.set("")
-            self.calibration_combo["values"] = []
-            self.calibration_var.set("")
-            self.calibration_age_label.config(text="Select a project first")
-            self._clear_trial_tree()
-            return
-
-        # Participant dropdown
-        try:
-            subjects = self.project_manager.list_subjects(project)
-            subject_ids = [s["subject_id"] for s in subjects]
-        except Exception:
-            subject_ids = []
-        prev = self.participant_var.get()
-        self.participant_combo["values"] = subject_ids
-        if prev in subject_ids:
-            self.participant_var.set(prev)
-        elif subject_ids:
-            self.participant_var.set(subject_ids[0])
-        else:
-            self.participant_var.set("")
-
-        # Calibration dropdown
-        try:
-            calibrations = self.project_manager.list_calibrations(project)
-        except Exception:
-            calibrations = []
-        self.calibration_combo["values"] = calibrations
-        if calibrations:
-            latest = self.project_manager.get_latest_calibration(project)
-            self.calibration_var.set(latest if latest else calibrations[0])
-            self._update_calibration_age_label()
-        else:
-            self.calibration_var.set("")
-            self.calibration_age_label.config(text="No calibration found", foreground="orange")
-
-        # Trial tree
-        self.refresh_trial_tree()
-
-    def _update_calibration_age_label(self):
-        """Update the calibration age display."""
-        project = self.get_current_project()
-        name = self.calibration_var.get()
-        if project and name:
-            try:
-                days = self.project_manager.get_calibration_age_days(project, name)
-                self.calibration_age_label.config(
-                    text=f"{days} day{'s' if days != 1 else ''} old",
-                    foreground="gray" if days < 14 else "orange"
-                )
-            except Exception:
-                self.calibration_age_label.config(text="", foreground="gray")
-        else:
-            self.calibration_age_label.config(text="", foreground="gray")
-
-    def _on_calibration_selected(self, event=None):
-        """Handle calibration dropdown selection."""
-        self._update_calibration_age_label()
-
-    def refresh_trial_tree(self):
-        """Refresh the session/trial tree view from ProjectManager."""
-        self._clear_trial_tree()
-        project = self.get_current_project()
-        if not project:
-            return
-        try:
-            tree_data = self.project_manager.get_project_tree(project)
-        except Exception:
-            return
-        for session_name, session_info in tree_data.get("sessions", {}).items():
-            session_id = self.trial_tree.insert("", tk.END, text=session_name, open=True)
-            for trial_name in session_info.get("trials", []):
-                self.trial_tree.insert(session_id, tk.END, text=trial_name)
-
-    def _clear_trial_tree(self):
-        """Remove all items from the trial tree view."""
-        for item in self.trial_tree.get_children():
-            self.trial_tree.delete(item)
-
-    def _on_new_participant(self):
-        """Show dialog to create a new participant/subject."""
-        project = self.get_current_project()
-        if not project:
-            messagebox.showwarning("No Project", "Select a project first.")
-            return
-
-        dlg = tk.Toplevel(self.root)
-        dlg.title("New Participant")
-        dlg.resizable(False, False)
-        dlg.grab_set()
-
-        fields = {}
-        labels = [
-            ("Subject ID", "subject_id"),
-            ("Initials", "initials"),
-            ("Age", "age"),
-            ("Height (m)", "height_m"),
-            ("Mass (kg)", "mass_kg"),
-        ]
-
-        for i, (label, key) in enumerate(labels):
-            ttk.Label(dlg, text=label).grid(row=i, column=0, padx=8, pady=4, sticky=tk.W)
-            entry = ttk.Entry(dlg, width=20)
-            entry.grid(row=i, column=1, padx=8, pady=4)
-            fields[key] = entry
-
-        row_sex = len(labels)
-        ttk.Label(dlg, text="Sex").grid(row=row_sex, column=0, padx=8, pady=4, sticky=tk.W)
-        sex_var = tk.StringVar(value="M")
-        sex_combo = ttk.Combobox(dlg, textvariable=sex_var, values=["M", "F", "Other"],
-                                 state="readonly", width=17)
-        sex_combo.grid(row=row_sex, column=1, padx=8, pady=4)
-
-        def on_ok():
-            try:
-                subject_id = fields["subject_id"].get().strip()
-                initials = fields["initials"].get().strip()
-                age = int(fields["age"].get().strip())
-                height_m = float(fields["height_m"].get().strip())
-                mass_kg = float(fields["mass_kg"].get().strip())
-                sex = sex_var.get()
-            except ValueError:
-                messagebox.showerror("Invalid Input",
-                                     "Age must be a whole number.\n"
-                                     "Height and Mass must be numbers.",
-                                     parent=dlg)
-                return
-
-            if not subject_id or not initials:
-                messagebox.showerror("Missing Fields",
-                                     "Subject ID and Initials are required.",
-                                     parent=dlg)
-                return
-
-            try:
-                self.project_manager.create_subject(
-                    project, subject_id, initials, age, sex, height_m, mass_kg
-                )
-            except ValueError as e:
-                messagebox.showerror("Error", str(e), parent=dlg)
-                return
-
-            dlg.destroy()
-            self.refresh_recording_dropdowns()
-            self.participant_var.set(subject_id)
-
-        btn_row = row_sex + 1
-        btn_frame = ttk.Frame(dlg)
-        btn_frame.grid(row=btn_row, column=0, columnspan=2, pady=10)
-        ttk.Button(btn_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=8)
-        ttk.Button(btn_frame, text="Cancel", command=dlg.destroy).pack(side=tk.LEFT, padx=8)
-
-        dlg.update_idletasks()
-        dlg.geometry(f"+{self.root.winfo_rootx() + 100}+{self.root.winfo_rooty() + 100}")
-
-    def open_trial_folder(self):
-        """Open the most recent trial's video folder in file explorer."""
-        import subprocess
-        import os
-
-        folder = self._last_trial_video_dir
-        if folder and os.path.exists(str(folder)):
-            subprocess.Popen(f'explorer "{folder}"')
-        else:
-            messagebox.showinfo("No Trial", "No trial folder available yet.")
 
     def connect_camera(self, camera_num):
         """Connect to a specific camera with profile management"""
@@ -1144,341 +721,22 @@ class Go2KinMainWindow:
             bar['battery_var'].set("\u2014")
 
         # Enable/disable recording checkbox based on connection status
-        if camera_num in self.camera_selection_checkboxes:
+        if hasattr(self, 'recording_tab') and camera_num in self.recording_tab.camera_selection_checkboxes:
             if connected:
-                self.camera_selection_checkboxes[camera_num].config(state="normal")
-                self.camera_selection_vars[camera_num].set(True)
+                self.recording_tab.camera_selection_checkboxes[camera_num].config(state="normal")
+                self.recording_tab.camera_selection_vars[camera_num].set(True)
             else:
-                self.camera_selection_checkboxes[camera_num].config(state="disabled")
-                self.camera_selection_vars[camera_num].set(False)
+                self.recording_tab.camera_selection_checkboxes[camera_num].config(state="disabled")
+                self.recording_tab.camera_selection_vars[camera_num].set(False)
 
         # Update calibration tab camera checkboxes
         if hasattr(self, 'calibration_tab'):
             self.calibration_tab.update_camera_checkboxes(camera_num, connected)
 
         # Update preview camera dropdown when camera status changes
-        self.update_preview_camera_dropdown()
-    
-    def update_preview_camera_dropdown(self):
-        """Update the preview camera dropdown to show only connected cameras"""
-        connected_cameras = []
-        for camera_num in range(1, 5):
-            if camera_num in self.cameras and self.camera_status.get(camera_num, False):
-                connected_cameras.append(f"GoPro {camera_num}")
-        
-        # Update dropdown values
-        self.preview_combo['values'] = connected_cameras
-        
-        # Set default selection if cameras are available
-        if connected_cameras:
-            if not self.preview_camera_var.get() or self.preview_camera_var.get() not in connected_cameras:
-                self.preview_camera_var.set(connected_cameras[0])
-            self.start_preview_btn.config(state="normal")
-        else:
-            self.preview_camera_var.set("")
-            self.start_preview_btn.config(state="disabled")
-            self.preview_status_var.set("No cameras connected")
-    
-    def on_zoom_slider_release(self, event):
-        """Apply zoom when user releases slider"""
-        if not self.preview_active or self.preview_camera_num is None:
-            return
-        
-        zoom_value = int(self.zoom_slider.get())
-        self.apply_zoom_to_camera(zoom_value)
-    
-    def zoom_increment(self):
-        """Increment zoom by 1%"""
-        if not self.preview_active or self.preview_camera_num is None:
-            return
-        
-        current = int(self.zoom_slider.get())
-        new_value = min(100, current + 1)
-        self.zoom_slider.set(new_value)
-        self.apply_zoom_to_camera(new_value)
-    
-    def zoom_decrement(self):
-        """Decrement zoom by 1%"""
-        if not self.preview_active or self.preview_camera_num is None:
-            return
-        
-        current = int(self.zoom_slider.get())
-        new_value = max(0, current - 1)
-        self.zoom_slider.set(new_value)
-        self.apply_zoom_to_camera(new_value)
-    
-    def on_zoom_entry_enter(self, event):
-        """Validate and apply zoom on Enter key"""
-        if not self.preview_active or self.preview_camera_num is None:
-            return
-        
-        value_str = self.zoom_entry_var.get()
-        if self.validate_zoom_input(value_str):
-            zoom_value = int(value_str)
-            self.apply_zoom_to_camera(zoom_value)
-        else:
-            # Show error and revert to current camera zoom
-            messagebox.showerror("Invalid Input", 
-                               "Zoom must be a number between 0 and 100")
-            self.sync_zoom_controls_from_camera()
-    
-    def validate_zoom_input(self, value_str):
-        """Validate zoom input string"""
-        try:
-            value = int(value_str)
-            return 0 <= value <= 100
-        except ValueError:
-            return False
-    
-    def apply_zoom_to_camera(self, zoom_value):
-        """Apply zoom value to camera and update all controls"""
-        if self.preview_camera_num is None or self.preview_camera_num not in self.cameras:
-            return
-        
-        try:
-            camera = self.cameras[self.preview_camera_num]
-            response = camera.setDigitalZoom(zoom_value)
-            
-            if response.status_code == 200:
-                # Success - update all controls
-                self.update_zoom_display(zoom_value)
-                
-                # Update profile if available
-                if self.preview_camera_num in self.camera_profiles:
-                    profile = self.camera_profiles[self.preview_camera_num]
-                    profile['current_zoom'] = zoom_value
-                    
-                    # Save profile to disk
-                    profile_mgr = get_profile_manager()
-                    serial = profile['serial_number']
-                    profile_mgr.save_camera_profile(serial, profile)
-            else:
-                raise Exception(f"Camera returned status {response.status_code}")
-                
-        except Exception as e:
-            messagebox.showerror("Zoom Error", f"Failed to set zoom:\n{e}")
-            self.sync_zoom_controls_from_camera()
-    
-    def update_zoom_display(self, zoom_value):
-        """Update all zoom controls to show the same value"""
-        self.zoom_slider.set(zoom_value)
-        self.zoom_entry_var.set(str(zoom_value))
-        self.zoom_label_var.set(f"Zoom: {zoom_value}%")
-    
-    def sync_zoom_controls_from_camera(self):
-        """Query camera and sync all zoom controls"""
-        if self.preview_camera_num is None or self.preview_camera_num not in self.cameras:
-            return
-        
-        try:
-            camera = self.cameras[self.preview_camera_num]
-            current_zoom = camera.getZoomLevel()
-            
-            if current_zoom is not None:
-                self.update_zoom_display(current_zoom)
-        except Exception as e:
-            print(f"Error syncing zoom from camera: {e}")
-    
-    def enable_zoom_controls(self):
-        """Enable zoom controls when preview is active"""
-        self.zoom_slider.config(state="normal")
-        self.zoom_minus_btn.config(state="normal")
-        self.zoom_plus_btn.config(state="normal")
-        self.zoom_entry.config(state="normal")
-    
-    def disable_zoom_controls(self):
-        """Disable zoom controls when preview is not active"""
-        self.zoom_slider.config(state="disabled")
-        self.zoom_minus_btn.config(state="disabled")
-        self.zoom_plus_btn.config(state="disabled")
-        self.zoom_entry.config(state="disabled")
-    
-    def start_preview(self):
-        """Start live preview for the selected camera"""
-        if self.preview_active:
-            return
-        
-        # Get selected camera
-        selected_camera = self.preview_camera_var.get()
-        if not selected_camera:
-            messagebox.showerror("Error", "Please select a camera for preview")
-            return
-        
-        # Extract camera number
-        camera_num = int(selected_camera.split()[-1])
-        
-        if camera_num not in self.cameras or not self.camera_status.get(camera_num, False):
-            messagebox.showerror("Error", f"GoPro {camera_num} is not connected")
-            return
-        
-        try:
-            self.preview_status_var.set("Starting preview...")
-            camera = self.cameras[camera_num]
-            
-            # Apply fixed preview settings (Linear lens, 1080p, 30fps)
-            camera.modeVideo()
-            camera.setVideoLensesLinear()  # Always Linear
-            camera.setVideoResolution1080()  # Always 1080p
-            camera.setFPS30()  # Always 30fps
-            
-            # Apply saved zoom level from profile (after settings that might reset it)
-            if camera_num in self.camera_profiles:
-                saved_zoom = self.camera_profiles[camera_num].get('current_zoom', 0)
-                if saved_zoom > 0:
-                    camera.setDigitalZoom(saved_zoom)
-                    time.sleep(0.3)
-            
-            # Start UDP stream
-            response = camera.streamStart(port=8554)
-            if response.status_code != 200:
-                raise Exception(f"Failed to start preview stream (status: {response.status_code})")
-            
-            # Wait for stream to initialize
-            time.sleep(2)
-            
-            # Create capture instance
-            stream_url = "udp://0.0.0.0:8554"
-            self.preview_capture = LivePreviewCapture(stream_url)
-            
-            if self.preview_capture.start_capture():
-                self.preview_active = True
-                self.preview_camera_num = camera_num
-                
-                # Initialize zoom controls from camera profile
-                if camera_num in self.camera_profiles:
-                    profile = self.camera_profiles[camera_num]
-                    current_zoom = profile.get('current_zoom', 0)
-                    self.update_zoom_display(current_zoom)
-                else:
-                    # No profile, query camera directly
-                    self.sync_zoom_controls_from_camera()
-                
-                # Enable zoom controls
-                self.enable_zoom_controls()
-                
-                # Update UI
-                self.start_preview_btn.config(state="disabled")
-                self.stop_preview_btn.config(state="normal")
-                self.preview_combo.config(state="disabled")  # Disable camera selection during preview
-                self.preview_status_var.set(f"Streaming from GoPro {camera_num}")
-                
-                # Start video display update loop
-                self.update_video_display()
-                
-            else:
-                raise Exception("Failed to start video capture")
-                
-        except Exception as e:
-            self.preview_status_var.set(f"Error: {e}")
-            messagebox.showerror("Preview Error", f"Failed to start preview:\n{e}")
-            self.cleanup_preview()
-    
-    def stop_preview(self):
-        """Stop live preview"""
-        if not self.preview_active:
-            return
-        
-        self.preview_status_var.set("Stopping preview...")
-        self.cleanup_preview()
-        self.preview_status_var.set("Ready")
-    
-    def cleanup_preview(self):
-        """Clean up preview resources"""
-        self.preview_active = False
-        
-        # Cancel video update job
-        if self.preview_update_job:
-            self.root.after_cancel(self.preview_update_job)
-            self.preview_update_job = None
-        
-        # Stop capture
-        if self.preview_capture:
-            self.preview_capture.stop_capture()
-            self.preview_capture = None
-        
-        # Stop camera stream
-        if self.preview_camera_num and self.preview_camera_num in self.cameras:
-            try:
-                camera = self.cameras[self.preview_camera_num]
-                camera.streamStop()
-            except Exception as e:
-                print(f"Error stopping camera stream: {e}")
-        
-        self.preview_camera_num = None
-        
-        # Disable zoom controls
-        self.disable_zoom_controls()
-        
-        # Reset zoom display
-        self.update_zoom_display(0)
-        
-        # Reset UI
-        self.start_preview_btn.config(state="normal")
-        self.stop_preview_btn.config(state="disabled")
-        self.preview_combo.config(state="readonly")  # Re-enable camera selection
-        
-        # Clear video display
-        self.video_label.config(image='', text="Select a connected camera and click Start Preview")
-        
-        # Update dropdown in case camera status changed
-        self.update_preview_camera_dropdown()
-    
-    def update_video_display(self):
-        """Update the video display with the latest frame (16:9 aspect ratio)"""
-        if not self.preview_active or not self.preview_capture:
-            return
-        
-        try:
-            # Get latest frame
-            frame = self.preview_capture.get_latest_frame()
-            
-            if frame is not None:
-                # Convert BGR to RGB (OpenCV uses BGR, tkinter expects RGB)
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
-                # Get available display area size
-                self.video_label.update_idletasks()
-                available_width = self.video_label.winfo_width()
-                available_height = self.video_label.winfo_height()
-                
-                # Use minimum reasonable size if widget not yet sized
-                if available_width < 100:
-                    available_width = 800
-                if available_height < 100:
-                    available_height = 450
-                
-                # Calculate 16:9 display size that fits within available space
-                target_ratio = 16 / 9
-                
-                # Try fitting by width first
-                display_width = available_width
-                display_height = int(display_width / target_ratio)
-                
-                # If too tall, fit by height instead
-                if display_height > available_height:
-                    display_height = available_height
-                    display_width = int(display_height * target_ratio)
-                
-                # Ensure minimum size
-                display_width = max(320, display_width)
-                display_height = max(180, display_height)
-                
-                frame_resized = cv2.resize(frame_rgb, (display_width, display_height))
-                
-                # Convert to PIL Image and then to ImageTk
-                pil_image = Image.fromarray(frame_resized)
-                photo = ImageTk.PhotoImage(pil_image)
-                
-                # Update label
-                self.video_label.config(image=photo, text="")
-                self.video_label.image = photo  # Keep a reference to prevent garbage collection
-            
-        except Exception as e:
-            print(f"Error updating video display: {e}")
-        
-        # Schedule next update (~30 FPS)
-        if self.preview_active:
-            self.preview_update_job = self.root.after(33, self.update_video_display)
+        if hasattr(self, 'live_preview_tab'):
+            self.live_preview_tab.update_preview_camera_dropdown()
+
     
     def start_status_monitoring(self):
         """Start background thread for status monitoring and battery queries"""
@@ -1528,385 +786,21 @@ class Go2KinMainWindow:
         else:
             bar['battery_label'].config(foreground="black", font=("Arial", 9))
     
-    def toggle_recording(self):
-        """Toggle recording start/stop."""
-        if not self.recording:
-            self._start_recording()
-        else:
-            self._stop_recording()
-
-    def _start_recording(self):
-        """Validate and start multi-camera recording."""
-        # Validate project and session
-        project = self.get_current_project()
-        session = self.get_current_session()
-        if not project:
-            messagebox.showerror("Error", "No project selected. Go to the Project tab first.")
-            return
-        if not session:
-            messagebox.showerror("Error", "No session selected. Go to the Project tab first.")
-            return
-
-        trial_name = self.trial_name_var.get().strip()
-        if not trial_name:
-            messagebox.showerror("Error", "Trial name cannot be empty.")
-            return
-
-        # Get selected & connected cameras
-        selected_cameras = [i for i in range(1, 5) if self.camera_selection_vars[i].get()]
-        available_cameras = [i for i in selected_cameras
-                             if i in self.cameras and self.camera_status.get(i, False)]
-        if not available_cameras:
-            messagebox.showerror("Error", "No cameras are connected and selected for recording.")
-            return
-
-        # Participant and calibration (optional)
-        subject_id = self.participant_var.get() or ""
-        calibration_name = self.calibration_var.get() or "none"
-        cameras_used = [self.camera_serials.get(i, f"cam{i}") for i in available_cameras]
-
-        # Create trial via ProjectManager
-        try:
-            self.project_manager.create_trial(
-                project, session, trial_name,
-                subject_id=subject_id,
-                calibration_file=calibration_name,
-                cameras_used=cameras_used,
-            )
-        except ValueError as e:
-            messagebox.showerror("Error", str(e))
-            return
-
-        video_dir = self.project_manager.get_trial_video_path(project, session, trial_name)
-        video_dir.mkdir(parents=True, exist_ok=True)
-
-        self._current_trial_info = {
-            "project": project,
-            "session": session,
-            "trial_name": trial_name,
-            "video_dir": video_dir,
-        }
-        self._last_trial_video_dir = video_dir
-
-        # Save settings and start
-        self.save_camera_settings()
-        self.recording = True
-        self.recording_thread = threading.Thread(
-            target=self.recording_worker, args=(available_cameras,), daemon=True
-        )
-        self.recording_thread.start()
-
-        # Update UI
-        self.record_toggle_btn.config(text="STOP RECORDING")
-        self.trial_name_entry.config(state="disabled")
-        self.participant_combo.config(state="disabled")
-        self.calibration_combo.config(state="disabled")
-        self.new_participant_btn.config(state="disabled")
-
-    def _stop_recording(self):
-        """Signal the recording worker to stop."""
-        self.recording = False
-        self._stop_bar_timer()
-        self.record_toggle_btn.config(text="Stopping...", state="disabled")
-        print("Stopping recording...")
-
-    def recording_worker(self, camera_list):
-        """Background worker for recording process."""
-        info = self._current_trial_info
-        video_dir = info["video_dir"]
-        trial_name = info["trial_name"]
-
-        try:
-            print(f"Starting recording on cameras: {camera_list}")
-            print(f"Trial directory: {video_dir}")
-
-            # Run recording delay countdown if enabled
-            self._run_rec_delay()
-
-            # Start recording on all cameras
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-                futures = []
-                for camera_num in camera_list:
-                    camera = self.cameras[camera_num]
-                    future = executor.submit(self.start_camera_recording, camera_num, camera)
-                    futures.append((camera_num, future))
-
-                for camera_num, future in futures:
-                    try:
-                        future.result(timeout=15)
-                        print(f"  GoPro {camera_num} recording started")
-                    except Exception as e:
-                        print(f"  Failed to start GoPro {camera_num}: {e}")
-
-            # Start timers after all cameras confirmed
-            self.root.after(0, self.start_timer)
-            self.root.after(0, self._start_bar_timer)
-
-            # Play sync sound (1s delay + two claps) if enabled
-            self._play_sync_sound()
-
-            # Wait for stop signal
-            while self.recording:
-                time.sleep(0.5)
-
-            # Stop recording and download files
-            print("Stopping cameras and downloading files...")
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-                futures = []
-                for camera_num in camera_list:
-                    if camera_num in self.cameras:
-                        camera = self.cameras[camera_num]
-                        future = executor.submit(
-                            self.stop_and_download, camera_num, camera, video_dir, trial_name
-                        )
-                        futures.append((camera_num, future))
-
-                for camera_num, future in futures:
-                    try:
-                        future.result(timeout=300)
-                        print(f"  GoPro {camera_num} file downloaded")
-                    except Exception as e:
-                        print(f"  Error downloading GoPro {camera_num}: {e}")
-
-            print("Recording complete. Starting audio synchronisation...")
-
-            # Auto-sync
-            self._auto_sync(info)
-
-        except Exception as e:
-            print(f"Recording error: {e}")
-
-        finally:
-            self.root.after(0, self.reset_recording_ui)
-
-    def _auto_sync(self, trial_info):
-        """Automatically synchronise downloaded video files after recording."""
-        from audio_sync import (check_ffmpeg, check_audio_track, compute_sync_offsets,
-                                trim_and_sync_videos, create_stitched_preview,
-                                AudioSyncError)
-
-        project = trial_info["project"]
-        session = trial_info["session"]
-        trial_name = trial_info["trial_name"]
-        video_dir = trial_info["video_dir"]
-
-        mp4_files = sorted([
-            f for f in video_dir.iterdir()
-            if f.suffix.lower() == ".mp4" and f.is_file()
-        ])
-
-        if len(mp4_files) < 2:
-            print(f"Only {len(mp4_files)} video file(s) — skipping sync.")
-            return
-
-        try:
-            # Check ffmpeg
-            if not check_ffmpeg():
-                print("ffmpeg not found — skipping sync. Install with: conda install -c conda-forge ffmpeg")
-                return
-
-            video_paths = [str(f) for f in mp4_files]
-
-            # Verify audio tracks
-            for vp in video_paths:
-                name = Path(vp).name
-                if not check_audio_track(vp):
-                    raise AudioSyncError(f"No audio track in: {name}")
-                print(f"  Audio confirmed: {name}")
-
-            # Build camera positions for speed-of-sound compensation (if calibration loaded)
-            cam_positions = None
-            sound_pos = None
-            if hasattr(self, 'calibration_tab'):
-                cam_positions, sound_pos = self.calibration_tab._get_sync_compensation_data(video_paths)
-
-            # Compute sync offsets (onset-based dual-clap detection)
-            print("Analysing audio for onset-based sync...")
-            offsets = compute_sync_offsets(
-                video_paths,
-                output_dir=str(video_dir),
-                progress_callback=lambda msg: print(f"  {msg}"),
-                camera_positions=cam_positions,
-                sound_source_position=sound_pos,
-            )
-
-            # Check for warnings
-            for path, info in offsets.items():
-                if info.get("status") == "WARN":
-                    name = Path(path).name
-                    print(
-                        f"  WARNING: Inconsistent clap offsets for {name}. "
-                        f"Consider re-recording with clearer claps.")
-
-            # Trim and sync videos
-            print("Trimming videos (stream copy, no re-encoding)...")
-            output_files = trim_and_sync_videos(
-                video_paths, offsets, str(video_dir),
-                progress_callback=lambda msg: print(f"  {msg}")
-            )
-
-            # Create stitched preview
-            synced_dir = str(self.project_manager.get_trial_synced_path(project, session, trial_name))
-            print("Creating 2x2 stitched preview...")
-            create_stitched_preview(
-                synced_dir,
-                progress_callback=lambda msg: print(f"  {msg}")
-            )
-
-            # Update trial.json
-            self.project_manager.update_trial(project, session, trial_name, synced=True)
-            print(
-                f"Synchronisation complete! "
-                f"{len(output_files)} synced files + stitched preview in synced/ folder")
-
-        except Exception as e:
-            print(f"Sync error: {e}")
-            try:
-                self.project_manager.update_trial(project, session, trial_name, synced=False)
-            except Exception:
-                pass
-
-    def _run_rec_delay(self):
-        """Run recording delay countdown if enabled. Called from background threads."""
-        if not self.rec_delay_enabled.get():
-            return
-        try:
-            delay = int(self.rec_delay_seconds.get())
-        except (ValueError, TypeError):
-            return
-        if delay <= 0:
-            return
-        for remaining in range(delay, 0, -1):
-            self.root.after(0, lambda r=remaining:
-                            self.rec_delay_countdown_label.config(text=str(r)))
-            time.sleep(1)
-        self.root.after(0, lambda: self.rec_delay_countdown_label.config(text=""))
-
-    def _generate_sync_sound(self):
-        """Generate sync sound: 1.5s HDMI primer + two 10ms clap impulses."""
-        sr = self._sync_sound_sr
-        # 1.5s near-silent primer to wake HDMI audio devices
-        primer = (np.random.randn(int(sr * 1.5)) * 0.001).astype(np.float32)
-        # 10ms 1kHz sine burst
-        t = np.arange(int(sr * 0.01)) / sr
-        impulse = (np.sin(2 * np.pi * 1000 * t) * 0.98).astype(np.float32)
-        # Gaps
-        gap = np.zeros(int(sr * 0.5), dtype=np.float32)
-        tail = np.zeros(int(sr * 0.5), dtype=np.float32)
-        return np.concatenate([primer, impulse, gap, impulse, tail])
-
-    def _play_sync_sound(self):
-        """Play sync sound (primer + two claps). Call from background thread."""
-        if not self.sync_sound_enabled.get():
-            return
-        if self._sync_sound_data is None:
-            return
-        try:
-            print("Sync sound: playing...")
-            sd.play(self._sync_sound_data, self._sync_sound_sr)
-            sd.wait()
-            print("Sync sound: playback complete")
-        except Exception as e:
-            print(f"Sync sound playback failed: {e}")
-
-    def _start_bar_timer(self):
-        """Start the bottom bar mm:ss timer (red label). Called from GUI thread."""
-        self._bar_timer_start = time.time()
-        self._bar_timer_running = True
-        self._update_bar_timer()
-
-    def _update_bar_timer(self):
-        """Update the bottom bar timer display every second."""
-        if self._bar_timer_running:
-            elapsed = int(time.time() - self._bar_timer_start)
-            minutes = elapsed // 60
-            seconds = elapsed % 60
-            self.rec_delay_countdown_label.config(text=f"{minutes:02d}:{seconds:02d}")
-            self.root.after(1000, self._update_bar_timer)
-
-    def _stop_bar_timer(self):
-        """Stop the bottom bar timer and clear the label."""
-        self._bar_timer_running = False
-        self.rec_delay_countdown_label.config(text="")
-
-    def start_camera_recording(self, camera_num, camera):
-        """Start recording on a single camera (settings already applied via GUI)."""
-        camera.shutterStart()
-
-    def stop_and_download(self, camera_num, camera, video_dir, trial_name):
-        """Stop recording and download file from a single camera."""
-        camera.shutterStop()
-
-        while camera.camBusy() or camera.encodingActive():
-            time.sleep(0.5)
-
-        filename = video_dir / f"{trial_name}_GP{camera_num}.mp4"
-        camera.mediaDownloadLast(str(filename))
-
-        camera.deleteAllFiles()
-
-    def start_timer(self):
-        """Start the recording timer."""
-        self.start_time = time.time()
-        self.update_timer()
-
-    def update_timer(self):
-        """Update the recording timer display."""
-        if self.recording:
-            elapsed = int(time.time() - self.start_time)
-            hours = elapsed // 3600
-            minutes = (elapsed % 3600) // 60
-            seconds = elapsed % 60
-            self.timer_var.set(f"Timer: {hours:02d}:{minutes:02d}:{seconds:02d}")
-            self.root.after(1000, self.update_timer)
-        else:
-            self.timer_var.set("Timer: 00:00:00")
-
-    def reset_recording_ui(self):
-        """Reset recording UI after completion."""
-        self.record_toggle_btn.config(text="START RECORDING", state="normal")
-        self.trial_name_entry.config(state="normal")
-        self.participant_combo.config(state="readonly")
-        self.calibration_combo.config(state="readonly")
-        self.new_participant_btn.config(state="normal")
-        self.open_folder_btn.config(state="normal")
-        self.timer_var.set("Timer: 00:00:00")
-        self._stop_bar_timer()
-
-        self.increment_trial_name()
-        self.refresh_trial_tree()
-
-    def increment_trial_name(self):
-        """Auto-increment trial name for next recording."""
-        current_name = self.trial_name_var.get()
-
-        if '_' in current_name and current_name.split('_')[-1].isdigit():
-            parts = current_name.rsplit('_', 1)
-            base_name = parts[0]
-            current_num = int(parts[1])
-            new_name = f"{base_name}_{current_num + 1:03d}"
-        else:
-            new_name = f"{current_name}_001"
-
-        self.trial_name_var.set(new_name)
-        print(f"Trial name updated to: {new_name}")
-
     def on_closing(self):
         """Handle window close event with graceful cleanup"""
         
         # 1. Stop preview if active
-        if self.preview_active:
+        if hasattr(self, 'live_preview_tab') and self.live_preview_tab.preview_active:
             print("Closing window: Stopping active preview...")
-            self.cleanup_preview()
+            self.live_preview_tab.cleanup_preview()
         
         # 2. Stop recording if active (no user confirmation)
-        if self.recording:
+        if hasattr(self, 'recording_tab') and self.recording_tab.recording:
             print("Closing window: Stopping active recording...")
-            self.recording = False
+            self.recording_tab.recording = False
             # Wait briefly for recording thread to finish
-            if self.recording_thread and self.recording_thread.is_alive():
-                self.recording_thread.join(timeout=2.0)
+            if self.recording_tab.recording_thread and self.recording_tab.recording_thread.is_alive():
+                self.recording_tab.recording_thread.join(timeout=2.0)
         
         # 3. Disconnect all cameras
         if self.cameras:

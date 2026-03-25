@@ -222,3 +222,13 @@ Tabs communicate via:
 - Completed: Log cleanup in main_window.py and processing_tab.py. Removed all GUI log widgets (Progress Log in Recording tab, Log in Processing tab). Replaced ~54 self.log_progress() calls and ~15 self.log() calls with print(). Removed _LogForwarder, _StreamRedirector, and related infrastructure from pose2sim_builder.py. Removed log_callback/progress_callback params from build_pose2sim_project() and run_pose2sim_pipeline(). Removed use_custom_logging override so Pose2Sim handles its own logging.
 - Deviations: Had to also clean up pose2sim_builder.py — passing print as log_callback caused infinite recursion because _StreamRedirector replaced sys.stdout. Resolved by removing all log redirection infrastructure (no longer needed without GUI log widgets).
 - State: App launches, no GUI log boxes. All output in terminal including Pose2Sim logging. Processing works end-to-end.
+
+### Session 0b/0c — 2026-03-25 ✅
+- Completed: Extracted LivePreviewTab and RecordingTab from main_window.py into own files.
+  - Created `code/GUI/live_preview_tab.py` with `LivePreviewCapture` + `LivePreviewTab` classes (all preview UI, zoom controls, streaming logic).
+  - Created `code/GUI/recording_tab.py` with `RecordingTab` class (all recording UI, trial management, sync sound, bar timer, auto-sync).
+  - main_window.py reduced from 1922 to 816 lines. All 6 tabs now in separate files.
+  - Updated cross-references: `update_camera_status()` delegates checkbox/dropdown updates, `on_closing()` delegates to both tabs, `_on_tab_changed()` uses frame-based identification, `save_camera_settings()` reads trial name from recording_tab, `create_calibration_tab()` uses lazy lambdas for recording callbacks.
+  - Removed unused imports from main_window.py: cv2, PIL, queue, sounddevice, numpy, concurrent.futures.
+- Deviations: None. Followed plan exactly.
+- State: App launches, all 6 tabs work identically to before. File structure is now fully modular. 41 unit tests pass.
