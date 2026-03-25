@@ -3,6 +3,9 @@ Calibration tab for Go2Kin GUI.
 
 Provides tkinter UI for charuco board config, intrinsic calibration,
 extrinsic calibration, origin setting, and save/load.
+
+Layout: vertical pipeline (collapsible sections) on the left,
+3D camera position viewer on the right.
 """
 
 from __future__ import annotations
@@ -16,6 +19,8 @@ import tkinter as tk
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+
+from GUI.components.collapsible_section import CollapsibleSection
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +39,8 @@ class CalibrationTab:
                  start_bar_timer=None, stop_bar_timer=None,
                  play_sync_sound=None,
                  app_config=None, save_app_config=None,
-                 on_calibration_saved=None):
+                 on_calibration_saved=None,
+                 sync_method_var=None):
         self.notebook = notebook
         self.config = config
         self.frame = ttk.Frame(notebook)
@@ -51,6 +57,7 @@ class CalibrationTab:
         self.app_config = app_config or {}
         self._save_app_config = save_app_config or (lambda: None)
         self._on_calibration_saved = on_calibration_saved or (lambda: None)
+        self.sync_method_var = sync_method_var or tk.StringVar(value="manual")
 
         # Lazy imports to avoid circular imports and slow startup
         self._charuco = None
@@ -58,12 +65,16 @@ class CalibrationTab:
         self._bundle = None
         self._intrinsic_results: dict[int, dict] = {}
 
+        # Sound source position
+        self._sound_source_pos = None
+
         # Recording state
         self._calib_recording = False
         self._calib_stop_event = threading.Event()
 
         self._create_widgets()
         self._load_charuco_config()
+        self._update_charuco_status()
 
     # =================================================================
     # Widget creation
@@ -103,33 +114,49 @@ class CalibrationTab:
 
         parent = self._scroll_frame
 
-        # Section 1: Charuco Board Config
+        # Load/Save bar at top
+        self._create_load_bar(parent)
+
+        # Charuco Board Config (collapsible)
         self._create_charuco_section(parent)
 
-        # Section 2: Intrinsic Calibration
+        # Intrinsic Calibration (collapsible)
         self._create_intrinsic_section(parent)
 
-        # Section 3: Extrinsic Calibration
+        # Extrinsic Calibration (always visible — primary daily action)
         self._create_extrinsic_section(parent)
 
-        # Section 4: Set Origin
+        # Set Origin (always visible, disabled until extrinsics done)
         self._create_origin_section(parent)
 
-        # Section 5: Sound Source Position (for speed-of-sound compensation)
-        self._sound_source_pos = None
-        self._create_sound_source_section(parent)
-
-        # Section 6: Save/Load
-        self._create_save_load_section(parent)
+        # Apply Calibration
+        self._create_apply_section(parent)
 
         # 3D viewer in right panel
         self._create_3d_viewer(right_frame)
 
-    def _create_charuco_section(self, parent):
-        section = ttk.LabelFrame(parent, text="Charuco Board Configuration", padding=10)
-        section.pack(fill="x", padx=10, pady=5)
+        # Initial pipeline state
+        self._update_pipeline_state()
 
-        grid = ttk.Frame(section)
+    def _create_load_bar(self, parent):
+        """Load/Save bar at top of pipeline."""
+        bar = ttk.Frame(parent)
+        bar.pack(fill="x", padx=10, pady=5)
+
+        ttk.Button(bar, text="Load Calibration", command=self._load_calibration).pack(side="left", padx=2)
+        ttk.Button(bar, text="Load Intrinsics", command=self._load_intrinsics).pack(side="left", padx=2)
+        ttk.Button(bar, text="Delete Videos", command=self._delete_calib_videos).pack(side="right", padx=2)
+
+        self._load_bar_status = tk.StringVar(value="")
+        ttk.Label(bar, textvariable=self._load_bar_status, foreground="#666666").pack(side="left", padx=10)
+
+    def _create_charuco_section(self, parent):
+        self._charuco_section = CollapsibleSection(parent, "Charuco Board Configuration")
+        self._charuco_section.frame.pack(fill="x")
+
+        content = self._charuco_section.content
+
+        grid = ttk.Frame(content)
         grid.pack(fill="x")
 
         # Row 0: columns, rows
@@ -166,21 +193,23 @@ class CalibrationTab:
         ttk.Checkbutton(grid, text="Inverted", variable=self._charuco_inverted).grid(row=2, column=2, columnspan=2, padx=5)
 
         # Buttons
-        btn_frame = ttk.Frame(section)
+        btn_frame = ttk.Frame(content)
         btn_frame.pack(fill="x", pady=5)
         ttk.Button(btn_frame, text="Save Board Image", command=self._save_board_image).pack(side="left", padx=5)
         ttk.Button(btn_frame, text="Save Config", command=self._save_charuco_config).pack(side="left", padx=5)
 
     def _create_intrinsic_section(self, parent):
-        section = ttk.LabelFrame(parent, text="Intrinsic Calibration", padding=10)
-        section.pack(fill="x", padx=10, pady=5)
+        self._intrinsic_section = CollapsibleSection(parent, "Intrinsic Calibration")
+        self._intrinsic_section.frame.pack(fill="x")
+
+        content = self._intrinsic_section.content
 
         self._intrinsic_entries: dict[int, dict] = {}
         cam_nums = list(self.config.get("cameras", {}).keys())
 
         for cam_num in cam_nums:
             cam_num = int(cam_num)
-            row_frame = ttk.Frame(section)
+            row_frame = ttk.Frame(content)
             row_frame.pack(fill="x", pady=2)
 
             ttk.Label(row_frame, text=f"Camera {cam_num}:", width=10).pack(side="left")
@@ -214,137 +243,581 @@ class CalibrationTab:
 
         # Progress
         self._intrinsic_progress = tk.StringVar(value="")
-        ttk.Label(section, textvariable=self._intrinsic_progress).pack(fill="x", pady=2)
+        ttk.Label(content, textvariable=self._intrinsic_progress).pack(fill="x", pady=2)
 
     def _create_extrinsic_section(self, parent):
         section = ttk.LabelFrame(parent, text="Extrinsic Calibration", padding=10)
         section.pack(fill="x", padx=10, pady=5)
 
-        # Camera selection checkboxes (shared with origin recording)
-        sel_frame = ttk.Frame(section)
-        sel_frame.pack(fill="x", pady=2)
-        ttk.Label(sel_frame, text="Camera Selection:").pack(side="left")
-        self._calib_cam_vars: dict[int, tk.BooleanVar] = {}
-        self._calib_cam_checkboxes: dict[int, ttk.Checkbutton] = {}
-        for cam_num in range(1, 5):
-            var = tk.BooleanVar(value=False)
-            cb = ttk.Checkbutton(sel_frame, text=f"GoPro {cam_num}", variable=var, state="disabled")
-            cb.pack(side="left", padx=10)
-            self._calib_cam_vars[cam_num] = var
-            self._calib_cam_checkboxes[cam_num] = cb
+        # Sound source position (inline, centred)
+        self._sound_x_var = tk.StringVar(value="")
+        self._sound_y_var = tk.StringVar(value="")
+        self._sound_z_var = tk.StringVar(value="")
 
-        folder_frame = ttk.Frame(section)
-        folder_frame.pack(fill="x", pady=2)
+        sound_frame = ttk.Frame(section)
+        sound_frame.pack(pady=2)
+        ttk.Label(sound_frame, text="Sound source:").pack(side="left")
+        for label, var in [("X:", self._sound_x_var), ("Y:", self._sound_y_var), ("Z:", self._sound_z_var)]:
+            ttk.Label(sound_frame, text=label).pack(side="left", padx=(8, 0))
+            ttk.Entry(sound_frame, textvariable=var, width=7).pack(side="left", padx=2)
+        ttk.Label(sound_frame, text="(m)", foreground="#666666").pack(side="left", padx=4)
 
-        ttk.Label(folder_frame, text="Synced folder:").pack(side="left")
-        self._extrinsic_folder_var = tk.StringVar(value="No folder selected")
-        ttk.Label(folder_frame, textvariable=self._extrinsic_folder_var, width=50, relief="sunken").pack(side="left", padx=5)
-        self._extrinsic_record_btn = ttk.Button(
-            folder_frame, text="Record", width=7,
-            command=lambda: self._toggle_multi_record("extrinsic"),
+        # Action button + countdown (centred)
+        action_frame = ttk.Frame(section)
+        action_frame.pack(pady=(5, 2))
+
+        self._ext_auto_btn = tk.Button(
+            action_frame, text="Calibrate", font=("TkDefaultFont", 10, "bold"),
+            command=self._auto_calibrate_extrinsics, width=20, height=1,
         )
-        self._extrinsic_record_btn.pack(side="left", padx=2)
-        ttk.Button(folder_frame, text="Browse", command=self._browse_extrinsic_folder).pack(side="left", padx=2)
+        self._ext_auto_btn.pack(side="left", padx=2)
 
-        btn_frame = ttk.Frame(section)
-        btn_frame.pack(fill="x", pady=5)
-        ttk.Button(btn_frame, text="Calibrate Extrinsics", command=self._run_extrinsic).pack(side="left", padx=5)
+        self._ext_countdown_var = tk.StringVar(value="")
+        self._ext_countdown_label = ttk.Label(
+            action_frame, textvariable=self._ext_countdown_var,
+            font=("TkDefaultFont", 16, "bold"), foreground="#F44336",
+        )
+        self._ext_countdown_label.pack(side="left", padx=10)
+
+        # Status row
+        status_frame = ttk.Frame(section)
+        status_frame.pack(fill="x", pady=2)
+
+        self._ext_status_canvas = tk.Canvas(
+            status_frame, width=14, height=14, highlightthickness=0, borderwidth=0,
+        )
+        self._ext_status_canvas.pack(side="left", padx=(0, 4))
+        self._ext_status_circle = self._ext_status_canvas.create_oval(
+            2, 2, 12, 12, fill="#9E9E9E", outline="",
+        )
 
         self._extrinsic_status = tk.StringVar(value="")
-        ttk.Label(section, textvariable=self._extrinsic_status).pack(fill="x", pady=2)
+        ttk.Label(status_frame, textvariable=self._extrinsic_status).pack(side="left")
 
     def _create_origin_section(self, parent):
         section = ttk.LabelFrame(parent, text="Set Origin", padding=10)
         section.pack(fill="x", padx=10, pady=5)
 
-        folder_frame = ttk.Frame(section)
-        folder_frame.pack(fill="x", pady=2)
+        # Sound source display (same vars as extrinsic, centred)
+        sound_frame = ttk.Frame(section)
+        sound_frame.pack(pady=2)
+        ttk.Label(sound_frame, text="Sound source:").pack(side="left")
+        for label, var in [("X:", self._sound_x_var), ("Y:", self._sound_y_var), ("Z:", self._sound_z_var)]:
+            ttk.Label(sound_frame, text=label).pack(side="left", padx=(8, 0))
+            ttk.Entry(sound_frame, textvariable=var, width=7).pack(side="left", padx=2)
+        ttk.Label(sound_frame, text="(m)", foreground="#666666").pack(side="left", padx=4)
 
-        ttk.Label(folder_frame, text="Origin folder:").pack(side="left")
-        self._origin_folder_var = tk.StringVar(value="No folder selected")
-        ttk.Label(folder_frame, textvariable=self._origin_folder_var, width=50, relief="sunken").pack(side="left", padx=5)
-        self._origin_record_btn = ttk.Button(
-            folder_frame, text="Record", width=7,
-            command=lambda: self._toggle_multi_record("origin"),
+        # Action button + countdown (centred)
+        action_frame = ttk.Frame(section)
+        action_frame.pack(pady=(5, 2))
+
+        self._origin_auto_btn = tk.Button(
+            action_frame, text="Set Origin", font=("TkDefaultFont", 10, "bold"),
+            command=self._auto_set_origin, width=20, height=1,
         )
-        self._origin_record_btn.pack(side="left", padx=2)
-        ttk.Button(folder_frame, text="Browse", command=self._browse_origin_folder).pack(side="left", padx=2)
+        self._origin_auto_btn.pack(side="left", padx=2)
 
-        btn_frame = ttk.Frame(section)
-        btn_frame.pack(fill="x", pady=5)
-        ttk.Button(btn_frame, text="Set Origin", command=self._run_set_origin).pack(side="left", padx=5)
+        self._origin_countdown_var = tk.StringVar(value="")
+        self._origin_countdown_label = ttk.Label(
+            action_frame, textvariable=self._origin_countdown_var,
+            font=("TkDefaultFont", 16, "bold"), foreground="#F44336",
+        )
+        self._origin_countdown_label.pack(side="left", padx=10)
+
+        # Status row
+        status_frame = ttk.Frame(section)
+        status_frame.pack(fill="x", pady=2)
+
+        self._origin_status_canvas = tk.Canvas(
+            status_frame, width=14, height=14, highlightthickness=0, borderwidth=0,
+        )
+        self._origin_status_canvas.pack(side="left", padx=(0, 4))
+        self._origin_status_circle = self._origin_status_canvas.create_oval(
+            2, 2, 12, 12, fill="#9E9E9E", outline="",
+        )
 
         self._origin_status = tk.StringVar(value="")
-        ttk.Label(section, textvariable=self._origin_status).pack(fill="x", pady=2)
+        ttk.Label(status_frame, textvariable=self._origin_status).pack(side="left")
 
-    def _create_sound_source_section(self, parent):
-        section = ttk.LabelFrame(parent, text="Sound Source Position", padding=10)
-        section.pack(fill="x", padx=10, pady=5)
+    def _create_apply_section(self, parent):
+        section = ttk.Frame(parent)
+        section.pack(fill="x", padx=10, pady=10)
 
-        row = ttk.Frame(section)
-        row.pack(fill="x", pady=2)
+        self._apply_btn = tk.Button(
+            section, text="Apply Calibration", font=("TkDefaultFont", 10, "bold"),
+            command=self._apply_calibration, width=20, height=1, state="disabled",
+        )
+        self._apply_btn.pack(pady=2)
 
-        self._sound_x_var = tk.StringVar(value="")
-        self._sound_y_var = tk.StringVar(value="")
-        self._sound_z_var = tk.StringVar(value="")
+        self._apply_status = tk.StringVar(value="")
+        ttk.Label(section, textvariable=self._apply_status).pack(pady=2)
 
-        for label, var in [("X:", self._sound_x_var), ("Y:", self._sound_y_var), ("Z:", self._sound_z_var)]:
-            ttk.Label(row, text=label).pack(side="left", padx=(5, 0))
-            ttk.Entry(row, textvariable=var, width=8).pack(side="left", padx=2)
+    # =================================================================
+    # Status updates
+    # =================================================================
 
-        ttk.Label(row, text="(metres)").pack(side="left", padx=5)
-        ttk.Button(row, text="Set", width=5, command=self._set_sound_source).pack(side="left", padx=5)
-        ttk.Button(row, text="Clear", width=5, command=self._clear_sound_source).pack(side="left", padx=2)
+    def _update_charuco_status(self):
+        """Update charuco CollapsibleSection status from current config values."""
+        try:
+            cols = self._charuco_cols.get()
+            rows = self._charuco_rows.get()
+            sq = self._charuco_square_cm.get()
+            self._charuco_section.set_status("green", f"{rows}x{cols}, {sq}cm")
+        except (tk.TclError, ValueError):
+            self._charuco_section.set_status("grey", "Not configured")
 
-        self._sound_source_status = tk.StringVar(value="Not set")
-        ttk.Label(section, textvariable=self._sound_source_status).pack(fill="x", pady=2)
+    def _update_intrinsic_status(self):
+        """Update intrinsic CollapsibleSection status from calibration results."""
+        total = len(self._intrinsic_entries)
+        calibrated = len(self._intrinsic_results)
+        if calibrated == 0:
+            self._intrinsic_section.set_status("grey", "Not calibrated")
+        elif calibrated < total:
+            self._intrinsic_section.set_status("amber", f"{calibrated}/{total} cameras")
+        else:
+            self._intrinsic_section.set_status("green", f"{calibrated}/{total} cameras")
 
-    def _set_sound_source(self):
-        """Parse X/Y/Z entries and store the sound source position."""
+    def _set_extrinsic_indicator(self, color):
+        """Set extrinsic status circle color."""
+        from GUI.components.collapsible_section import STATUS_COLORS
+        fill = STATUS_COLORS.get(color, STATUS_COLORS["grey"])
+        self._ext_status_canvas.itemconfig(self._ext_status_circle, fill=fill)
+
+    def _set_origin_indicator(self, color):
+        """Set origin status circle color."""
+        from GUI.components.collapsible_section import STATUS_COLORS
+        fill = STATUS_COLORS.get(color, STATUS_COLORS["grey"])
+        self._origin_status_canvas.itemconfig(self._origin_status_circle, fill=fill)
+
+    def _update_pipeline_state(self):
+        """Enable/disable buttons based on current pipeline state."""
+        has_intrinsics = bool(self._intrinsic_results)
+        has_extrinsics = (self._camera_array is not None
+                         and hasattr(self._camera_array, 'posed_cameras')
+                         and self._camera_array.posed_cameras)
+
+        # Extrinsic button: enabled when intrinsics exist
+        ext_state = "normal" if has_intrinsics else "disabled"
+        self._ext_auto_btn.config(state=ext_state)
+
+        # Origin button: enabled when extrinsics done
+        origin_state = "normal" if has_extrinsics else "disabled"
+        self._origin_auto_btn.config(state=origin_state)
+
+        # Apply button: enabled when extrinsics done
+        apply_state = "normal" if has_extrinsics else "disabled"
+        self._apply_btn.config(state=apply_state)
+
+        self._update_intrinsic_status()
+
+    # =================================================================
+    # Sound source (inline — read silently before sync)
+    # =================================================================
+
+    def _read_sound_source_fields(self):
+        """Read sound source X/Y/Z from inline fields. Sets self._sound_source_pos or None."""
         try:
             x = float(self._sound_x_var.get())
             y = float(self._sound_y_var.get())
             z = float(self._sound_z_var.get())
-        except ValueError:
-            from tkinter import messagebox
-            messagebox.showwarning("Warning", "Enter valid numbers for X, Y, Z")
+            self._sound_source_pos = [x, y, z]
+        except (ValueError, TypeError):
+            self._sound_source_pos = None
+
+    # =================================================================
+    # Countdown helper
+    # =================================================================
+
+    def _run_countdown(self, seconds, countdown_var, on_complete):
+        """Run visual countdown, then call on_complete."""
+        if seconds <= 0:
+            countdown_var.set("")
+            on_complete()
             return
-        self._sound_source_pos = [x, y, z]
-        self._sound_source_status.set(f"Set: ({x:.3f}, {y:.3f}, {z:.3f})")
-        self._update_3d_viewer(self._camera_array)
+        countdown_var.set(f"{seconds}...")
+        self.frame.after(1000, lambda: self._run_countdown(seconds - 1, countdown_var, on_complete))
 
-    def _clear_sound_source(self):
-        """Clear the sound source position."""
-        self._sound_source_pos = None
-        self._sound_x_var.set("")
-        self._sound_y_var.set("")
-        self._sound_z_var.set("")
-        self._sound_source_status.set("Not set")
-        self._update_3d_viewer(self._camera_array)
+    # =================================================================
+    # Automated extrinsic flow
+    # =================================================================
 
-    def _create_save_load_section(self, parent):
-        section = ttk.LabelFrame(parent, text="Save / Load Calibration", padding=10)
-        section.pack(fill="x", padx=10, pady=5)
+    def _auto_calibrate_extrinsics(self):
+        """One-button automated extrinsic calibration: countdown → record → sync → calibrate."""
+        if not self._check_record_preconditions(need_multi=True):
+            return
+        if not self._intrinsic_results:
+            messagebox.showwarning("Warning", "Run intrinsic calibration first")
+            return
 
-        # Save row: name entry + save button
-        save_frame = ttk.Frame(section)
-        save_frame.pack(fill="x", pady=2)
-        ttk.Label(save_frame, text="Name:").pack(side="left")
-        self._calib_name_var = tk.StringVar(value="")
-        ttk.Entry(save_frame, textvariable=self._calib_name_var, width=20).pack(side="left", padx=5)
-        ttk.Button(save_frame, text="Save Calibration", command=self._save_calibration).pack(side="left", padx=5)
+        self._read_sound_source_fields()
 
-        # Load row
-        load_frame = ttk.Frame(section)
-        load_frame.pack(fill="x", pady=2)
-        ttk.Button(load_frame, text="Load Calibration", command=self._load_calibration).pack(side="left", padx=5)
-        ttk.Button(load_frame, text="Load Intrinsics Only", command=self._load_intrinsics).pack(side="left", padx=5)
+        # Disable button, show countdown
+        self._ext_auto_btn.config(state="disabled", text="Starting...")
+        self._extrinsic_status.set("Starting countdown...")
+        self._set_extrinsic_indicator("grey")
 
-        # Delete temp videos
-        ttk.Button(load_frame, text="Delete Calibration Videos", command=self._delete_calib_videos).pack(side="left", padx=5)
+        self._run_countdown(5, self._ext_countdown_var, self._ext_start_recording)
 
-        self._save_load_status = tk.StringVar(value="")
-        ttk.Label(section, textvariable=self._save_load_status).pack(fill="x", pady=2)
+    def _ext_start_recording(self):
+        """Start multi-camera recording for extrinsic calibration."""
+        cam_list = self._get_connected_cameras()
+        if not cam_list:
+            self._ext_auto_btn.config(state="normal", text="Calibrate")
+            self._extrinsic_status.set("No cameras connected")
+            return
+
+        video_dir = self._get_temp_video_dir()
+        timestamp = self._make_timestamp()
+
+        self._calib_recording = True
+        self._calib_stop_event.clear()
+        self._ext_auto_btn.config(
+            text="STOP", bg="#dc3545", activebackground="#c82333",
+            command=self._ext_stop_recording, state="normal",
+        )
+        self._extrinsic_status.set(f"Recording ({len(cam_list)} cameras)...")
+        self._set_extrinsic_indicator("red")
+
+        def worker():
+            try:
+                self._multi_record_worker(
+                    cam_list, video_dir, "extrinsic", timestamp,
+                    self._extrinsic_status,
+                    on_synced=lambda synced_dir: self._ext_auto_run_calibration(synced_dir, video_dir, timestamp),
+                )
+            except Exception as e:
+                self.frame.after(0, lambda: self._extrinsic_status.set(f"Error: {e}"))
+                self.frame.after(0, lambda: self._set_extrinsic_indicator("red"))
+                self.frame.after(0, lambda: messagebox.showerror("Recording Error", str(e)))
+            finally:
+                self._calib_recording = False
+                self.frame.after(0, self.stop_bar_timer)
+                self.frame.after(0, self._ext_reset_button)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _ext_stop_recording(self):
+        """Stop the extrinsic recording."""
+        self._calib_stop_event.set()
+        self._ext_auto_btn.config(text="Stopping...", state="disabled")
+
+    def _ext_reset_button(self):
+        """Reset extrinsic button to idle state."""
+        self._ext_auto_btn.config(
+            text="Calibrate", bg="SystemButtonFace",
+            activebackground="SystemButtonFace",
+            command=self._auto_calibrate_extrinsics,
+        )
+        self._update_pipeline_state()
+
+    def _ext_auto_run_calibration(self, synced_dir, video_dir, timestamp):
+        """Chain extrinsic calibration after sync completes (called from worker thread)."""
+        if synced_dir is None:
+            self.frame.after(0, lambda: self._extrinsic_status.set("Sync failed — no synced folder"))
+            self.frame.after(0, lambda: self._set_extrinsic_indicator("red"))
+            return
+
+        self.frame.after(0, lambda: self._extrinsic_status.set("Running extrinsic calibration..."))
+
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+            from calibration.calibrate import run_extrinsic_calibration
+            from calibration.data_types import CameraArray
+
+            charuco = self._get_charuco()
+
+            # Build CameraArray from intrinsic results
+            cameras = {}
+            for cam_num, result in self._intrinsic_results.items():
+                cameras[cam_num] = result["camera"]
+
+            camera_array = CameraArray(cameras=cameras)
+            bundle = run_extrinsic_calibration(
+                Path(synced_dir), charuco, camera_array,
+            )
+
+            self._camera_array = camera_array
+            self._bundle = bundle
+
+            self.frame.after(0, lambda: self._update_extrinsic_result(bundle))
+            self.frame.after(0, lambda: self._update_pipeline_state())
+
+            # Auto-delete temp videos on success
+            self._cleanup_temp_videos(video_dir, "extrinsic", timestamp)
+
+        except Exception as e:
+            self.frame.after(0, lambda err=str(e): self._extrinsic_error(err))
+
+    # =================================================================
+    # Automated origin flow
+    # =================================================================
+
+    def _auto_set_origin(self):
+        """One-button automated origin: countdown → record → sync → set origin."""
+        if not self._check_record_preconditions(need_multi=True):
+            return
+        if self._camera_array is None:
+            messagebox.showwarning("Warning", "Run extrinsic calibration first")
+            return
+
+        self._read_sound_source_fields()
+
+        self._origin_auto_btn.config(state="disabled", text="Starting...")
+        self._origin_status.set("Starting countdown...")
+        self._set_origin_indicator("grey")
+
+        self._run_countdown(5, self._origin_countdown_var, self._origin_start_recording)
+
+    def _origin_start_recording(self):
+        """Start multi-camera recording for origin."""
+        cam_list = self._get_connected_cameras()
+        if not cam_list:
+            self._origin_auto_btn.config(state="normal", text="Set Origin")
+            self._origin_status.set("No cameras connected")
+            return
+
+        video_dir = self._get_temp_video_dir()
+        timestamp = self._make_timestamp()
+
+        self._calib_recording = True
+        self._calib_stop_event.clear()
+        self._origin_auto_btn.config(
+            text="STOP", bg="#dc3545", activebackground="#c82333",
+            command=self._origin_stop_recording, state="normal",
+        )
+        self._origin_status.set(f"Recording ({len(cam_list)} cameras)...")
+        self._set_origin_indicator("red")
+
+        def worker():
+            try:
+                self._multi_record_worker(
+                    cam_list, video_dir, "origin", timestamp,
+                    self._origin_status,
+                    on_synced=lambda synced_dir: self._origin_auto_run(synced_dir, video_dir, timestamp),
+                )
+            except Exception as e:
+                self.frame.after(0, lambda: self._origin_status.set(f"Error: {e}"))
+                self.frame.after(0, lambda: self._set_origin_indicator("red"))
+                self.frame.after(0, lambda: messagebox.showerror("Recording Error", str(e)))
+            finally:
+                self._calib_recording = False
+                self.frame.after(0, self.stop_bar_timer)
+                self.frame.after(0, self._origin_reset_button)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _origin_stop_recording(self):
+        """Stop the origin recording."""
+        self._calib_stop_event.set()
+        self._origin_auto_btn.config(text="Stopping...", state="disabled")
+
+    def _origin_reset_button(self):
+        """Reset origin button to idle state."""
+        self._origin_auto_btn.config(
+            text="Set Origin", bg="SystemButtonFace",
+            activebackground="SystemButtonFace",
+            command=self._auto_set_origin,
+        )
+        self._update_pipeline_state()
+
+    def _origin_auto_run(self, synced_dir, video_dir, timestamp):
+        """Chain set_origin after sync completes (called from worker thread)."""
+        if synced_dir is None:
+            self.frame.after(0, lambda: self._origin_status.set("Sync failed — no synced folder"))
+            self.frame.after(0, lambda: self._set_origin_indicator("red"))
+            return
+
+        self.frame.after(0, lambda: self._origin_status.set("Setting origin..."))
+
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+            charuco = self._get_charuco()
+
+            if self._bundle is not None:
+                from calibration.calibrate import set_origin
+                aligned_bundle = set_origin(
+                    Path(synced_dir), charuco, self._camera_array, self._bundle,
+                )
+                self._bundle = aligned_bundle
+                self._camera_array = aligned_bundle.camera_array
+            else:
+                from calibration.calibrate import compute_origin_transform
+                from calibration.alignment import apply_similarity_transform
+                transform = compute_origin_transform(
+                    Path(synced_dir), charuco, self._camera_array,
+                )
+                new_camera_array, _ = apply_similarity_transform(
+                    self._camera_array, None, transform,
+                )
+                self._camera_array = new_camera_array
+
+            self.frame.after(0, lambda: self._update_3d_viewer(self._camera_array))
+            self.frame.after(0, lambda: self._origin_status.set("Origin set successfully"))
+            self.frame.after(0, lambda: self._set_origin_indicator("green"))
+            self.frame.after(0, lambda: self._update_pipeline_state())
+
+            # Auto-delete temp videos on success
+            self._cleanup_temp_videos(video_dir, "origin", timestamp)
+
+        except Exception as e:
+            self.frame.after(0, lambda err=str(e): self._origin_error(err))
+
+    # =================================================================
+    # Apply calibration
+    # =================================================================
+
+    def _apply_calibration(self):
+        """Commit current calibration: auto-save with timestamp, update top bar."""
+        if self._camera_array is None:
+            messagebox.showwarning("Warning", "No calibration to apply")
+            return
+
+        calib_dir = self._get_calibrations_dir()
+        if calib_dir is None:
+            messagebox.showwarning("Warning", "No project selected")
+            return
+
+        self._read_sound_source_fields()
+
+        today = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M")
+        filename = f"calibration_{today}.json"
+        filepath = calib_dir / filename
+
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+            from calibration.persistence import save_calibration
+
+            charuco = self._get_charuco()
+            save_calibration(filepath, self._camera_array, charuco,
+                             sound_source_position=self._sound_source_pos)
+
+            # Persist to app config
+            self.app_config["last_calibration"] = str(filepath)
+            self._save_app_config()
+
+            self._apply_status.set(f"Applied: {filename}")
+            self._on_calibration_saved()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save: {e}")
+
+    # =================================================================
+    # Browse fallback methods
+    # =================================================================
+
+    def _browse_and_run_extrinsic(self):
+        """Browse for synced folder then run extrinsic calibration."""
+        folder = filedialog.askdirectory(title="Select synced video folder")
+        if not folder:
+            return
+        self._run_extrinsic_with_folder(folder)
+
+    def _browse_and_run_origin(self):
+        """Browse for origin folder then run set origin."""
+        folder = filedialog.askdirectory(title="Select origin recording folder")
+        if not folder:
+            return
+        self._run_set_origin_with_folder(folder)
+
+    def _run_extrinsic_with_folder(self, folder):
+        """Run extrinsic calibration with a specified folder."""
+        if not self._intrinsic_results:
+            messagebox.showwarning("Warning", "No cameras calibrated. Run intrinsic calibration first.")
+            return
+
+        self._extrinsic_status.set("Running extrinsic calibration...")
+        self._set_extrinsic_indicator("grey")
+
+        def worker():
+            try:
+                import sys
+                sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+                from calibration.calibrate import run_extrinsic_calibration
+                from calibration.data_types import CameraArray
+
+                charuco = self._get_charuco()
+
+                cameras = {}
+                for cam_num, result in self._intrinsic_results.items():
+                    cameras[cam_num] = result["camera"]
+
+                camera_array = CameraArray(cameras=cameras)
+                bundle = run_extrinsic_calibration(
+                    Path(folder), charuco, camera_array,
+                )
+
+                self._camera_array = camera_array
+                self._bundle = bundle
+
+                self.frame.after(0, lambda: self._update_extrinsic_result(bundle))
+                self.frame.after(0, lambda: self._update_pipeline_state())
+            except Exception as e:
+                self.frame.after(0, lambda err=str(e): self._extrinsic_error(err))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _run_set_origin_with_folder(self, folder):
+        """Run set origin with a specified folder."""
+        if self._camera_array is None:
+            messagebox.showwarning("Warning", "Load calibration or run extrinsic calibration first")
+            return
+
+        self._origin_status.set("Setting origin...")
+        self._set_origin_indicator("grey")
+
+        def worker():
+            try:
+                import sys
+                sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+                charuco = self._get_charuco()
+
+                if self._bundle is not None:
+                    from calibration.calibrate import set_origin
+                    aligned_bundle = set_origin(
+                        Path(folder), charuco, self._camera_array, self._bundle,
+                    )
+                    self._bundle = aligned_bundle
+                    self._camera_array = aligned_bundle.camera_array
+                else:
+                    from calibration.calibrate import compute_origin_transform
+                    from calibration.alignment import apply_similarity_transform
+                    transform = compute_origin_transform(
+                        Path(folder), charuco, self._camera_array,
+                    )
+                    new_camera_array, _ = apply_similarity_transform(
+                        self._camera_array, None, transform,
+                    )
+                    self._camera_array = new_camera_array
+
+                self.frame.after(0, lambda: self._update_3d_viewer(self._camera_array))
+                self.frame.after(0, lambda: self._origin_status.set("Origin set successfully"))
+                self.frame.after(0, lambda: self._set_origin_indicator("green"))
+                self.frame.after(0, lambda: self._update_pipeline_state())
+            except Exception as e:
+                self.frame.after(0, lambda err=str(e): self._origin_error(err))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    # =================================================================
+    # Cleanup
+    # =================================================================
+
+    def _cleanup_temp_videos(self, video_dir, purpose, timestamp):
+        """Auto-delete temp videos for a specific recording."""
+        try:
+            prefix = f"{purpose}_{timestamp}"
+            for f in video_dir.iterdir():
+                if f.is_file() and f.name.startswith(prefix):
+                    f.unlink()
+            sync_dir = video_dir / f"{prefix}_sync"
+            if sync_dir.exists():
+                shutil.rmtree(sync_dir)
+        except Exception as e:
+            logger.warning(f"Could not clean up temp videos: {e}")
 
     # =================================================================
     # Charuco operations
@@ -388,6 +861,7 @@ class CalibrationTab:
 
             charuco = self._get_charuco()
             save_charuco_config(CHARUCO_CONFIG_PATH, charuco)
+            self._update_charuco_status()
             messagebox.showinfo("Success", f"Charuco config saved to {CHARUCO_CONFIG_PATH}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save config: {e}")
@@ -417,20 +891,14 @@ class CalibrationTab:
     # =================================================================
 
     def update_camera_checkboxes(self, cam_num: int, connected: bool):
-        """Update calibration camera selection checkbox on connect/disconnect."""
-        if cam_num in self._calib_cam_checkboxes:
-            if connected:
-                self._calib_cam_checkboxes[cam_num].config(state="normal")
-                self._calib_cam_vars[cam_num].set(True)
-            else:
-                self._calib_cam_checkboxes[cam_num].config(state="disabled")
-                self._calib_cam_vars[cam_num].set(False)
+        """Called by main_window on connect/disconnect. No-op — we use all connected cameras."""
+        pass
 
-    def _get_selected_cameras(self):
-        """Return list of (cam_num, GPcam) for checkbox-selected, connected cameras."""
+    def _get_connected_cameras(self):
+        """Return list of (cam_num, GPcam) for all connected cameras."""
         result = []
-        for cam_num, var in self._calib_cam_vars.items():
-            if var.get() and self.camera_status.get(cam_num, False) and cam_num in self.cameras:
+        for cam_num, connected in self.camera_status.items():
+            if connected and cam_num in self.cameras:
                 result.append((cam_num, self.cameras[cam_num]))
         return result
 
@@ -447,9 +915,9 @@ class CalibrationTab:
             messagebox.showwarning("Warning", "No project selected. Select a project first.")
             return False
         if need_multi:
-            selected = self._get_selected_cameras()
-            if not selected:
-                messagebox.showwarning("Warning", "No cameras selected or connected")
+            connected = self._get_connected_cameras()
+            if not connected:
+                messagebox.showwarning("Warning", "No cameras connected")
                 return False
         return True
 
@@ -524,52 +992,25 @@ class CalibrationTab:
 
     # --- Multi-camera recording (extrinsic / origin) ---
 
-    def _toggle_multi_record(self, purpose: str):
-        """Toggle recording for extrinsic or origin. purpose is 'extrinsic' or 'origin'."""
-        btn = self._extrinsic_record_btn if purpose == "extrinsic" else self._origin_record_btn
-        status_var = self._extrinsic_status if purpose == "extrinsic" else self._origin_status
+    def _multi_record_worker(self, cam_list, video_dir, purpose, timestamp, status_var,
+                             on_synced=None):
+        """Worker thread for multi-camera recording + auto-sync.
 
-        if not self._calib_recording:
-            # Start recording
-            if not self._check_record_preconditions(need_multi=True):
-                return
-            cam_list = self._get_selected_cameras()
-            video_dir = self._get_temp_video_dir()
-            timestamp = self._make_timestamp()
-
-            self._calib_recording = True
-            self._calib_stop_event.clear()
-            btn.config(text="Stop")
-            status_var.set(f"Recording {purpose} ({len(cam_list)} cameras)...")
-
-            def worker():
-                try:
-                    self._multi_record_worker(cam_list, video_dir, purpose, timestamp, status_var)
-                except Exception as e:
-                    self.frame.after(0, lambda: status_var.set(f"Recording error: {e}"))
-                    self.frame.after(0, lambda: messagebox.showerror(
-                        "Recording Error", f"{purpose.title()} recording: {e}"))
-                finally:
-                    self._calib_recording = False
-                    self.frame.after(0, self.stop_bar_timer)
-                    self.frame.after(0, lambda: btn.config(text="Record"))
-
-            threading.Thread(target=worker, daemon=True).start()
-        else:
-            # Stop recording
-            self._calib_stop_event.set()
-            btn.config(text="Stopping...")
-
-    def _multi_record_worker(self, cam_list, video_dir, purpose, timestamp, status_var):
-        """Worker thread for multi-camera recording + auto-sync."""
-        # Run recording delay countdown if enabled
-        self.run_rec_delay()
+        If on_synced is provided, calls on_synced(synced_dir) after sync completes.
+        """
+        cam_nums = [num for num, cam in cam_list]
+        print(f"Calibration: starting {purpose} recording on cameras: {cam_nums}")
 
         # Start all cameras
         with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = {executor.submit(cam.shutterStart): num for num, cam in cam_list}
+            futures = {executor.submit(cam.shutterStart): (num, cam) for num, cam in cam_list}
             for f in futures:
-                f.result(timeout=15)
+                num, cam = futures[f]
+                try:
+                    f.result(timeout=15)
+                    print(f"  GoPro {num} recording started")
+                except Exception as e:
+                    print(f"  Failed to start GoPro {num}: {e}")
 
         # Start bar timer after all cameras confirmed
         self.frame.after(0, self.start_bar_timer)
@@ -580,6 +1021,7 @@ class CalibrationTab:
         # Wait for user to click Stop
         self._calib_stop_event.wait()
 
+        print(f"Calibration: stopping cameras and downloading...")
         self.frame.after(0, lambda: status_var.set("Stopping cameras and downloading..."))
 
         # Stop + download all cameras
@@ -596,24 +1038,27 @@ class CalibrationTab:
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {executor.submit(stop_and_download, num, cam): num for num, cam in cam_list}
             for f in futures:
-                filenames.append(f.result(timeout=300))
+                num = futures[f]
+                try:
+                    result = f.result(timeout=300)
+                    filenames.append(result)
+                    print(f"  GoPro {num} file downloaded")
+                except Exception as e:
+                    print(f"  Error downloading GoPro {num}: {e}")
 
         # Auto-sync
+        print("Calibration: starting audio sync...")
         self.frame.after(0, lambda: status_var.set("Running audio sync..."))
         synced_dir = self._run_calib_sync(video_dir, purpose, timestamp, status_var)
 
-        # Auto-populate the folder path
-        if purpose == "extrinsic":
-            folder_var = self._extrinsic_folder_var
+        if on_synced:
+            on_synced(synced_dir)
         else:
-            folder_var = self._origin_folder_var
-
-        if synced_dir:
-            self.frame.after(0, lambda: folder_var.set(str(synced_dir)))
-            n_synced = len([f for f in synced_dir.iterdir() if f.suffix.lower() == ".mp4"])
-            self.frame.after(0, lambda: status_var.set(f"Synced {n_synced} files"))
-        else:
-            self.frame.after(0, lambda: status_var.set("Sync skipped (< 2 files)"))
+            if synced_dir:
+                n_synced = len([f for f in synced_dir.iterdir() if f.suffix.lower() == ".mp4"])
+                self.frame.after(0, lambda: status_var.set(f"Synced {n_synced} files"))
+            else:
+                self.frame.after(0, lambda: status_var.set("Sync skipped (< 2 files)"))
 
     def _run_calib_sync(self, video_dir, purpose, timestamp, status_var):
         """Run audio sync on recorded calibration videos. Returns synced dir Path or None."""
@@ -748,6 +1193,7 @@ class CalibrationTab:
                 }
 
                 self.frame.after(0, lambda: self._update_intrinsic_result(cam_num, output))
+                self.frame.after(0, lambda: self._update_pipeline_state())
             except Exception as e:
                 self.frame.after(0, lambda: self._intrinsic_error(cam_num, str(e)))
 
@@ -768,65 +1214,42 @@ class CalibrationTab:
         messagebox.showerror("Intrinsic Calibration Error", f"Camera {cam_num}: {error_msg}")
 
     # =================================================================
-    # Extrinsic calibration
+    # Extrinsic calibration results
     # =================================================================
-
-    def _browse_extrinsic_folder(self):
-        folder = filedialog.askdirectory(title="Select synced video folder")
-        if folder:
-            self._extrinsic_folder_var.set(folder)
-
-    def _run_extrinsic(self):
-        folder = self._extrinsic_folder_var.get()
-        if folder == "No folder selected":
-            messagebox.showwarning("Warning", "No synced folder selected")
-            return
-
-        # Check all cameras are intrinsically calibrated
-        if not self._intrinsic_results:
-            messagebox.showwarning("Warning", "No cameras calibrated. Run intrinsic calibration first.")
-            return
-
-        self._extrinsic_status.set("Running extrinsic calibration...")
-
-        def worker():
-            try:
-                import sys
-                sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-                from calibration.calibrate import run_extrinsic_calibration
-                from calibration.data_types import CameraArray
-
-                charuco = self._get_charuco()
-
-                # Build CameraArray from intrinsic results
-                cameras = {}
-                for cam_num, result in self._intrinsic_results.items():
-                    cameras[cam_num] = result["camera"]
-
-                camera_array = CameraArray(cameras=cameras)
-                bundle = run_extrinsic_calibration(
-                    Path(folder), charuco, camera_array,
-                )
-
-                self._camera_array = camera_array
-                self._bundle = bundle
-
-                self.frame.after(0, lambda: self._update_extrinsic_result(bundle))
-            except Exception as e:
-                self.frame.after(0, lambda err=str(e): self._extrinsic_error(err))
-
-        threading.Thread(target=worker, daemon=True).start()
 
     def _update_extrinsic_result(self, bundle):
         report = bundle.reprojection_report
-        status = f"RMSE: {report.overall_rmse:.3f}px | {report.n_cameras} cameras | {report.n_points} points"
+        rmse = report.overall_rmse
+        status = f"RMSE: {rmse:.3f}px | {report.n_cameras} cameras | {report.n_points} points"
         self._extrinsic_status.set(status)
+
+        # Color indicator based on RMSE quality
+        if rmse < 1.0:
+            self._set_extrinsic_indicator("green")
+        elif rmse < 2.0:
+            self._set_extrinsic_indicator("amber")
+        else:
+            self._set_extrinsic_indicator("red")
 
         self._update_3d_viewer(bundle.camera_array)
 
     def _extrinsic_error(self, error_msg: str):
         self._extrinsic_status.set(f"Error: {error_msg}")
+        self._set_extrinsic_indicator("red")
         messagebox.showerror("Extrinsic Calibration Error", error_msg)
+
+    # =================================================================
+    # Origin results
+    # =================================================================
+
+    def _origin_error(self, error_msg: str):
+        self._origin_status.set(f"Error: {error_msg}")
+        self._set_origin_indicator("red")
+        messagebox.showerror("Set Origin Error", error_msg)
+
+    # =================================================================
+    # 3D Viewer
+    # =================================================================
 
     def _create_3d_viewer(self, parent):
         """Create persistent matplotlib 3D viewer in the right panel."""
@@ -934,64 +1357,6 @@ class CalibrationTab:
         self._viewer_canvas.draw_idle()
 
     # =================================================================
-    # Origin setting
-    # =================================================================
-
-    def _browse_origin_folder(self):
-        folder = filedialog.askdirectory(title="Select origin recording folder")
-        if folder:
-            self._origin_folder_var.set(folder)
-
-    def _run_set_origin(self):
-        folder = self._origin_folder_var.get()
-        if folder == "No folder selected":
-            messagebox.showwarning("Warning", "No origin folder selected")
-            return
-
-        if self._camera_array is None:
-            messagebox.showwarning("Warning", "Load calibration or run extrinsic calibration first")
-            return
-
-        self._origin_status.set("Setting origin...")
-
-        def worker():
-            try:
-                import sys
-                sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-                charuco = self._get_charuco()
-
-                if self._bundle is not None:
-                    from calibration.calibrate import set_origin
-                    aligned_bundle = set_origin(
-                        Path(folder), charuco, self._camera_array, self._bundle,
-                    )
-                    self._bundle = aligned_bundle
-                    self._camera_array = aligned_bundle.camera_array
-                else:
-                    from calibration.calibrate import compute_origin_transform
-                    from calibration.alignment import apply_similarity_transform
-                    transform = compute_origin_transform(
-                        Path(folder), charuco, self._camera_array,
-                    )
-                    new_camera_array, _ = apply_similarity_transform(
-                        self._camera_array, None, transform,
-                    )
-                    self._camera_array = new_camera_array
-
-                self.frame.after(0, lambda: self._update_3d_viewer(self._camera_array))
-
-                self.frame.after(0, lambda: self._origin_status.set("Origin set successfully"))
-            except Exception as e:
-                self.frame.after(0, lambda err=str(e): self._origin_error(err))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _origin_error(self, error_msg: str):
-        self._origin_status.set(f"Error: {error_msg}")
-        messagebox.showerror("Set Origin Error", error_msg)
-
-    # =================================================================
     # Save/Load
     # =================================================================
 
@@ -1003,44 +1368,6 @@ class CalibrationTab:
         calib_dir = self.project_manager.get_project_path(project) / "calibrations"
         calib_dir.mkdir(parents=True, exist_ok=True)
         return calib_dir
-
-    def _save_calibration(self):
-        if self._camera_array is None:
-            messagebox.showwarning("Warning", "No calibration to save")
-            return
-
-        calib_dir = self._get_calibrations_dir()
-        if calib_dir is None:
-            messagebox.showwarning("Warning", "No project selected. Select a project first.")
-            return
-
-        name = self._calib_name_var.get().strip()
-        if not name:
-            messagebox.showwarning("Warning", "Enter a calibration name")
-            return
-
-        today = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M")
-        filename = f"{name}_{today}.json"
-        filepath = calib_dir / filename
-
-        try:
-            import sys
-            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-            from calibration.persistence import save_calibration
-
-            charuco = self._get_charuco()
-            save_calibration(filepath, self._camera_array, charuco,
-                             sound_source_position=self._sound_source_pos)
-            self._save_load_status.set(f"Saved to {filepath.name}")
-
-            # Persist to app config
-            self.app_config["last_calibration"] = str(filepath)
-            self._save_app_config()
-
-            messagebox.showinfo("Success", f"Calibration saved to {filepath}")
-            self._on_calibration_saved()
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to save: {e}")
 
     def load_calibration_file(self, filepath: Path, silent: bool = False) -> bool:
         """Load a calibration file and update GUI state.
@@ -1062,10 +1389,11 @@ class CalibrationTab:
                 self._sound_x_var.set(f"{sound_pos[0]:.3f}")
                 self._sound_y_var.set(f"{sound_pos[1]:.3f}")
                 self._sound_z_var.set(f"{sound_pos[2]:.3f}")
-                self._sound_source_status.set(
-                    f"Set: ({sound_pos[0]:.3f}, {sound_pos[1]:.3f}, {sound_pos[2]:.3f})")
             else:
-                self._clear_sound_source()
+                self._sound_source_pos = None
+                self._sound_x_var.set("")
+                self._sound_y_var.set("")
+                self._sound_z_var.set("")
 
             # Update charuco GUI
             self._charuco_cols.set(charuco.columns)
@@ -1075,6 +1403,8 @@ class CalibrationTab:
             self._charuco_dict.set(charuco.dictionary)
             self._charuco_aruco_scale.set(charuco.aruco_scale)
             self._charuco_inverted.set(charuco.inverted)
+            self._update_charuco_status()
+            self._charuco_section.collapse()
 
             # Update intrinsic status
             for cam_id, cam in camera_array.cameras.items():
@@ -1085,16 +1415,25 @@ class CalibrationTab:
                         self._intrinsic_results[cam_id] = {"camera": cam, "report": None}
                     else:
                         entry["status_var"].set("No intrinsics")
+            self._intrinsic_section.collapse()
 
             # Show 3D camera positions if extrinsics are available
             if camera_array.posed_cameras:
                 self._update_3d_viewer(camera_array)
+                self._set_extrinsic_indicator("green")
+                self._extrinsic_status.set(f"Loaded ({len(camera_array.posed_cameras)} cameras)")
+            else:
+                self._set_extrinsic_indicator("grey")
+                self._extrinsic_status.set("")
 
-            self._save_load_status.set(f"Loaded from {filepath.name}")
+            self._load_bar_status.set(f"Loaded: {filepath.name}")
 
             # Persist to app config
             self.app_config["last_calibration"] = str(filepath)
             self._save_app_config()
+
+            # Update pipeline state
+            self._update_pipeline_state()
 
             if silent:
                 logger.info("Auto-loaded calibration: %s", filepath.name)
@@ -1172,6 +1511,8 @@ class CalibrationTab:
             self._charuco_dict.set(charuco.dictionary)
             self._charuco_aruco_scale.set(charuco.aruco_scale)
             self._charuco_inverted.set(charuco.inverted)
+            self._update_charuco_status()
+            self._charuco_section.collapse()
 
             # Strip extrinsics and populate intrinsic results only
             self._intrinsic_results.clear()
@@ -1190,10 +1531,15 @@ class CalibrationTab:
             self._camera_array = None
             self._bundle = None
             self._extrinsic_status.set("")
+            self._set_extrinsic_indicator("grey")
             self._update_3d_viewer(None)
             self._origin_status.set("")
+            self._set_origin_indicator("grey")
 
-            self._save_load_status.set(f"Intrinsics loaded from {Path(filepath).name}")
+            # Update pipeline state
+            self._update_pipeline_state()
+
+            self._load_bar_status.set(f"Intrinsics loaded: {Path(filepath).name}")
             messagebox.showinfo("Success", f"Intrinsics loaded for {len(self._intrinsic_results)} cameras")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load intrinsics: {e}")
@@ -1213,4 +1559,4 @@ class CalibrationTab:
         if messagebox.askyesno("Confirm Delete",
                                f"Delete all calibration videos?\n{temp_dir}"):
             shutil.rmtree(temp_dir)
-            self._save_load_status.set("Calibration videos deleted")
+            self._load_bar_status.set("Calibration videos deleted")

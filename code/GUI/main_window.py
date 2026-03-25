@@ -309,6 +309,7 @@ class Go2KinMainWindow:
             app_config=self.app_config,
             save_app_config=self.save_app_config,
             on_calibration_saved=lambda: self.top_bar.refresh_calibration_status(),
+            sync_method_var=self.sync_method_var,
         )
 
     def create_processing_tab(self):

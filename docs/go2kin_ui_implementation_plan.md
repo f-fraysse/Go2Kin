@@ -272,4 +272,23 @@ Tabs communicate via:
 - Deviations: Header alignment required placing header inside the canvas interior frame (same grid as data rows). Circles kept at font size 16 (larger sizes stretch row height too much).
 - State: App launches, Recording tab shows colored status circles and date column. Newest trials on top. Processing tab will reuse same component in Session 5.
 
+### Session 4 — 2026-03-25 ✅
+- Completed: Calibration tab redesign with pipeline layout.
+  - Created `code/GUI/components/collapsible_section.py`: reusable `CollapsibleSection` widget with clickable header (▸/▾ arrow), colored status circle indicator, status text. Used for Charuco and Intrinsic sections.
+  - Rewrote `code/GUI/calibration_tab.py` UI: pipeline layout with Load/Save bar at top, collapsible Charuco Board Config and Intrinsic Calibration sections (with live status), always-visible Extrinsic Calibration and Set Origin sections, new Apply Calibration button at bottom.
+  - One-button automated flows for extrinsic and origin: click → 5s countdown → record → user clicks Stop → download → audio sync → calibrate/set-origin → update 3D viewer. Auto-deletes temp videos on success.
+  - Sound source X/Y/Z fields moved inline into Extrinsic and Origin sections (shared variables, no standalone section). Fields read silently before sync — no explicit Set/Clear buttons.
+  - Apply Calibration button: auto-saves with timestamp name (`calibration_YYYY-MM-DD-HH-MM.json`), updates top bar. Separates "got a result" from "commit the result".
+  - Pipeline state management: buttons enable/disable based on calibration progress (intrinsics → extrinsics → origin → apply). Status indicators show green/amber/red based on RMSE quality.
+  - Added `sync_method_var` parameter to CalibrationTab constructor, wired from main_window.py.
+  - All backend calibration logic preserved unchanged (charuco, intrinsic, extrinsic, origin, sync, 3D viewer, save/load, auto-load).
+- Deviations from plan:
+  - Removed Browse Folder fallback buttons (not needed — simplified UI).
+  - Removed camera selection checkboxes for extrinsic/origin — now uses all connected cameras automatically.
+  - Renamed "Calibrate Extrinsics" → "Calibrate". Unified button sizes across Calibrate, Set Origin, Apply.
+  - Centred sound source fields and action buttons in each section for visual alignment.
+  - Removed redundant `run_rec_delay()` call from multi-record worker (was blocking before cameras started; the 5s countdown already serves this purpose). Added print() logging to match Recording tab's terminal output pattern.
+  - Fixed STOP button not working: buttons were left in `state="disabled"` from countdown phase when switching to STOP mode.
+- State: App launches, calibration tab functional with pipeline layout. Automated extrinsic and origin flows work end-to-end. 41 unit tests pass.
+
 ### TODO (future sessions)
