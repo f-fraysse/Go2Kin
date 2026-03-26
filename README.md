@@ -1,17 +1,31 @@
 # Go2Kin
-WIP
 
-Multi-camera GoPro control application for research. Controls up to 4 GoPro Hero 12 Black cameras simultaneously via USB, with a tkinter GUI for settings, live preview, synchronized recording, and multi-camera calibration.
+Integrated markerless motion capture pipeline for biomechanics research. Provides a single tkinter GUI for the full workflow — from camera setup through to OpenSim kinematics output.
 
-Built for biomechanics research where consistent camera settings and accurate camera calibration are critical for 3D keypoint triangulation and pose estimation.
+**Pipeline**: Camera connection & control → multi-camera calibration → synchronized recording → pose estimation & triangulation → kinematics
 
-Includes built-in [Pose2Sim](https://github.com/perfanalytics/pose2sim) integration — run pose estimation, triangulation, filtering, and kinematics directly from the GUI
+Designed for indoor motion capture labs where you need to record many repeated trials across sessions and participants — similar to a traditional marker-based workflow (e.g. Vicon Nexus), but markerless. Opinionated choices like USB-connected cameras and audio sync via hand claps keep things simple and reliable in a lab setting.
 
-GoPro control via USB HTTP API (inspired by https://github.com/drukasz/goproUSB ) - connect, manage settings, preview, record, download, audio-based video sync
+**Hardware**: Up to 4 GoPro Hero 12 Black cameras connected via USB to a single PC.
 
-Calibration method taken from Caliscope (https://github.com/mprib/caliscope)
+**Built on**:
+- [Pose2Sim](https://github.com/perfanalytics/pose2sim) — pose estimation, triangulation, filtering, and kinematics (included as a submodule, run directly from the GUI)
+- [Caliscope](https://github.com/mprib/caliscope) — multi-camera calibration algorithms (charuco detection, intrinsic/extrinsic calibration, bundle adjustment), adapted and re-implemented
+- GoPro USB HTTP API (inspired by [goproUSB](https://github.com/drukasz/goproUSB))
 
-Demo video - GoPro footage + OpenSim output
+Also includes: live camera preview, project/session/trial/participant management, and basic visualisation of pose estimation results.
+
+### Related Projects
+
+If you only need part of the pipeline:
+- **GoPro control over WiFi**: [Go2Rep](https://github.com/ShabahangShayegan/Go2Rep)
+- **Calibration only**: [Caliscope](https://github.com/mprib/caliscope)
+- [Pose2Sim](https://github.com/perfanalytics/pose2sim)
+- **Visualisation**: [MStudio](https://github.com/hunminkim98/MStudio)
+
+### Demo
+
+GoPro footage + OpenSim output:
 
 https://github.com/user-attachments/assets/df12f3de-d97a-499a-bcfe-97afe6419e71
 
