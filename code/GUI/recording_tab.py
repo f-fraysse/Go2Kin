@@ -80,33 +80,9 @@ class RecordingTab:
         setup_frame = ttk.LabelFrame(self.frame, text="Trial Setup", padding=10)
         setup_frame.pack(fill=tk.X, padx=20, pady=5)
 
-        # Trial name row (big, prominent)
-        trial_frame = ttk.Frame(setup_frame)
-        trial_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(trial_frame, text="Trial Name:", font=("Arial", 11)).pack(side=tk.LEFT)
-        self.trial_name_var = tk.StringVar(value=self.config["recording"]["last_trial_name"])
-        self.trial_name_entry = ttk.Entry(trial_frame, textvariable=self.trial_name_var,
-                                          width=30, font=("Arial", 14))
-        self.trial_name_entry.pack(side=tk.LEFT, padx=(8, 0), fill=tk.X, expand=True)
-
-        # Camera selection row
-        cam_frame = ttk.Frame(setup_frame)
-        cam_frame.pack(fill=tk.X, pady=3)
-        ttk.Label(cam_frame, text="Cameras:").pack(side=tk.LEFT)
-
-        self.camera_selection_vars = {}
-        self.camera_selection_checkboxes = {}
-        for i in range(1, 5):
-            var = tk.BooleanVar(value=False)
-            checkbox = ttk.Checkbutton(cam_frame, text=f"GoPro {i}", variable=var,
-                                       state="disabled")
-            checkbox.pack(side=tk.LEFT, padx=10)
-            self.camera_selection_vars[i] = var
-            self.camera_selection_checkboxes[i] = checkbox
-
-        # Sound source row (always visible — manual mode assumed for now)
+        # Sound source row (above trial name)
         self.sound_source_frame = ttk.Frame(setup_frame)
-        self.sound_source_frame.pack(fill=tk.X, pady=3)
+        self.sound_source_frame.pack(anchor="center", pady=3)
         ttk.Label(self.sound_source_frame, text="Sound source:").pack(side=tk.LEFT)
 
         # Load defaults from app_config
@@ -120,9 +96,19 @@ class RecordingTab:
             ttk.Label(self.sound_source_frame, text=f"  {label}:").pack(side=tk.LEFT)
             ttk.Entry(self.sound_source_frame, textvariable=var, width=7).pack(side=tk.LEFT)
 
+        # Trial name — label above entry, centered
+        trial_frame = ttk.Frame(setup_frame)
+        trial_frame.pack(anchor="center", pady=(15, 3))
+        ttk.Label(trial_frame, text="Trial Name", font=("Arial", 14, "bold")).pack()
+        self.trial_name_var = tk.StringVar(value=self.config["recording"]["last_trial_name"])
+        self.trial_name_entry = ttk.Entry(trial_frame, textvariable=self.trial_name_var,
+                                          width=20, font=("Arial", 14),
+                                          justify="center")
+        self.trial_name_entry.pack(pady=(3, 0))
+
         # --- Record Button + Timer ---
         control_frame = ttk.Frame(self.frame)
-        control_frame.pack(pady=15)
+        control_frame.pack(fill=tk.X, pady=15)
 
         self.record_btn = tk.Button(
             control_frame, text="RECORD",
@@ -133,12 +119,13 @@ class RecordingTab:
             command=self.toggle_recording,
             relief="raised", bd=3,
         )
-        self.record_btn.pack(side=tk.LEFT, padx=(0, 20))
+        self.record_btn.pack(anchor="center")
 
         self.timer_var = tk.StringVar(value="00:00:00")
         self.timer_label = tk.Label(control_frame, textvariable=self.timer_var,
                                     font=("Arial", 24, "bold"), fg="#333333")
-        self.timer_label.pack(side=tk.LEFT)
+        self.timer_label.place(in_=self.record_btn, relx=1.0, x=20,
+                               rely=0.5, anchor="w")
 
     # -- Refresh (backward-compatible alias) -----------------------------------
 
@@ -172,12 +159,11 @@ class RecordingTab:
             messagebox.showerror("Error", "Trial name cannot be empty.")
             return
 
-        # Get selected & connected cameras
-        selected_cameras = [i for i in range(1, 5) if self.camera_selection_vars[i].get()]
-        available_cameras = [i for i in selected_cameras
+        # Get all connected cameras
+        available_cameras = [i for i in range(1, 5)
                              if i in self.cameras and self.camera_status.get(i, False)]
         if not available_cameras:
-            messagebox.showerror("Error", "No cameras are connected and selected for recording.")
+            messagebox.showerror("Error", "No cameras are connected.")
             return
 
         # Participant from top bar, calibration = latest
