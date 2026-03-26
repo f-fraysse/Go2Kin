@@ -379,13 +379,14 @@ After user clicks Stop:
 
 ## Visualisation Tab
 
-### Changes (minor — already the best tab)
-- Uses shared Session Trials List component (same appearance and behavior as Recording/Processing tabs)
-- **Layout exception**: on Recording/Processing the trial list sits at the top of the tab. On Visualisation, the video display needs maximum space — trial list moves to the left sidebar instead. Same component, same columns, different position. This is a pragmatic tradeoff: consistent appearance matters more than identical position, and the sidebar is where the current trial selector already lives.
+### Changes (minor overall)
+- remove project and session dropdowns from the tab, they are selected from tob bar now
+- Uses shared Session Trials List component if possible (same appearance and behavior as Recording/Processing tabs)
+- Reduce width of Session Trials List (if possible) to take same space as current "Trial" list in current visualisation tab. If needed only display "Trial" column.
+- Trials order in Trials list should be most recent on top (same ordering logic as in Session Trials in Recording and Processing tabs)
+- **Layout exception**: on Recording/Processing the trial list sits at the top of the tab. On Visualisation, the video display needs maximum space — trial list moves to the left sidebar instead. Same component, same columns, different position. 
 - Clicking a trial in the list loads it for playback
-- Playback scrubber: make it larger / easier to grab
-- Consider expanding abbreviations: "2D kpts" → "2D Keypoints", "3D kpts" → "3D Keypoints"
-- Info panel: could be lightly structured rather than plain text
+
 
 ```
 ┌──────────────────────┬─────────────────────────────────────────────────────────────────────────────────────┐
@@ -403,7 +404,7 @@ After user clicks Stop:
 ├──────────────────────┤                                                                                   │
 │ Overlay              ├─────────────────────────────────────────────────────────────────────────────────────┤
 │ ☑ 2D Keypoints       │                                                                                   │
-│ ☐ 3D Keypoints       │  <<  -1  [Play]  +1  >>   Loop       [======○========================] 42/251     │
+│ ☐ 3D Keypoints       │  <<  -1  [Play]  +1  >>   Loop       [======○========================] Go to: [] Frame 42/251     │
 ├──────────────────────┤                                                                                   │
 │ Info                 └─────────────────────────────────────────────────────────────────────────────────────┘
 │ Subject: P01         │

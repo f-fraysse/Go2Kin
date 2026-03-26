@@ -393,7 +393,7 @@ class Go2KinMainWindow:
             elif hasattr(self, 'processing_tab') and tab_id == str(self.processing_tab.frame):
                 self.processing_tab.refresh()
             elif hasattr(self, 'visualisation_tab') and tab_id == str(self.visualisation_tab.frame):
-                self.visualisation_tab._populate_projects()
+                self.visualisation_tab.refresh()
         except Exception:
             pass
 

@@ -33,8 +33,6 @@ class VisualisationTab:
         self.root = notebook.winfo_toplevel()
 
         # Selection state
-        self._current_project = None
-        self._current_session = None
         self._current_trial = None
         self._active_camera = None
         self._available_cameras = []
@@ -84,31 +82,14 @@ class VisualisationTab:
         left = ttk.Frame(paned, width=250)
         paned.add(left, weight=0)
 
-        # Trial selection
-        sel_frame = ttk.LabelFrame(left, text="Select Trial", padding=8)
-        sel_frame.pack(fill=tk.X, padx=5, pady=(5, 2))
-
-        ttk.Label(sel_frame, text="Project:").pack(anchor=tk.W)
-        self.project_combo = ttk.Combobox(sel_frame, state="readonly", width=28)
-        self.project_combo.pack(fill=tk.X, pady=(0, 4))
-        self.project_combo.bind("<<ComboboxSelected>>", self._on_project_selected)
-
-        ttk.Label(sel_frame, text="Session:").pack(anchor=tk.W)
-        self.session_combo = ttk.Combobox(sel_frame, state="readonly", width=28)
-        self.session_combo.pack(fill=tk.X, pady=(0, 4))
-        self.session_combo.bind("<<ComboboxSelected>>", self._on_session_selected)
-
-        ttk.Label(sel_frame, text="Trial:").pack(anchor=tk.W)
-        trial_container = ttk.Frame(sel_frame)
-        trial_container.pack(fill=tk.BOTH, expand=True)
-        self.trial_listbox = tk.Listbox(trial_container, height=6,
-                                        exportselection=False)
-        trial_scroll = ttk.Scrollbar(trial_container, orient="vertical",
-                                     command=self.trial_listbox.yview)
-        self.trial_listbox.configure(yscrollcommand=trial_scroll.set)
-        self.trial_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        trial_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.trial_listbox.bind("<<ListboxSelect>>", self._on_trial_selected)
+        # Trial selection (shared SessionTrialsList component)
+        from GUI.components.session_trials_list import SessionTrialsList
+        self.trial_list = SessionTrialsList(
+            left, self.pm,
+            self.get_current_project, self.get_current_session,
+            on_select=self._on_trial_selected_from_list,
+        )
+        self.trial_list.frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(5, 2))
 
         # Camera selection
         cam_frame = ttk.LabelFrame(left, text="Camera", padding=8)
@@ -192,83 +173,25 @@ class VisualisationTab:
         self._frame_label = ttk.Label(controls, text="Frame: - / -")
         self._frame_label.pack(side=tk.LEFT)
 
-        # Populate projects
-        self._populate_projects()
+        # Initial populate
+        self.trial_list.refresh()
 
     # =========================================================================
-    # Selection cascade
+    # Selection
     # =========================================================================
 
-    def _populate_projects(self):
-        """Fill project dropdown from ProjectManager."""
-        if not self.pm:
-            return
-        projects = self.pm.list_projects()
-        self.project_combo["values"] = projects
+    def refresh(self):
+        """Refresh trial list from current session (called by main_window)."""
+        self._current_trial = None
+        self._clear_video()
+        self.trial_list.refresh()
 
-        # Pre-select current project if available
-        current = self.get_current_project()
-        if current and current in projects:
-            self.project_combo.set(current)
-            self._current_project = current
-            self._populate_sessions()
-
-    def _on_project_selected(self, _event=None):
-        name = self.project_combo.get()
-        if name and name != self._current_project:
-            self._current_project = name
-            self._current_session = None
-            self._current_trial = None
-            self._populate_sessions()
-            self._clear_trial_list()
-            self._clear_video()
-
-    def _populate_sessions(self):
-        """Fill session dropdown for current project."""
-        if not self._current_project or not self.pm:
-            self.session_combo["values"] = []
-            return
-        sessions = self.pm.list_sessions(self._current_project)
-        self.session_combo["values"] = sessions
-        self.session_combo.set("")
-
-        # Pre-select current session if available
-        current = self.get_current_session()
-        if current and current in sessions:
-            self.session_combo.set(current)
-            self._current_session = current
-            self._populate_trials()
-
-    def _on_session_selected(self, _event=None):
-        name = self.session_combo.get()
-        if name and name != self._current_session:
-            self._current_session = name
-            self._current_trial = None
-            self._populate_trials()
-            self._clear_video()
-
-    def _populate_trials(self):
-        """Fill trial listbox for current session."""
-        self.trial_listbox.delete(0, tk.END)
-        if not self._current_project or not self._current_session or not self.pm:
-            return
-        trials = self.pm.list_trials(self._current_project, self._current_session)
-        for t in trials:
-            self.trial_listbox.insert(tk.END, t)
-
-    def _clear_trial_list(self):
-        self.trial_listbox.delete(0, tk.END)
-
-    def _on_trial_selected(self, _event=None):
-        sel = self.trial_listbox.curselection()
-        if not sel:
-            return
-        trial_name = self.trial_listbox.get(sel[0])
+    def _on_trial_selected_from_list(self, trial_name):
+        """Handle trial selection from SessionTrialsList."""
         if trial_name == self._current_trial:
             return
         self._current_trial = trial_name
         self._scan_cameras()
-        # Auto-select first available camera
         if self._available_cameras:
             self._on_camera_selected(self._available_cameras[0])
         else:
@@ -281,11 +204,11 @@ class VisualisationTab:
         for n in range(1, 5):
             self._cam_buttons[n].configure(state=tk.DISABLED, relief=tk.RAISED,
                                            bg="SystemButtonFace")
-        if not self._current_project or not self._current_session or not self._current_trial:
+        if not self.get_current_project() or not self.get_current_session() or not self._current_trial:
             return
 
         synced = self.pm.get_trial_synced_path(
-            self._current_project, self._current_session, self._current_trial)
+            self.get_current_project(), self.get_current_session(), self._current_trial)
         if not synced.exists():
             return
 
@@ -324,12 +247,12 @@ class VisualisationTab:
             self._cap.release()
             self._cap = None
 
-        if not all([self._current_project, self._current_session,
+        if not all([self.get_current_project(), self.get_current_session(),
                     self._current_trial, self._active_camera]):
             return
 
         synced = self.pm.get_trial_synced_path(
-            self._current_project, self._current_session, self._current_trial)
+            self.get_current_project(), self.get_current_session(), self._current_trial)
         files = list(synced.glob(f"*_GP{self._active_camera}.mp4"))
         if not files:
             self._show_placeholder("Video file not found")
@@ -476,7 +399,7 @@ class VisualisationTab:
             return
         try:
             trial = self.pm.get_trial(
-                self._current_project, self._current_session, self._current_trial)
+                self.get_current_project(), self.get_current_session(), self._current_trial)
             subject = trial.get("subject_id", "?")
             fps = f"{self._fps:.0f}" if self._fps else "?"
             w = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH)) if self._cap else 0
@@ -594,12 +517,12 @@ class VisualisationTab:
         self._pose_json_dir = None
         self._pose_model = None
 
-        if not all([self._current_project, self._current_session,
+        if not all([self.get_current_project(), self.get_current_session(),
                     self._current_trial, self._active_camera]):
             return
 
         processed = self.pm.get_trial_processed_path(
-            self._current_project, self._current_session, self._current_trial)
+            self.get_current_project(), self.get_current_session(), self._current_trial)
         pose_dir = processed / "pose"
         if not pose_dir.exists():
             return
@@ -707,12 +630,12 @@ class VisualisationTab:
         self._cam_rvec = None
         self._cam_tvec = None
 
-        if not all([self._current_project, self._current_session,
+        if not all([self.get_current_project(), self.get_current_session(),
                     self._current_trial, self._active_camera]):
             return
 
         processed = self.pm.get_trial_processed_path(
-            self._current_project, self._current_session, self._current_trial)
+            self.get_current_project(), self.get_current_session(), self._current_trial)
         pose3d_dir = processed / "pose-3d"
         if not pose3d_dir.exists():
             return
@@ -795,13 +718,13 @@ class VisualisationTab:
         """Load camera intrinsics/extrinsics from the Pose2Sim TOML calibration."""
         try:
             trial = self.pm.get_trial(
-                self._current_project, self._current_session, self._current_trial)
+                self.get_current_project(), self.get_current_session(), self._current_trial)
             calib_name = trial.get("calibration_file", "")
             if not calib_name or calib_name == "none":
                 return
 
             toml_path = self.pm.get_calibration_path(
-                self._current_project, calib_name, fmt="toml")
+                self.get_current_project(), calib_name, fmt="toml")
             if not toml_path.exists():
                 logger.warning(f"Calibration TOML not found: {toml_path}")
                 return

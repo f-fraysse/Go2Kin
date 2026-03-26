@@ -189,6 +189,13 @@ class LivePreviewTab:
         self.zoom_entry.pack(side=tk.LEFT)
         self.zoom_entry.bind("<Return>", self.on_zoom_entry_enter)
 
+        # Zoom recalibration warning
+        zoom_warning = tk.Label(
+            self.frame, text="\u26a0 Changing zoom requires recalibrating intrinsics",
+            font=("Arial", 10, "bold"), fg="#e67700",
+        )
+        zoom_warning.pack(fill=tk.X, padx=10, pady=(0, 2))
+
         # Video display area - maximized with 16:9 aspect ratio
         video_container = ttk.Frame(self.frame)
         video_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)

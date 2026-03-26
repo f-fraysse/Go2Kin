@@ -190,12 +190,9 @@ Background thread: countdown → start recording → user clicks Stop → downlo
 ## Session 6: Visualisation + Live Preview
 
 **Modify `code/GUI/visualisation_tab.py`**:
-- Replace project/session/trial cascade (3 dropdowns + listbox) with `SessionTrialsList`
+- see /docs/go2kin_ui_redesign.md, "Visualisation Tab" section
 - Project/session from top bar, no local dropdowns
 - `on_select` triggers video load
-- Rename "2D kpts" → "2D Keypoints", "3D kpts" → "3D Keypoints"
-- Larger scrubber
-- Structured info panel (grid layout)
 
 **Modify `code/GUI/live_preview_tab.py`**:
 - Add persistent warning label below zoom controls: bold orange text "Changing zoom requires recalibrating intrinsics"
@@ -298,5 +295,13 @@ Tabs communicate via:
   - Updated `code/GUI/main_window.py`: changed `refresh_tree()` → `refresh()` in `_refresh_active_tab()`.
 - Deviations: Pipeline steps displayed horizontally (not vertically) to keep the layout compact. Pipeline execution inlined rather than delegating to `run_pose2sim_pipeline()` to enable per-step UI updates.
 - State: App launches, processing tab has shared trial list matching recording tab. Pipeline steps show grey/green progress. 41 unit tests pass.
+
+### Session 6 — 2026-03-26 ✅
+- Completed: Visualisation tab redesign + Live Preview zoom warning.
+  - Rewrote `code/GUI/visualisation_tab.py`: removed project/session dropdowns and all related methods (`_populate_projects`, `_on_project_selected`, `_populate_sessions`, `_on_session_selected`, `_populate_trials`, `_clear_trial_list`, `_on_trial_selected`). Replaced with shared `SessionTrialsList` component in left sidebar. Trial selection via `on_select` callback. Project/session now read from top bar via `get_current_project()`/`get_current_session()` getters (~15 replacements). Added `refresh()` public method that clears video and refreshes trial list.
+  - Modified `code/GUI/live_preview_tab.py`: added persistent bold orange warning label "⚠ Changing zoom requires recalibrating intrinsics" between control bar and video area.
+  - Modified `code/GUI/main_window.py`: changed `_refresh_active_tab()` to call `visualisation_tab.refresh()` instead of `visualisation_tab._populate_projects()`.
+- Deviations: None. Followed plan exactly.
+- State: App launches, visualisation tab uses shared SessionTrialsList with colored status circles. No project/session dropdowns. Live Preview shows zoom warning. 41 unit tests pass.
 
 ### TODO (future sessions)
