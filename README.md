@@ -253,6 +253,7 @@ Big ones:
 1. calibration: we need a way to save calibration "quality metrics" for extrinsics (ie RMSE etc). For intrinsics we already do this (RMSE). Need to figure out what to keep and where to store it. And define heuristics for extrinsic calib quality check.
 2. sync (audio based): criteria for "sync pass / good sync" is : all cameras detect 2 peaks AND all peaks to background noise ratio is above a set threshold (tbc) AND the 2 offsets computed from the 2 peaks are <10ms apart AND final offset for any camera is <300ms (check value). If all true = good sync / pass / green circle, delete raw unsynced videos and keep only synced ones. If not: keep raw videos, only trim end of videos so frame numbers match and keep those. Whether audio sync passes or fails we only keep 1 video per camera
 3. Currently functionality is: after recording ends, save raw videos to [trial data path]/video/ (with /synced/ subfolder) and create trial.json with calib file name and participant name. Then when Processing trial, create the staging folder (move videos, copy calib file, copy pose2sim config file). New functionality: staging folder is created after recording and sync ends. Move video files to the right place in staging folder and copy calibration file too. (see above for sync pass fail: if sync pass, copy synced and cropped files. If sync failed copy raw unsynced files cropped to same frame numbers)
+4. user manual
 
 To fix:
 - check camera configs (double up between old system in config/ and go2kin_config in root)
@@ -267,8 +268,6 @@ Misc / small:
 - keep extra info in JSON calib file (e.g. quality metrics - to be displayed in Calibration tab later)
 - visualisation tab: does not handle 2d / 3d keypoints having different number of frames than video (e.g. if person is not detected at start of recording) - need to investigate what pose2sim does with video frames that do not return a pose / if it discards some video frames in whole pipeline
 - make charuco board vertical offset editable by user (one/few times setup probably)
-- check how calibration age in top bar (should be date only)
+- check how calibration age is set in top bar (should be date only)
 - bigger tabs / tab names, more visible in UI
 - remove scrollable left panel in Calibration (does not need to be scrollable anymore)
-- delete camera selection check boxes in recording. When pressing Record, record with all connected cameras.
-- replace colored circles outside of TreeView/Canvas widgets with actual unicode symbols (like done in Processing / Pipeline Progress panel)
