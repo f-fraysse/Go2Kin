@@ -8,28 +8,36 @@ Multi-camera GoPro control application for research. Controls up to 4 GoPro Hero
 - **Python**: 3.10 in Conda environment `Go2Kin` (`conda activate Go2Kin`)
 - **IDE**: VSCode
 - **Run**: `python code/go2kin.py`
-- **Dependencies**: `pip install -r requirements.txt` (requests, opencv-contrib-python, Pillow, numpy, scipy, pandas)
-- **External tools**: `ffmpeg` in PATH (for audio sync feature; install via `conda install -c conda-forge ffmpeg`)
+- **Dependencies**: `pip install -r requirements.txt` (requests, opencv-contrib-python, Pillow, numpy, scipy, pandas, matplotlib, sounddevice)
+- **External tools**: `ffmpeg` in PATH (for audio sync; install via `conda install -c conda-forge ffmpeg`)
+- **Tests**: `python tests/test_project_manager.py` (run from repo root)
 
 ## Project Structure
 
 ```
 code/
-  go2kin.py              # Entry point
+  go2kin.py              # Entry point — loads config, creates ProjectManager + GUI
   audio_sync.py          # Audio-based multi-camera video synchronisation
   camera_profiles.py     # CameraProfileManager (profiles + settings references)
   project_manager.py     # ProjectManager (project/session/trial/subject file hierarchy)
   pose2sim_builder.py    # Build Pose2Sim project dirs + run pipeline
   GUI/
     __init__.py           # Exports Go2KinMainWindow
-    main_window.py        # Go2KinMainWindow + LivePreviewCapture
-    project_tab.py        # ProjectTab (project/session/subject selection)
-    calibration_tab.py    # CalibrationTab (tkinter calibration UI + integrated 3D viewer)
-    processing_tab.py     # ProcessingTab (Pose2Sim pipeline execution)
+    main_window.py        # Go2KinMainWindow — tab creation + bottom camera bar
+    top_bar.py            # TopBar — persistent project/session/participant selection
+    live_preview_tab.py   # LivePreviewTab — camera preview with zoom
+    calibration_tab.py    # CalibrationTab — intrinsic/extrinsic calibration + 3D viewer
+    recording_tab.py      # RecordingTab — record, download, sync videos
+    processing_tab.py     # ProcessingTab — Pose2Sim pipeline execution
+    visualisation_tab.py  # VisualisationTab — video playback with keypoint overlays
+    components/
+      session_trials_list.py   # SessionTrialsList — Canvas-based trial list (shared by Recording + Processing)
+      collapsible_section.py   # CollapsibleSection — expandable UI panel
   goproUSB/
     goproUSB.py           # GPcam class (camera HTTP API client)
   calibration/            # Camera calibration (adapted from Caliscope, BSD-2-Clause)
-    __init__.py
+    calibrate.py          # High-level orchestrator (intrinsic → extrinsic → origin)
+    persistence.py        # JSON save/load (auto-exports TOML for Pose2Sim)
     charuco.py            # Charuco board definition
     charuco_tracker.py    # Corner detection (cv2.aruco.CharucoDetector)
     data_types.py         # PointPacket, CameraData, CameraArray, ImagePoints, WorldPoints, StereoPair
@@ -44,38 +52,38 @@ code/
     bundle_adjustment.py  # PointDataBundle + scipy least_squares optimization
     alignment.py          # Umeyama similarity transform
     scale_accuracy.py     # Volumetric scale error metrics
-    calibrate.py          # High-level orchestrator (intrinsic, extrinsic, origin)
-    persistence.py        # JSON save/load for calibration (auto-exports TOML on save)
+  pose2sim/               # Git submodule (https://github.com/perfanalytics/pose2sim)
 config/
   cameras.json            # Main config (serials, settings, recording prefs)
   camera_profiles/        # Per-camera JSON profiles (profile_{serial}.json)
   settings_references/    # Per-model/firmware setting definitions
   calibration/            # Calibration output (charuco_config.json, calibration.json)
-  pose2sim_config_template.toml  # Pose2Sim Config.toml template (from example_trial)
+  pose2sim_config_template.toml  # Pose2Sim Config.toml template
 tools/
   discover_camera_settings.py  # Run once per model/firmware to generate reference
-  test_video_quality.py        # Easy Mode vs Pro Mode quality comparison test
-  view_calibration.py           # Standalone 3D viewer for calibration camera positions
-  export_toml.py               # Convert calibration.json → Pose2Sim TOML
-output/                   # Legacy recording output (unused — recordings now go to project data_root)
+  view_calibration.py     # Standalone 3D viewer for calibration camera positions
+  export_toml.py          # Convert calibration.json → Pose2Sim TOML
+  audio_sync_test.py      # Audio sync test utility
 tests/
   test_project_manager.py  # ProjectManager unit tests
-go2kin_config.json         # App config (data_root, GoPro serials, last selection) — gitignored
+go2kin_config.json         # App config (data_root, serials, last selection) — gitignored
 go2kin_config_template.json # Template for go2kin_config.json (tracked in git)
 ```
 
-- **Tests**: `python tests/test_project_manager.py` (run from repo root)
-
 ## Architecture
 
-- **GPcam** (`goproUSB.py`): HTTP client for one camera. IP derived from serial: `172.2X.1YZ.51:8080`
-- **CameraProfileManager** (`camera_profiles.py`): Singleton managing per-camera profiles and per-model settings references
-- **ProjectManager** (`project_manager.py`): Manages project/session/trial/subject file hierarchy at `data_root` (configured in `go2kin_config.json`). GUI-agnostic — handles only filesystem and JSON operations. See `docs/project_manager.md` for full architecture doc.
-- **ProjectTab** (`GUI/project_tab.py`): Project/session/subject selection UI. Persists last selection to `go2kin_config.json`.
-- **Go2KinMainWindow** (`GUI/main_window.py`): 6-tab tkinter GUI (Project, Preview, Calibration, Recording, Processing, Visualisation) + fixed bottom camera bar
-- **LivePreviewCapture** (`GUI/main_window.py`): Threaded OpenCV capture from UDP stream
-- **ProcessingTab** (`GUI/processing_tab.py`): Pose2Sim pipeline execution with trial selection tree, real-time log output, and batch processing
-- **pose2sim_builder** (`pose2sim_builder.py`): Stages Go2Kin trial data into Pose2Sim directory structure and runs the pipeline. See `docs/pose2sim_integration.md` for full documentation.
+- **Go2KinMainWindow** (`GUI/main_window.py`): 5-tab tkinter GUI (Preview, Calibration, Recording, Processing, Visualisation) + persistent TopBar above tabs + fixed bottom camera bar. Starts on Calibration tab.
+- **TopBar** (`GUI/top_bar.py`): Persistent project/session/participant dropdowns + calibration status indicator. Always visible above tabs.
+- **Bottom camera bar** (`GUI/main_window.py`): Per-camera connect/disconnect toggle, status indicators, battery display. Global resolution/FPS dropdowns apply to all cameras.
+- **GPcam** (`goproUSB/goproUSB.py`): HTTP client for one camera. IP derived from serial: `172.2X.1YZ.51:8080`.
+- **CameraProfileManager** (`camera_profiles.py`): Singleton managing per-camera profiles and per-model settings references.
+- **ProjectManager** (`project_manager.py`): Manages project/session/trial/subject file hierarchy at `data_root`. GUI-agnostic — filesystem and JSON only. See `docs/project_manager.md`.
+- **SessionTrialsList** (`GUI/components/session_trials_list.py`): Canvas-based trial list with colored status indicators. Shared by Recording and Processing tabs.
+- **LivePreviewCapture** (`GUI/main_window.py`): Threaded OpenCV capture from UDP stream.
+- **Audio sync** (`audio_sync.py`): Clap-onset detection + ffmpeg trim. Runs automatically after recording. See `docs/audio_sync_spec.md`.
+- **Calibration** (`calibration/`): Charuco-based intrinsic/extrinsic calibration adapted from Caliscope (BSD-2-Clause). Orchestrated by `calibrate.py`.
+- **Pose2Sim integration** (`pose2sim_builder.py`): Stages trial data into Pose2Sim directory structure and runs the pipeline. See `docs/pose2sim_integration.md`.
+- **Visualisation** (`GUI/visualisation_tab.py`): Video playback with keypoint overlays. See `docs/Visualisation.md`.
 
 ## Hardware
 
@@ -88,11 +96,11 @@ go2kin_config_template.json # Template for go2kin_config.json (tracked in git)
 ## Coding Conventions
 
 - **Keep it simple** — research-focused, not enterprise. Avoid over-engineering.
-- **Profile-driven settings** — references define available options, profiles track camera state, GUI populates from both
-- **Error isolation** — one camera's failure must not affect others
-- **Threading model**: GUI thread for display, ThreadPoolExecutor for multi-camera ops, background threads for status polling and frame capture
-- **HTTP timeouts**: 5s for commands, 300s for media downloads
-- **Settings via generic API**: prefer `setSetting(setting_id, option_id)` over legacy convenience methods
+- **Profile-driven settings** — references define available options, profiles track camera state, GUI populates from both.
+- **Error isolation** — one camera's failure must not affect others.
+- **Threading model**: GUI thread for display, ThreadPoolExecutor for multi-camera ops, background threads for status polling and frame capture.
+- **HTTP timeouts**: 5s for commands, 300s for media downloads.
+- **Settings via generic API**: prefer `setSetting(setting_id, option_id)` over legacy convenience methods.
 
 ## GoPro API Essentials
 
@@ -120,76 +128,13 @@ go2kin_config_template.json # Template for go2kin_config.json (tracked in git)
 
 ## Known Quirks
 
-- `sys.path.insert()` used for imports — fragile but functional
-- `deleteAllFiles()` uses legacy `/gp/gpControl/` endpoint — works, leave as-is
-- Preview forces 1080p/30fps/Linear — intentional for low-bandwidth positioning
-- Setting 236 (Auto WiFi AP) not in discovery tool but applied on connect
-- `camBusy()`/`encodingActive()` return False on errors (fail-safe design)
-- **GUI dropdown options are hardcoded for Hero 12 + 50Hz anti-flicker**: Resolution (1080, 2.7K, 4K) and FPS (25, 50, 100, 200) in `main_window.py` lines ~280/292. For different cameras or 60Hz anti-flicker, update these values. Invalid selections are caught at runtime (camera returns 403 with valid options popup).
-
-## Audio Sync Feature
-
-Audio synchronisation runs automatically after each recording completes and files are downloaded. No manual button or file selection required.
-1. After all MP4 files download, sync starts automatically (skipped if fewer than 2 files)
-2. Extracts first 3 seconds of audio from each file (ffmpeg pipe → numpy)
-3. Onset-based sync: Hilbert envelope → smoothed derivative (5ms window) → threshold crossing detection (20% of peak, 0.3s cooldown)
-4. Detects 1–2 clap onsets per camera. Dual-clap mode enables consistency check (clap1 vs clap2 offsets must agree within 1 frame)
-5. `compute_sync_offsets()` returns `offset_seconds`, `is_reference`, and `status` (REF/PASS/WARN/PASS (1 clap)) per camera. FPS read from video via ffprobe
-6. Reference = camera with earliest clap onset. Other files trimmed from start to align
-7. All files trimmed to shortest common duration (time-based)
-8. Frame equalization: counts frames in each output, trims excess files to the minimum frame count (`-frames:v N -c copy`)
-9. Output: `video/synced/` subfolder with trimmed files + `stitched_videos.mp4` (auto-sized grid preview, 480x480 per camera) + `sync_onsets.png` (onset detection plot)
-10. Uses ffmpeg stream-copy for trimming (no re-encoding, lossless). Stitched preview re-encodes at low resolution.
-11. `trial.json` updated with `synced: true` on success, `synced: false` on failure
-12. Console log shows step-by-step onset detection with summary table. Warnings displayed in red if any camera has inconsistent clap offsets.
-13. **Sync sound** (disabled): Bottom bar checkbox for automatic speaker-generated clap playback. Currently disabled — requires a louder/closer speaker than the lab HDMI monitor.
-14. **Speed-of-sound compensation** (optional): If a calibration with camera positions is loaded and a sound source position is set in the Calibration tab, `compute_sync_offsets()` subtracts the differential sound propagation delay (distance / 340 m/s) from measured offsets. Logged as raw vs compensated in the console. Sound source position saved in calibration JSON (not TOML).
-
-## Camera Calibration
-
-The Calibration tab (4th tab) provides intrinsic and extrinsic camera calibration using Charuco board detection. Code adapted from the Caliscope project (BSD-2-Clause, Mac Prible).
-
-### Dependencies
-- `opencv-contrib-python` (replaces `opencv-python` — superset, needed for `cv2.aruco`)
-- `pandas` (for ImagePoints/WorldPoints DataFrames)
-
-### Default Charuco Board
-7x5, A1 paper (59.4x84.1cm), 11.70cm squares, DICT_4X4_50, aruco_scale=0.75
-
-### Calibration Workflow
-1. **Charuco config**: Set board parameters in Calibration tab (or accept defaults). Print board, measure actual square size.
-2. **Intrinsic**: For each camera, click "Record" (or "Browse" for existing file) → "Calibrate" → verify RMSE < 1.0px
-3. **Extrinsic**: Select cameras in checkboxes → click "Record" (records all, auto-syncs) → "Calibrate Extrinsics" → verify 3D camera positions. Can also "Browse" to an existing synced folder.
-4. **Set Origin**: Click "Record" (uses same camera selection, auto-syncs) → "Set Origin". Can also "Browse". Can be re-run after loading a saved calibration (no need to redo extrinsic).
-5. **Save**: Enter a name → "Save Calibration" → saved to `[project]/calibrations/{name}_{date}.json` (also auto-generates `.toml` for Pose2Sim)
-6. **Load**: "Load Calibration" opens file dialog at `[project]/calibrations/` (can navigate to `config/calibration/` for legacy files)
-7. **Cleanup**: "Delete Calibration Videos" removes `[project]/calibrations/temp_videos/`
-
-### Calibration Recording
-- **Intrinsic**: Per-camera Record buttons. Single camera records, downloads to `temp_videos/intrinsic_{timestamp}_GP{N}.mp4`, auto-populates file path.
-- **Extrinsic/Origin**: Camera selection checkboxes (shared). All selected cameras record simultaneously → auto audio sync → synced folder auto-populated.
-- Recording in Calibration tab is mutually exclusive with Recording tab (conflict guard).
-- Temp video files include `YYYYMMDD_HHmm` timestamps — recordings are never overwritten.
-
-### Pipeline Architecture
-```
-Intrinsic: Video → CharucoTracker → PointPackets → frame_selector → cv2.calibrateCamera
-Extrinsic: Synced videos → PnP per camera → relative poses → IQR outlier rejection
-           → quaternion averaging → stereo pair graph (with bridging)
-           → anchor selection → global poses → DLT triangulation
-           → bundle adjustment (scipy least_squares) → Umeyama alignment
-```
-
-### Global Coordinate System (after Set Origin)
-- **X** = along charuco rows (horizontal, short axis on default 7×5 board)
-- **Y** = along board normal (horizontal, perpendicular to board surface)
-- **Z** = up (vertical). Auto-corrected: if Umeyama produces Z-down, a 180° rotation around X is applied.
-- **Origin** = floor below the first interior corner of the charuco board (adjacent to ArUco marker ID 0). The board's origin corner is at (0, 0, 0.790).
-
-### File-to-Camera Mapping
-Synced folder MP4 filenames must follow `{trial}_GP{N}.mp4` convention (e.g., `Trial1_GP1.mp4`). The parser extracts camera number from the `_GP{N}` suffix. Files `stitched_videos.mp4` and `timestamps.csv` are automatically skipped.
+- `sys.path.insert()` used for imports — fragile but functional.
+- `deleteAllFiles()` uses legacy `/gp/gpControl/` endpoint — works, leave as-is.
+- Preview forces 1080p/30fps/Linear — intentional for low-bandwidth positioning.
+- Setting 236 (Auto WiFi AP) not in discovery tool but applied on connect.
+- `camBusy()`/`encodingActive()` return False on errors (fail-safe design).
+- GUI dropdown options for resolution/FPS are hardcoded for Hero 12 + 50Hz anti-flicker. For different cameras or 60Hz, update values in `main_window.py` (bottom camera bar). Invalid selections are caught at runtime (camera returns 403).
 
 ## Known Issues / TODO
 
-- **Video quality investigation (paused)**: Downloaded videos appear smoothed/processed. Confirmed the correct MP4 is downloaded (not LRV). Added High bitrate (182), 8-Bit depth (183), and Standard profile (184) to connect settings. Protune settings (Sharpness 117, Color 116, etc.) are not officially exposed via the HTTP API. Next step: run `tools/test_video_quality.py` to compare Easy Mode vs Pro Mode output, and/or set Protune options manually on camera LCD.
-- **Sync sound feature (disabled)**: Automatic speaker-generated clap playback for hands-free sync. Implemented but disabled — lab HDMI speaker at ~7m is too quiet for GoPro mics. Needs testing with a louder/closer speaker.
+- **Sync sound** (disabled): Automatic speaker-generated clap playback for hands-free sync. Lab HDMI speaker at ~7m is too quiet for GoPro mics. Needs a louder/closer speaker.

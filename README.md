@@ -250,20 +250,20 @@ The sound source position is saved in the calibration JSON file and restored whe
 ## TODO
 
 To fix:
-- Set FPS in Pose2Sim config from video files — currently "Process Selected" only sets subject height/weight in the config template, but doesn't detect or set the video FPS to match the recordings - done, this is handled in pose2sim config file already, need to test working
 - check camera configs (double up between old system in config/ and go2kin_config in root)
-- check camera discovery tool (needed?) - fine to leave - resolution and FPS options can be populated manually if needed for now
+- audio sync: if quality checks fail: move the unsynced videos to processing staging folder (need to crop to same frames first? check pose2sim)
+- create pose2sim staging folder after recording rather than at Processing step - move videos and calib file (if exists) right after recording, create trial JSON (already done then?) Safer to move calib file while we know it exists. 
+
 
 Potential optimisations (low hanging fruit):
 - defer or remove the creation of "stitched preview" after sync (takes ~10sec) - we have clean audio sync now - maybe enforce need for 2 claps as this is how we check consistency
 
 Misc / small:
-- extract Recording and Live Preview tabs into dedicated files (`recording_tab.py`, `preview_tab.py`) to match other tabs — reduces main_window.py by ~35%. See [`docs/extract_preview_recording_tabs.md`](docs/extract_preview_recording_tabs.md) for plan.
-- only generate one TOML calibration, then delete export_toml.py (keep capacity to only save intrinsics) 
+- keep extra info in JSON calib file (e.g. quality metrics - to be displayed in Calibration tab later)
 - visualisation tab: does not handle 2d / 3d keypoints having different number of frames than video (e.g. if person is not detected at start of recording) - need to investigate what pose2sim does with video frames that do not return a pose / if it discards some video frames in whole pipeline
 - make charuco board vertical offset editable by user (one/few times setup probably)
 - check how calibration age in top bar (should be date only)
 - bigger tabs / tab names, more visible in UI
 - remove scrollable left panel in Calibration (does not need to be scrollable anymore)
 - delete camera selection check boxes in recording. When pressing Record, record with all connected cameras.
-- replaced colored circles outside of TreeView/Canvas widgets with actual unicode symbols (like done in Processing / Pipeline Progress panel)
+- replace colored circles outside of TreeView/Canvas widgets with actual unicode symbols (like done in Processing / Pipeline Progress panel)
