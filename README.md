@@ -249,6 +249,11 @@ The sound source position is saved in the calibration JSON file and restored whe
 
 ## TODO
 
+Big ones:
+1. calibration: we need a way to save calibration "quality metrics" for extrinsics (ie RMSE etc). For intrinsics we already do this (RMSE). Need to figure out what to keep and where to store it. And define heuristics for extrinsic calib quality check.
+2. sync (audio based): criteria for "sync pass / good sync" is : all cameras detect 2 peaks AND all peaks to background noise ratio is above a set threshold (tbc) AND the 2 offsets computed from the 2 peaks are <10ms apart AND final offset for any camera is <300ms (check value). If all true = good sync / pass / green circle, delete raw unsynced videos and keep only synced ones. If not: keep raw videos, only trim end of videos so frame numbers match and keep those. Whether audio sync passes or fails we only keep 1 video per camera
+3. Currently functionality is: after recording ends, save raw videos to [trial data path]/video/ (with /synced/ subfolder) and create trial.json with calib file name and participant name. Then when Processing trial, create the staging folder (move videos, copy calib file, copy pose2sim config file). New functionality: staging folder is created after recording and sync ends. Move video files to the right place in staging folder and copy calibration file too. (see above for sync pass fail: if sync pass, copy synced and cropped files. If sync failed copy raw unsynced files cropped to same frame numbers)
+
 To fix:
 - check camera configs (double up between old system in config/ and go2kin_config in root)
 - audio sync: if quality checks fail: move the unsynced videos to processing staging folder (need to crop to same frames first? check pose2sim)
