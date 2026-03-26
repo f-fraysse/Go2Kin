@@ -1,8 +1,10 @@
 # Go2Kin
 
-Integrated markerless motion capture pipeline for biomechanics research. Provides a single tkinter GUI for the full workflow — from camera setup through to OpenSim kinematics output.
+**WORK IN PROGRESS**
 
-**Pipeline**: Camera connection & control → multi-camera calibration → synchronized recording → pose estimation & triangulation → kinematics
+Integrated markerless motion capture pipeline for biomechanics research. Provides a single tkinter GUI for the full workflow — from camera setup to OpenSim output.
+
+**Pipeline**: Camera connection & control → multi-camera calibration → recording → audio-based synchronisation → pose estimation, triangulation, filtering, interpolation → kinematics
 
 Designed for indoor motion capture labs where you need to record many repeated trials across sessions and participants — similar to a traditional marker-based workflow (e.g. Vicon Nexus), but markerless. Opinionated choices like USB-connected cameras and audio sync via hand claps keep things simple and reliable in a lab setting.
 
@@ -142,8 +144,8 @@ The calibration pipeline is adapted from [Caliscope](https://github.com/mprib/ca
 
 ## Calibration Workflow
 
-1. **Print the charuco board.** Configure board parameters in the Calibration tab and click **Save Board Image**. Print at the configured size (default: A1). Mount on a rigid flat surface. **Measure the actual printed square size** — printers don't always scale exactly.
-2. **Intrinsic calibration.** For each camera, record a video of the board from various angles and distances. In the Calibration tab, browse to each video and click **Calibrate**.
+1. **Print the charuco board.** Configure board parameters in the Calibration tab and click **Save Board Image**. Print at the configured size (default: A1). Mount on a rigid flat surface. **Measure the actual printed square size** — printers don't always scale exactly. Highly recommend also printing the "inverted" image and making a double-sided board (see Caliscope).
+2. **Intrinsic calibration.** For each camera, record a video of the board from various angles and distances. In the Calibration tab, browse to each video and click **Calibrate**. Done infrequently - one need to be redone if changing camera Zoom, or camera model altogether. 
 3. **Extrinsic calibration.** With all cameras in their final positions, record the board being moved through the shared field of view. The Recording tab automatically synchronises files after download. Browse to the `synced/` folder and click **Calibrate Extrinsics**.
 4. **Set origin.** Stand the board vertically in portrait mode at the desired world origin (origin corner 790mm above floor). Record with all cameras, synchronise, then browse to the synced folder and click **Set Origin**. This can also be re-run after loading a saved calibration to redefine the coordinate system.
 5. **Save.** Click **Save Calibration** to persist all results. A Pose2Sim-compatible TOML file is auto-generated alongside the JSON.
