@@ -2,24 +2,25 @@
 
 **WORK IN PROGRESS**
 
-Integrated markerless motion capture pipeline for biomechanics research. Provides a single tkinter GUI for the full workflow — from camera setup to OpenSim output.
+Integrated markerless motion capture pipeline for biomechanics research. Provides a single tkinter GUI for the full workflow - from camera setup to OpenSim output.
 
 **Pipeline**: Camera connection & control → multi-camera calibration → recording → audio-based synchronisation → pose estimation, triangulation, filtering, interpolation → kinematics
 
-Designed for indoor motion capture labs where you need to record many repeated trials across sessions and participants — similar to a traditional marker-based workflow (e.g. Vicon Nexus), but markerless. Opinionated choices like USB-connected cameras and audio sync via hand claps keep things simple and reliable in a lab setting.
+Designed for indoor motion capture labs where you need to record many repeated trials across sessions and participants - similar to a traditional marker-based workflow (e.g. Vicon Nexus), but markerless. Opinionated choices like USB-connected cameras and audio sync via hand claps keep things simple and reliable in a lab setting.
 
-**Hardware**: Up to 4 GoPro Hero 12 Black cameras connected via USB to a single PC.
+**Hardware**: Up to 4 GoPro Hero 12 Black cameras connected via USB to a single PC. 
+
+Tested on Hero 12 only but should work with any GoPro supporting the HTTP API (9+).
 
 **Built on**:
-- [Pose2Sim](https://github.com/perfanalytics/pose2sim) — pose estimation, triangulation, filtering, and kinematics (included as a submodule, run directly from the GUI)
-- [Caliscope](https://github.com/mprib/caliscope) — multi-camera calibration algorithms (charuco detection, intrinsic/extrinsic calibration, bundle adjustment), adapted and re-implemented
+- [Pose2Sim](https://github.com/perfanalytics/pose2sim) - pose estimation, triangulation, filtering, and kinematics (included as a submodule, run directly from the GUI)
+- [Caliscope](https://github.com/mprib/caliscope) - multi-camera calibration algorithms (charuco detection, intrinsic/extrinsic calibration, bundle adjustment), adapted and re-implemented
 - GoPro USB HTTP API (inspired by [goproUSB](https://github.com/drukasz/goproUSB))
 
 Also includes: live camera preview, project/session/trial/participant management, and basic visualisation of pose estimation results.
 
 ### Related Projects
 
-If you only need part of the pipeline:
 - **GoPro control over WiFi**: [Go2Rep](https://github.com/ShabahangShayegan/Go2Rep)
 - **Calibration only**: [Caliscope](https://github.com/mprib/caliscope)
 - [Pose2Sim](https://github.com/perfanalytics/pose2sim)
@@ -80,7 +81,7 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
    Edit `go2kin_config.json`:
    - `data_root`: path where Go2Kin will store project data (e.g. `D:/Markerless_Projects`)
    - `gopro_serial_numbers`: serial numbers of your GoPro cameras (found on the camera label or via USB connection)
-   - Leave `last_project` and `last_session` empty — these are managed by the app
+   - Leave `last_project` and `last_session` empty - these are managed by the app
 
    If you skip this step, Go2Kin will prompt you to select a data root folder on first launch.
 
@@ -102,40 +103,40 @@ python code/go2kin.py
 
 The GUI has six tabs and a fixed bottom bar:
 
-### Bottom Bar — Camera Status & Controls
+### Bottom Bar - Camera Status & Controls
 Always visible at the bottom of the window, regardless of which tab is selected. Shows per-camera connection status (green/red indicator), connect/disconnect toggle buttons, and battery status. Includes global Resolution and FPS dropdowns that apply to all connected cameras simultaneously. Camera serial numbers are read from `go2kin_config.json`.
 
-### Tab 1 — Project
+### Tab 1 - Project
 Select or create projects, sessions, and subjects. Your last selection is remembered between sessions. This tab organises all data under the configured `data_root`.
 
-### Tab 2 — Live Preview
+### Tab 2 - Live Preview
 Stream a live preview from one camera at a time for positioning and framing. Includes real-time digital zoom control (slider, +/-, text entry). Preview runs at 1080p/30fps/Linear regardless of recording settings.
 
-### Tab 3 — Calibration
+### Tab 3 - Calibration
 Multi-camera calibration using a printed charuco board. The calibration pipeline computes lens parameters (intrinsic) and camera positions/orientations (extrinsic) for 3D triangulation. Includes:
 
-- **Charuco Board Config** — set board dimensions, square size, ArUco dictionary. Save a printable board image.
-- **Intrinsic Calibration** — per-camera lens calibration from a video of the board. Uses smart frame selection for orientation and spatial coverage diversity.
-- **Extrinsic Calibration** — multi-camera pose estimation from synced videos. Includes PnP solving, outlier rejection, graph bridging, triangulation, and bundle adjustment.
-- **Set Origin** — stand the charuco board vertically in portrait mode at the lab origin. Aligns the coordinate system using a Umeyama similarity transform. Can be re-run after loading a saved calibration.
-- **Sound Source Position** — optional X/Y/Z coordinates (in metres) of the sync sound source (speaker or clap location). Used for speed-of-sound compensation during audio sync. Displayed as a black cross in the 3D viewer.
-- **Save/Load** — persist calibration to `config/calibration/calibration.json` (also auto-exports `camera_array_go2kin.toml` for Pose2Sim compatibility).
+- **Charuco Board Config** - set board dimensions, square size, ArUco dictionary. Save a printable board image.
+- **Intrinsic Calibration** - per-camera lens calibration from a video of the board. Uses smart frame selection for orientation and spatial coverage diversity.
+- **Extrinsic Calibration** - multi-camera pose estimation from synced videos. Includes PnP solving, outlier rejection, graph bridging, triangulation, and bundle adjustment.
+- **Set Origin** - stand the charuco board vertically in portrait mode at the lab origin. Aligns the coordinate system using a Umeyama similarity transform. Can be re-run after loading a saved calibration.
+- **Sound Source Position** - optional X/Y/Z coordinates (in metres) of the sync sound source (speaker or clap location). Used for speed-of-sound compensation during audio sync. Displayed as a black cross in the 3D viewer.
+- **Save/Load** - persist calibration to `config/calibration/calibration.json` (also auto-exports `camera_array_go2kin.toml` for Pose2Sim compatibility).
 
-### Tab 4 — Recording
-Select a participant and calibration file for the trial, enter a trial name, and start/stop synchronized recording across selected cameras. Files are downloaded from each camera and saved to the project directory (`[project]/sessions/[session]/[trial]/video/`). After download, audio synchronisation runs automatically — synced files appear in `video/synced/`. A session/trial tree view at the bottom shows all recorded trials. See **Video Synchronisation** below for details.
+### Tab 4 - Recording
+Select a participant and calibration file for the trial, enter a trial name, and start/stop synchronized recording across selected cameras. Files are downloaded from each camera and saved to the project directory (`[project]/sessions/[session]/[trial]/video/`). After download, audio synchronisation runs automatically - synced files appear in `video/synced/`. A session/trial tree view at the bottom shows all recorded trials. See **Video Synchronisation** below for details.
 
-### Tab 5 — Processing
+### Tab 5 - Processing
 Run the [Pose2Sim](https://github.com/perfanalytics/pose2sim) pipeline on recorded trials. Select trials from a tree view (with session grouping and checkbox selection), then click **Process Selected** to run pose estimation, triangulation, filtering, and kinematics sequentially. Real-time log output streams in the GUI. Pose2Sim is included as a git submodule at `code/pose2sim/`.
 
 The processing pipeline:
 1. **Stages** trial data into Pose2Sim's expected directory structure (`[trial]/processed/`)
 2. **Validates** that synced videos, calibration TOML, and subject data (height, mass) exist
-3. **Runs** each Pose2Sim step: calibration (no-op — reads existing TOML), pose estimation (RTMPose via CUDA), triangulation, Butterworth filtering, and OpenSim kinematics
+3. **Runs** each Pose2Sim step: calibration (no-op - reads existing TOML), pose estimation (RTMPose via CUDA), triangulation, Butterworth filtering, and OpenSim kinematics
 4. **Updates** `trial.json` with `processed: true` on success
 
 Batch processing runs trials sequentially. A **Stop** button halts processing after the current step completes. See [`docs/pose2sim_integration.md`](docs/pose2sim_integration.md) for technical details.
 
-### Tab 6 — Visualisation (experimental)
+### Tab 6 - Visualisation (experimental)
 Slow and experimental. Plays back synced trial video with optional overlay of 2D pose keypoints (from per-camera detection) and 3D keypoints (triangulated markers reprojected via camera calibration). Useful for visually checking pose detection and triangulation quality. See [`docs/Visualisation.md`](docs/Visualisation.md) for technical details.
 
 ### Attribution
@@ -144,7 +145,7 @@ The calibration pipeline is adapted from [Caliscope](https://github.com/mprib/ca
 
 ## Calibration Workflow
 
-1. **Print the charuco board.** Configure board parameters in the Calibration tab and click **Save Board Image**. Print at the configured size (default: A1). Mount on a rigid flat surface. **Measure the actual printed square size** — printers don't always scale exactly. Highly recommend also printing the "inverted" image and making a double-sided board (see Caliscope).
+1. **Print the charuco board.** Configure board parameters in the Calibration tab and click **Save Board Image**. Print at the configured size (default: A1). Mount on a rigid flat surface. **Measure the actual printed square size** - printers don't always scale exactly. Highly recommend also printing the "inverted" image and making a double-sided board (see Caliscope).
 2. **Intrinsic calibration.** For each camera, record a video of the board from various angles and distances. In the Calibration tab, browse to each video and click **Calibrate**. Done infrequently - one need to be redone if changing camera Zoom, or camera model altogether. 
 3. **Extrinsic calibration.** With all cameras in their final positions, record the board being moved through the shared field of view. The Recording tab automatically synchronises files after download. Browse to the `synced/` folder and click **Calibrate Extrinsics**.
 4. **Set origin.** Stand the board vertically in portrait mode at the desired world origin (origin corner 790mm above floor). Record with all cameras, synchronise, then browse to the synced folder and click **Set Origin**. This can also be re-run after loading a saved calibration to redefine the coordinate system.
@@ -219,20 +220,20 @@ Resolution, FPS, lens, and digital zoom are restored from the camera's saved pro
 
 ## Video Synchronisation
 
-Even when starting all cameras simultaneously, each GoPro begins recording at a slightly different time. Audio synchronisation runs automatically after each recording — no manual button press or file selection required.
+Even when starting all cameras simultaneously, each GoPro begins recording at a slightly different time. Audio synchronisation runs automatically after each recording - no manual button press or file selection required.
 
 ### How to use
 
 1. At the start of each recording, perform **two loud hand claps** within the first 3 seconds while all cameras are recording. Two claps enable a consistency check; a single clap also works but without cross-validation.
 2. After files are downloaded, synchronisation runs automatically. The progress log shows a step-by-step onset detection report with a summary table of offsets and consistency status per camera.
-3. If any camera shows status `WARN` (clap 1 and clap 2 offsets disagree by more than 1 frame), a red warning is displayed — consider re-recording with clearer claps.
+3. If any camera shows status `WARN` (clap 1 and clap 2 offsets disagree by more than 1 frame), a red warning is displayed - consider re-recording with clearer claps.
 
 ### Output
 
 A `synced/` subfolder is created inside the trial's `video/` directory containing:
-- Trimmed MP4 files (same filenames as originals) — start-aligned and end-trimmed to identical duration
-- `sync_onsets.png` — diagnostic plot showing detected clap onsets on audio envelopes (cropped around claps)
-- `stitched_videos.mp4` — a 2x2 grid preview (960x960) of all cameras for quick visual verification of sync
+- Trimmed MP4 files (same filenames as originals) - start-aligned and end-trimmed to identical duration
+- `sync_onsets.png` - diagnostic plot showing detected clap onsets on audio envelopes (cropped around claps)
+- `stitched_videos.mp4` - a 2x2 grid preview (960x960) of all cameras for quick visual verification of sync
 
 Original files are never modified. `trial.json` is updated with `synced: true` on success.
 
@@ -246,7 +247,7 @@ Original files are never modified. `trial.json` is updated with `synced: true` o
 | Consistency check | Dual-clap | If both claps detected in all cameras, clap 1 vs clap 2 offsets must agree within 1 frame |
 | Reference selection | Earliest onset | Camera with earliest clap 1 onset is the reference; others offset relative to it |
 | End alignment | Common duration | All files trimmed to the shortest remaining duration after start alignment |
-| Video trimming | ffmpeg stream copy | `-ss` + `-t` + `-c copy` — no re-encoding, lossless, fast |
+| Video trimming | ffmpeg stream copy | `-ss` + `-t` + `-c copy` - no re-encoding, lossless, fast |
 | Stitched preview | ffmpeg xstack filter | 4 inputs downscaled to 480x480, arranged in 2x2 grid, encoded with built-in mpeg4 codec |
 | Speed-of-sound compensation | Optional | If calibration is loaded and a sound source position is set, subtracts differential sound propagation delay (distance / 340 m/s) from measured offsets |
 
@@ -254,7 +255,7 @@ Original files are never modified. `trial.json` is updated with `synced: true` o
 
 When cameras are at different distances from the clap/speaker, sound arrives at each microphone at slightly different times (e.g. 3m difference = ~8.8ms). At high frame rates (100+ fps) this can cause sub-frame sync errors.
 
-To correct for this, set the sound source position in the **Calibration tab** (Sound Source Position section — X, Y, Z in metres in the calibration coordinate system). When a calibration with camera positions is loaded and a sound source position is set, the sync algorithm automatically subtracts the differential propagation delay from measured offsets. Both raw and compensated offsets are logged in the console.
+To correct for this, set the sound source position in the **Calibration tab** (Sound Source Position section - X, Y, Z in metres in the calibration coordinate system). When a calibration with camera positions is loaded and a sound source position is set, the sync algorithm automatically subtracts the differential propagation delay from measured offsets. Both raw and compensated offsets are logged in the console.
 
 The sound source position is saved in the calibration JSON file and restored when loading a calibration.
 
