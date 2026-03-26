@@ -47,7 +47,7 @@ class SessionTrialsList:
     """Scrollable list of trials for the current session with checkboxes and status."""
 
     def __init__(self, parent, project_manager, get_current_project,
-                 get_current_session, on_select=None):
+                 get_current_session, on_select=None, single_select=False):
         """
         Args:
             parent: tkinter parent widget
@@ -55,11 +55,13 @@ class SessionTrialsList:
             get_current_project: callable returning current project name or None
             get_current_session: callable returning current session name or None
             on_select: optional callback(trial_name) when a trial row is clicked
+            single_select: if True, only one row can be checked at a time
         """
         self.pm = project_manager
         self.get_current_project = get_current_project
         self.get_current_session = get_current_session
         self.on_select = on_select
+        self.single_select = single_select
 
         # State
         self._rows = []             # List of row dicts
@@ -298,7 +300,12 @@ class SessionTrialsList:
         if not row:
             return
 
-        if row["checked"]:
+        if self.single_select:
+            for r in self._rows:
+                if r is not row and r["checked"]:
+                    self._uncheck(r)
+            self._check(row)
+        elif row["checked"]:
             self._uncheck(row)
         else:
             self._check(row)

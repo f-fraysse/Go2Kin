@@ -88,6 +88,7 @@ class VisualisationTab:
             left, self.pm,
             self.get_current_project, self.get_current_session,
             on_select=self._on_trial_selected_from_list,
+            single_select=True,
         )
         self.trial_list.frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(5, 2))
 
