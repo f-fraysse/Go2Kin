@@ -22,11 +22,12 @@ _PIPELINE_STEPS = [
     "Kinematics",
 ]
 
-# Pipeline step status emoji
-_ICON_PENDING = "\u26AB"       # ⚫
-_ICON_PROCESSING = "\U0001F504"  # 🔄
-_ICON_COMPLETE = "\U0001F7E2"   # 🟢
-_ICON_FAILED = "\U0001F534"     # 🔴
+# Pipeline step status colors (colored ● circle, matching SessionTrialsList)
+_CIRCLE = "\u25CF"              # ●
+_COLOR_PENDING = "#9e9e9e"      # grey
+_COLOR_PROCESSING = "#1565C0"   # blue
+_COLOR_COMPLETE = "#2e7d32"     # green
+_COLOR_FAILED = "#c62828"       # red
 
 
 class ProcessingTab:
@@ -76,7 +77,7 @@ class ProcessingTab:
 
         self._step_circles = []
         for step_name in _PIPELINE_STEPS:
-            circle = tk.Label(steps_frame, text=_ICON_PENDING, font=("Segoe UI Emoji", 14))
+            circle = tk.Label(steps_frame, text=_CIRCLE, font=("Segoe UI", 14), fg=_COLOR_PENDING)
             circle.pack(side=tk.LEFT)
             label = ttk.Label(steps_frame, text=step_name, font=("Arial", 9))
             label.pack(side=tk.LEFT, padx=(2, 12))
@@ -112,12 +113,12 @@ class ProcessingTab:
     def _reset_steps(self):
         """Reset all step circles to ⚫ Pending."""
         for circle in self._step_circles:
-            circle.config(text=_ICON_PENDING)
+            circle.config(fg=_COLOR_PENDING)
 
-    def _set_step_state(self, index, icon):
-        """Set a step circle emoji (called via root.after from worker)."""
+    def _set_step_state(self, index, color):
+        """Set a step circle color (called via root.after from worker)."""
         if 0 <= index < len(self._step_circles):
-            self._step_circles[index].config(text=icon)
+            self._step_circles[index].config(fg=color)
 
     def _set_context(self, text):
         """Update context label (called via root.after from worker)."""
@@ -263,7 +264,7 @@ class ProcessingTab:
                     return False
 
                 # Mark current step as 🔄 Processing
-                self.root.after(0, self._set_step_state, step_idx, _ICON_PROCESSING)
+                self.root.after(0, self._set_step_state, step_idx, _COLOR_PROCESSING)
 
                 print(f"--- Starting {step_name} ---")
                 try:
@@ -272,11 +273,11 @@ class ProcessingTab:
                     print(f"ERROR in {step_name}: {e}")
                     logger.exception(f"Pose2Sim {step_name} failed")
                     # Mark failed step as 🔴 Failed
-                    self.root.after(0, self._set_step_state, step_idx, _ICON_FAILED)
+                    self.root.after(0, self._set_step_state, step_idx, _COLOR_FAILED)
                     return False
 
                 # Mark completed step as 🟢 Complete
-                self.root.after(0, self._set_step_state, step_idx, _ICON_COMPLETE)
+                self.root.after(0, self._set_step_state, step_idx, _COLOR_COMPLETE)
 
             print("Pipeline completed successfully")
             return True
