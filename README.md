@@ -286,3 +286,5 @@ Misc / small:
 - check how calibration age is set in top bar (should be date only)
 - bigger tabs / tab names, more visible in UI
 - remove scrollable left panel in Calibration (does not need to be scrollable anymore)
+- when connecting cameras get popup warning (camera checkbox not available) this is from deleting camera selection in Recording tab, need to remove checkbox set on connect as it does not exist anymore
+- fix trial time display on bottom bar that keeps running after stopping recording (extrinsic / set origin / record trial, intrinsic untested)
