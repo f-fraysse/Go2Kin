@@ -15,7 +15,7 @@ Tested on Hero 12 only but should work with any GoPro supporting the HTTP API (9
 **Built on**:
 - [Pose2Sim](https://github.com/perfanalytics/pose2sim) - pose estimation, triangulation, filtering, and kinematics (included as a submodule, run directly from the GUI)
 - [Caliscope](https://github.com/mprib/caliscope) - multi-camera calibration algorithms (charuco detection, intrinsic/extrinsic calibration, bundle adjustment), adapted and re-implemented
-- GoPro USB HTTP API (inspired by [goproUSB](https://github.com/drukasz/goproUSB))
+- [Open GoPro  API](https://gopro.github.io/OpenGoPro/http) over USB (inspired by [goproUSB](https://github.com/drukasz/goproUSB))
 
 Also includes: live camera preview, project/session/trial/participant management, and basic visualisation of pose estimation results.
 
@@ -87,13 +87,11 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
 
 7. Connect GoPro cameras via USB and power them on.
 
-8. Run the settings discovery tool once per camera model/firmware to generate a settings reference file:
+8. (Optional) Run the settings discovery tool once per camera model/firmware to generate a settings reference file:
    ```
    python tools/discover_camera_settings.py <camera_serial_number>
    ```
    This creates a reference file in `config/settings_references/` that maps setting IDs to human-readable names and available options.
-
-9. Configure camera serial numbers in `go2kin_config.json` (see step 6).
 
 ## Usage
 
