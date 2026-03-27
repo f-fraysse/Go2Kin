@@ -97,18 +97,18 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
 python code/go2kin.py
 ```
 
-The GUI has six tabs and a fixed bottom bar:
+The GUI has five tabs, a persistent top bar, and a fixed bottom bar:
+
+### Top Bar - Project, Session & Participant Selection
+Always visible above the tabs. Project, Session, and Participant dropdowns (with "+" buttons to create new ones) and a calibration status indicator (green = today, orange = older, red = none). A **Manage** button opens a dialog to view and create subjects (initials, age, sex, height, mass). Selections persist between sessions.
 
 ### Bottom Bar - Camera Status & Controls
 Always visible at the bottom of the window, regardless of which tab is selected. Shows per-camera connection status (green/red indicator), connect/disconnect toggle buttons, and battery status. Includes global Resolution and FPS dropdowns that apply to all connected cameras simultaneously. Camera serial numbers are read from `go2kin_config.json`.
 
-### Tab 1 - Project
-Select or create projects, sessions, and subjects. Your last selection is remembered between sessions. This tab organises all data under the configured `data_root`.
-
-### Tab 2 - Live Preview
+### Tab 1 - Live Preview
 Stream a live preview from one camera at a time for positioning and framing. Includes real-time digital zoom control (slider, +/-, text entry). Preview runs at 1080p/30fps/Linear regardless of recording settings.
 
-### Tab 3 - Calibration
+### Tab 2 - Calibration
 Multi-camera calibration using a printed charuco board. The calibration pipeline computes lens parameters (intrinsic) and camera positions/orientations (extrinsic) for 3D triangulation. Includes:
 
 - **Charuco Board Config** - set board dimensions, square size, ArUco dictionary. Save a printable board image.
@@ -118,10 +118,10 @@ Multi-camera calibration using a printed charuco board. The calibration pipeline
 - **Sound Source Position** - optional X/Y/Z coordinates (in metres) of the sync sound source (speaker or clap location). Used for speed-of-sound compensation during audio sync. Displayed as a black cross in the 3D viewer.
 - **Save/Load** - persist calibration to `config/calibration/calibration.json` (also auto-exports `camera_array_go2kin.toml` for Pose2Sim compatibility).
 
-### Tab 4 - Recording
-Select a participant and calibration file for the trial, enter a trial name, and start/stop synchronized recording across selected cameras. Files are downloaded from each camera and saved to the project directory (`[project]/sessions/[session]/[trial]/video/`). After download, audio synchronisation runs automatically - synced files appear in `video/synced/`. A session/trial tree view at the bottom shows all recorded trials. See **Video Synchronisation** below for details.
+### Tab 3 - Recording
+Enter a trial name and start/stop synchronized recording across selected cameras. Files are downloaded from each camera and saved to the project directory (`[project]/sessions/[session]/[trial]/video/`). After download, audio synchronisation runs automatically - synced files appear in `video/synced/`. A session/trial tree view at the bottom shows all recorded trials. See **Video Synchronisation** below for details.
 
-### Tab 5 - Processing
+### Tab 4 - Processing
 Run the [Pose2Sim](https://github.com/perfanalytics/pose2sim) pipeline on recorded trials. Select trials from a tree view (with session grouping and checkbox selection), then click **Process Selected** to run pose estimation, triangulation, filtering, and kinematics sequentially. Real-time log output streams in the GUI. Pose2Sim is included as a git submodule at `code/pose2sim/`.
 
 The processing pipeline:
@@ -132,14 +132,21 @@ The processing pipeline:
 
 Batch processing runs trials sequentially. A **Stop** button halts processing after the current step completes. See [`docs/pose2sim_integration.md`](docs/pose2sim_integration.md) for technical details.
 
-### Tab 6 - Visualisation (experimental)
-Slow and experimental. Plays back synced trial video with optional overlay of 2D pose keypoints (from per-camera detection) and 3D keypoints (triangulated markers reprojected via camera calibration). Useful for visually checking pose detection and triangulation quality. See [`docs/Visualisation.md`](docs/Visualisation.md) for technical details.
+### Tab 5 - Visualisation (experimental)
+Experimental. Plays back synced trial video with optional overlay of 2D pose keypoints (from per-camera detection) and 3D keypoints (triangulated markers reprojected via camera calibration). Useful for visually checking pose detection and triangulation quality. See [`docs/Visualisation.md`](docs/Visualisation.md) for technical details.
+
+**Known issues:** 
+- if participant is not detected at the start of the recording, the pose detection output does not line up with the video frames. Keypoints display will be off by the number of empty frames.
+- selecting a different trial sometimes does not load the video properly. Select another camera viewpoint to force refresh.
+- mp4 frame decoding / display is slow with cv2. "1 frame back" button, and using the scrubber, take time to respond.
 
 ### Attribution
 
 The calibration pipeline is adapted from [Caliscope](https://github.com/mprib/caliscope) by Mac Prible, licensed under BSD-2-Clause. Caliscope is a full-featured multi-camera calibration and motion capture application. Go2Kin extracts the core calibration algorithms (charuco detection, intrinsic/extrinsic calibration, bundle adjustment, coordinate alignment) and replaces the UI and persistence layers: PySide6 with tkinter, pyvista with matplotlib, TOML with JSON, and numba JIT with pure numpy. See [`code/calibration/CALIBRATION.md`](code/calibration/CALIBRATION.md) for full technical documentation and per-file provenance.
 
 ## Calibration Workflow
+
+from [Caliscope](https://github.com/mprib/caliscope)
 
 1. **Print the charuco board.** Configure board parameters in the Calibration tab and click **Save Board Image**. Print at the configured size (default: A1). Mount on a rigid flat surface. **Measure the actual printed square size** - printers don't always scale exactly. Highly recommend also printing the "inverted" image and making a double-sided board (see Caliscope).
 2. **Intrinsic calibration.** For each camera, record a video of the board from various angles and distances. In the Calibration tab, browse to each video and click **Calibrate**. Done infrequently - one need to be redone if changing camera Zoom, or camera model altogether. 
@@ -221,8 +228,8 @@ Even when starting all cameras simultaneously, each GoPro begins recording at a 
 ### How to use
 
 1. At the start of each recording, perform **two loud hand claps** within the first 3 seconds while all cameras are recording. Two claps enable a consistency check; a single clap also works but without cross-validation.
-2. After files are downloaded, synchronisation runs automatically. The progress log shows a step-by-step onset detection report with a summary table of offsets and consistency status per camera.
-3. If any camera shows status `WARN` (clap 1 and clap 2 offsets disagree by more than 1 frame), a red warning is displayed - consider re-recording with clearer claps.
+2. After files are downloaded, synchronisation runs automatically. The terminal log shows a step-by-step onset detection report with a summary table of offsets and consistency status per camera.
+3. If any camera shows status `WARN` (clap 1 and clap 2 offsets disagree by more than 1 frame), a warning is displayed - consider re-recording with clearer claps.
 
 ### Output
 
@@ -263,26 +270,21 @@ The sound source position is saved in the calibration JSON file and restored whe
 ## TODO
 
 Big ones:
-1. calibration: we need a way to save calibration "quality metrics" for extrinsics (ie RMSE etc). For intrinsics we already do this (RMSE). Need to figure out what to keep and where to store it. And define heuristics for extrinsic calib quality check.
+1. calibration: save calibration "quality metrics" for extrinsics (ie RMSE etc). For intrinsics we already do this. Need to figure out what to keep and where to store it. And define heuristics for extrinsic calib quality check.
 2. sync (audio based): criteria for "sync pass / good sync" is : all cameras detect 2 peaks AND all peaks to background noise ratio is above a set threshold (tbc) AND the 2 offsets computed from the 2 peaks are <10ms apart AND final offset for any camera is <300ms (check value). If all true = good sync / pass / green circle, delete raw unsynced videos and keep only synced ones. If not: keep raw videos, only trim end of videos so frame numbers match and keep those. Whether audio sync passes or fails we only keep 1 video per camera
-3. Currently functionality is: after recording ends, save raw videos to [trial data path]/video/ (with /synced/ subfolder) and create trial.json with calib file name and participant name. Then when Processing trial, create the staging folder (move videos, copy calib file, copy pose2sim config file). New functionality: staging folder is created after recording and sync ends. Move video files to the right place in staging folder and copy calibration file too. (see above for sync pass fail: if sync pass, copy synced and cropped files. If sync failed copy raw unsynced files cropped to same frame numbers)
+3. Currently functionality is: after recording ends, save raw videos to [trial data path]/video/ (with /synced/ subfolder) and create trial.json with calib file name and participant name. Then when Processing trial, create the staging folder (move videos, copy calib file, copy pose2sim config file). New functionality: create pose2sim staging folder after recording rather than at Processing step - move videos and calib file (if exists) right after recording, create trial JSON (already done then?) Safer to move calib file while we know it exists. (see above for sync pass fail: if sync pass, copy synced and cropped files. If sync failed copy raw unsynced files cropped to same frame numbers) Also avoids duplicate videos (some in [trial]/video, some in [trial]/processed/videos)
 4. user manual
 
-To fix:
-- check camera configs (double up between old system in config/ and go2kin_config in root)
-- audio sync: if quality checks fail: move the unsynced videos to processing staging folder (need to crop to same frames first? check pose2sim)
-- create pose2sim staging folder after recording rather than at Processing step - move videos and calib file (if exists) right after recording, create trial JSON (already done then?) Safer to move calib file while we know it exists. 
-
-
-Potential optimisations (low hanging fruit):
-- defer or remove the creation of "stitched preview" after sync (takes ~10sec) - we have clean audio sync now - maybe enforce need for 2 claps as this is how we check consistency
-
 Misc / small:
+- defer or remove the creation of "stitched preview" after sync (takes ~10sec) - after audio sync cleanup
+- check camera configs (double up between old system in config/ and go2kin_config in root)
 - keep extra info in JSON calib file (e.g. quality metrics - to be displayed in Calibration tab later)
 - visualisation tab: does not handle 2d / 3d keypoints having different number of frames than video (e.g. if person is not detected at start of recording) - need to investigate what pose2sim does with video frames that do not return a pose / if it discards some video frames in whole pipeline
 - make charuco board vertical offset editable by user (one/few times setup probably)
 - check how calibration age is set in top bar (should be date only)
-- bigger tabs / tab names, more visible in UI
+- bigger tabs / tab names, more visible in UI. All text bigger in UI?
 - remove scrollable left panel in Calibration (does not need to be scrollable anymore)
 - when connecting cameras get popup warning (camera checkbox not available) this is from deleting camera selection in Recording tab, need to remove checkbox set on connect as it does not exist anymore
 - fix trial time display on bottom bar that keeps running after stopping recording (extrinsic / set origin / record trial, intrinsic untested)
+- set camera datetime on camera connect
+- top bar "manage" button redundant with "+" butto nto add participant
