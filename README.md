@@ -4,7 +4,7 @@
 
 Integrated markerless motion capture pipeline from 2-4 USB-connected GoPro cameras. Single GUI for the full workflow - from camera setup to OpenSim output.
 
-**Pipeline**: Camera connection & control (OpenGoPro HTTP API) → multi-camera calibration (Caliscope) → recording → audio-based synchronisation → pose estimation, triangulation, filtering, interpolatio (Pose2Sim) → kinematics (openSim)
+**Pipeline**: Camera connection & control (OpenGoPro HTTP API) → multi-camera calibration (Caliscope) → recording → audio-based synchronisation → pose estimation, triangulation, filtering, interpolation (Pose2Sim, RTMlib) → kinematics (openSim)
 
 Designed mainly for indoor motion capture labs, to replicate a traditional marker-based workflow (e.g. Vicon Nexus). Opinionated choices like USB-connected cameras and audio sync via hand claps keep things simple and reliable in a lab setting.
 
