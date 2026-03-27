@@ -135,4 +135,4 @@ CV-CUDA, the library needed for GPU-accelerated image preprocessing (resize, war
 ### Other things to try
 
 - TensorRT backend instead of ONNX Runtime (typically 2-3x for these model architectures) - had explored, rtmdet / rtmpose use custom ops (see mmdeploy docs) and I wasn't able to convert to TRT successfully 
-- Batch inference (amortize GPU kernel launch overhead across multiple frames/persons) - use rtmdet / rtmpose with flexible input size to batch frames.
+- Batch inference (amortize GPU kernel launch overhead across multiple frames/persons) - use rtmdet / rtmpose with flexible input size to batch frames. **Tested** — see `tools/bench_batch_det.py` and `docs/batch_processing.md`. Result: batch=8 RTMDet-m gives only 1.37x compute speedup and 1.16x end-to-end. GPU is already well-saturated at batch=1, and CPU preprocessing becomes the bottleneck at larger batch sizes.

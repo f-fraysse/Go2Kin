@@ -112,6 +112,39 @@ Evidence:
 - `profiling_logs/` — CSV timing data for different detector/model combinations
 - `scripts/MAIN.py` — Main pipeline script supporting RTMDet, RT-DETR, YOLOX, RF-DETR via factory pattern
 
+## Frame Batching Benchmark Results
+
+Benchmarked RTMDet-m detection with varying batch sizes using `rtmdet-m-640-batch.onnx` (dynamic batch axes). All frames pre-loaded into memory to isolate decode time. See `tools/bench_batch_det.py`.
+
+**Hardware**: Windows 10, NVIDIA GPU with CUDA 12.4, 4K GoPro Hero 12 footage (3840x2160 @ 50fps, h.264)
+
+**Config**: RTMDet-m, ONNX Runtime + CUDA EP, 200 frames after 10-frame warmup
+
+### End-to-end (preprocess + compute + postprocess)
+
+| Batch | Frames | Batches | Preproc (ms) | Compute (ms) | Post (ms) | Total (ms) | ms/frame | FPS  | Speedup |
+|-------|--------|---------|-------------|-------------|----------|-----------|---------|------|---------|
+| 1     | 200    | 200     | 2509        | 2347        | 5        | 4861      | 24.31   | 41.1 | 1.00x   |
+| 2     | 200    | 100     | 2475        | 1903        | 4        | 4381      | 21.91   | 45.7 | 1.11x   |
+| 4     | 200    | 50      | 2489        | 1734        | 3        | 4226      | 21.13   | 47.3 | 1.15x   |
+| 8     | 200    | 25      | 2467        | 1712        | 3        | 4182      | 20.91   | 47.8 | 1.16x   |
+
+### Compute only (GPU inference time)
+
+| Batch | Compute/batch (ms) | Compute/frame (ms) | Speedup |
+|-------|-------------------|-------------------|---------|
+| 1     | 11.73             | 11.73             | 1.00x   |
+| 2     | 19.03             | 9.51              | 1.23x   |
+| 4     | 34.67             | 8.67              | 1.35x   |
+| 8     | 68.50             | 8.56              | 1.37x   |
+
+### Analysis
+
+- **GPU compute scales sublinearly**: batch=8 gives only 1.37x compute speedup (ideal would be 8x). The GPU is already fairly saturated at batch=1 for RTMDet-m — the model is large enough that GPU ALUs are well-utilized with a single frame.
+- **Diminishing returns**: batch=4 and batch=8 are nearly identical in compute/frame (8.67 vs 8.56ms). Batching amortizes kernel launch overhead but the gains plateau fast.
+- **Preprocessing becomes the bottleneck**: CPU preprocessing (`cv2.resize` + normalize) is ~2.5s constant regardless of batch size. At batch=8, preprocessing is 59% of total time vs 52% at batch=1.
+- **End-to-end: batch=8 is only 1.16x faster than batch=1**. Modest gain for the implementation complexity.
+
 ## Implementation Approach
 
 ### Step 1: Switch detector to RTMDet (batch-capable ONNX)
