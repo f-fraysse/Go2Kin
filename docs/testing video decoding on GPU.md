@@ -128,11 +128,11 @@ not worth the trouble for pose2sim pipeline - small overall gains (10-20% on pos
 
 ### Keeping frames on GPU for the full pipeline
 
-Not worth either. Too complex and, as seen above, those steps take little time anyway.
+Not worth either. Too complex (see below), and as seen above, those steps take little time anyway.
 
 CV-CUDA, the library needed for GPU-accelerated image preprocessing (resize, warpAffine, normalize), only supports Linux/WSL2 — no native Windows builds. It was also not validated whether CV-CUDA and ONNX Runtime could share GPU memory without additional copies.
 
 ### Other things to try
 
-- TensorRT backend instead of ONNX Runtime (typically 2-3x for these model architectures) - had explored, rtmdet / rtmpose use custom ops (see mmdeploy docs) and I wasn't able to convert to TRT successfully 
-- Batch inference (amortize GPU kernel launch overhead across multiple frames/persons) - use rtmdet / rtmpose with flexible input size to batch frames. **Tested** — see `tools/bench_batch_det.py` and `docs/batch_processing.md`. Result: batch=8 RTMDet-m gives only 1.37x compute speedup and 1.16x end-to-end. GPU is already well-saturated at batch=1, and CPU preprocessing becomes the bottleneck at larger batch sizes.
+- TensorRT backend instead of ONNX Runtime (typically 2-3x for these model architectures) - had explored, rtmdet / rtmpose use custom ops (see mmdeploy docs) and I wasn't able to run on TRT successfully 
+- Batch inference (amortize GPU kernel launch overhead across multiple frames/persons) - use rtmdet / rtmpose with flexible input size to batch frames. **Tested** — see `tools/bench_batch_det.py` and `docs/batch_processing.md`. Result: batch=8 RTMDet-m gives only 1.37x compute speedup and 1.16x end-to-end.
