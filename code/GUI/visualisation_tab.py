@@ -64,6 +64,11 @@ class VisualisationTab:
         self._cam_rvec = None        # Rodrigues rotation vector
         self._cam_tvec = None        # translation vector
 
+        # IK joint centres overlay state
+        self._kin_overlay = tk.BooleanVar(value=False)
+        self._kin_body_positions = None  # np.ndarray (n_frames, n_bodies, 3) or None
+        self._kin_times = None           # np.ndarray of motion timestamps
+
         # Build UI
         self.frame = ttk.Frame(notebook)
         notebook.add(self.frame, text="Visualisation")
@@ -119,6 +124,17 @@ class VisualisationTab:
             overlay_frame, text="3D kpts", variable=self._trc_overlay,
             command=self._on_overlay_toggle)
         self._trc_check.pack(anchor=tk.W)
+
+        self._kin_check = ttk.Checkbutton(
+            overlay_frame, text="IK joint centres", variable=self._kin_overlay,
+            command=self._on_overlay_toggle)
+        self._kin_check.pack(anchor=tk.W)
+
+        # OpenSim viewer button
+        self._osim_viewer_btn = ttk.Button(
+            overlay_frame, text="View in OpenSim",
+            command=self._launch_opensim_viewer, state=tk.DISABLED)
+        self._osim_viewer_btn.pack(anchor=tk.W, pady=(6, 0))
 
         # Info
         info_frame = ttk.LabelFrame(left, text="Info", padding=8)
@@ -276,9 +292,10 @@ class VisualisationTab:
         self.step_back_btn.configure(state=tk.NORMAL)
         self.step_fwd_btn.configure(state=tk.NORMAL)
 
-        # Detect pose data (2D and 3D)
+        # Detect pose data (2D and 3D) and kinematics
         self._detect_pose_data()
         self._detect_trc_data()
+        self._detect_kinematics_data()
 
         # Update info
         self._update_info()
@@ -303,6 +320,11 @@ class VisualisationTab:
         self._cam_dist = None
         self._cam_rvec = None
         self._cam_tvec = None
+        self._kin_osim_path = None
+        self._kin_mot_path = None
+        self._kin_body_positions = None
+        self._kin_times = None
+        self._osim_viewer_btn.configure(state=tk.DISABLED, text="View in OpenSim")
         self.play_btn.configure(state=tk.DISABLED)
         self.rewind_btn.configure(state=tk.DISABLED)
         self.step_back_btn.configure(state=tk.DISABLED)
@@ -343,6 +365,10 @@ class VisualisationTab:
         # 3D TRC overlay
         if self._trc_overlay.get() and self._trc_data is not None:
             frame = self._overlay_trc(frame, frame_idx)
+
+        # IK joint centres overlay
+        if self._kin_overlay.get() and self._kin_body_positions is not None:
+            frame = self._overlay_kin(frame, frame_idx)
 
         # BGR -> RGB, resize with OpenCV (much faster than PIL LANCZOS), then to PhotoImage
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -860,3 +886,173 @@ class VisualisationTab:
                     cv2.circle(img, (int(x[i]), int(y[i])),
                                radius, colors[i][::-1].tolist(), -1)
         return img
+
+    # =========================================================================
+    # OpenSim kinematics viewer
+    # =========================================================================
+
+    def _detect_kinematics_data(self):
+        """Check if kinematics output (.osim + .mot) exists for the current trial."""
+        self._kin_osim_path = None
+        self._kin_mot_path = None
+        self._kin_body_positions = None
+        self._kin_times = None
+        self._osim_viewer_btn.configure(state=tk.DISABLED)
+
+        if not all([self.get_current_project(), self.get_current_session(),
+                    self._current_trial]):
+            return
+
+        processed = self.pm.get_trial_processed_path(
+            self.get_current_project(), self.get_current_session(),
+            self._current_trial)
+        kin_dir = processed / "kinematics"
+        if not kin_dir.exists():
+            return
+
+        osim_files = sorted(kin_dir.glob("*.osim"))
+        mot_files = sorted(kin_dir.glob("*.mot"))
+        if osim_files and mot_files:
+            self._kin_osim_path = osim_files[0]
+            self._kin_mot_path = mot_files[0]
+            self._osim_viewer_btn.configure(state=tk.NORMAL)
+            self._precompute_kin_data(osim_files[0], mot_files[0])
+
+    def _launch_opensim_viewer(self):
+        """Launch OpenSim simbody-visualizer in a separate window (background thread)."""
+        import threading
+
+        if not self._kin_osim_path or not self._kin_mot_path:
+            logger.warning("No kinematics files found for this trial")
+            return
+
+        try:
+            import opensim
+        except ImportError:
+            logger.error("OpenSim Python package not installed")
+            return
+
+        osim_path = str(self._kin_osim_path)
+        mot_path = str(self._kin_mot_path)
+
+        self._osim_viewer_btn.configure(state=tk.DISABLED, text="Visualizer Open...")
+
+        def run():
+            try:
+                # Add geometry search path
+                osim_setup_dir = Path(sys.modules['Pose2Sim'].__file__).resolve().parent / 'OpenSim_Setup'
+                opensim.ModelVisualizer.addDirToGeometrySearchPaths(str(osim_setup_dir / 'Geometry'))
+
+                model = opensim.Model(osim_path)
+                model.initSystem()
+                motion = opensim.TimeSeriesTable(mot_path)
+                opensim.VisualizerUtilities.showMotion(model, motion)
+            except Exception as e:
+                logger.error(f"OpenSim visualizer error: {e}")
+            finally:
+                self.root.after(0, lambda: self._osim_viewer_btn.configure(
+                    state=tk.NORMAL, text="View in OpenSim"))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _precompute_kin_data(self, osim_path, mot_path):
+        """Pre-compute body centre positions from .osim + .mot for overlay.
+
+        Extracts each body's ground-frame position at every motion frame
+        using the OpenSim API, following the pattern from bodykin_from_mot_osim.py.
+        Runs in a background thread to avoid blocking the GUI.
+        """
+        import threading
+
+        try:
+            import opensim
+        except ImportError:
+            logger.warning("OpenSim not available, IK overlay disabled")
+            return
+
+        osim_str = str(osim_path)
+        mot_str = str(mot_path)
+
+        def run():
+            try:
+                model = opensim.Model(osim_str)
+                motion_data = opensim.TimeSeriesTable(mot_str)
+
+                # Coordinate names and data
+                coord_names = list(motion_data.getColumnLabels())
+                times = np.array(motion_data.getIndependentColumn())
+                motion_np = motion_data.getMatrix().to_numpy()
+
+                # Convert degrees to radians for rotational coordinates
+                model_coord_set = model.getCoordinateSet()
+                in_degrees = motion_data.getTableMetaDataAsString('inDegrees') == 'yes'
+                if in_degrees:
+                    for i, name in enumerate(coord_names):
+                        if model_coord_set.get(name).getMotionType() == 1:  # rotation
+                            motion_np[:, i] = np.deg2rad(motion_np[:, i])
+
+                # Get body list
+                body_set = model.getBodySet()
+                bodies = [body_set.get(i) for i in range(body_set.getSize())]
+
+                # Extract positions per frame
+                state = model.initSystem()
+                n_frames = motion_data.getNumRows()
+                n_bodies = len(bodies)
+                positions = np.zeros((n_frames, n_bodies, 3))
+
+                for n in range(n_frames):
+                    for c, coord in enumerate(coord_names):
+                        try:
+                            model.getCoordinateSet().get(coord).setValue(
+                                state, motion_np[n, c], enforceContraints=False)
+                        except Exception:
+                            pass
+                    model.realizePosition(state)
+
+                    for b_idx, body in enumerate(bodies):
+                        positions[n, b_idx] = body.getTransformInGround(state).T().to_numpy()
+
+                # Convert Y-up (OpenSim) → Z-up (Go2Kin) — same as TRC overlay
+                positions = positions[:, :, [2, 0, 1]]
+
+                self._kin_body_positions = positions
+                self._kin_times = times
+                logger.info(f"IK overlay: pre-computed {n_frames} frames, {n_bodies} bodies")
+            except Exception as e:
+                logger.error(f"IK overlay pre-computation failed: {e}")
+                self._kin_body_positions = None
+                self._kin_times = None
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _overlay_kin(self, frame, frame_idx):
+        """Project IK body centres onto the frame using camera calibration."""
+        if (self._kin_body_positions is None or self._cam_K is None
+                or self._kin_times is None):
+            return frame
+
+        try:
+            # Map video frame to motion frame via timestamp
+            video_time = frame_idx / self._fps
+            mot_idx = int(np.searchsorted(self._kin_times, video_time, side='right') - 1)
+            mot_idx = max(0, min(mot_idx, len(self._kin_body_positions) - 1))
+
+            bodies_3d = self._kin_body_positions[mot_idx]  # (n_bodies, 3)
+
+            # Project to 2D
+            pts_3d = bodies_3d.reshape(-1, 1, 3)
+            pts_2d, _ = cv2.projectPoints(
+                pts_3d, self._cam_rvec, self._cam_tvec,
+                self._cam_K, self._cam_dist)
+            pts_2d = pts_2d.reshape(-1, 2)
+
+            # Draw filled circles at each body centre — bone color (227, 218, 201) as BGR
+            color = (201, 218, 227)
+            for pt in pts_2d:
+                if not (np.isnan(pt[0]) or np.isnan(pt[1])):
+                    cv2.circle(frame, (int(pt[0]), int(pt[1])), 12, color, -1)
+        except Exception:
+            pass
+
+        return frame

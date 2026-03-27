@@ -11,7 +11,7 @@ The Visualisation tab (`code/GUI/visualisation_tab.py`) is a read-only video pla
 **Left panel** (~250px):
 - Project / Session dropdowns, Trial listbox (single-select)
 - Camera buttons (GP1–GP4) — disabled if no video for that camera
-- Overlay toggles: "2D kpts" and "3D kpts"
+- Overlay toggles: "2D kpts", "3D kpts", and "IK joint centres", plus "View in OpenSim" button
 - Info panel (subject, FPS, resolution, data availability)
 
 **Right panel**:
@@ -83,6 +83,25 @@ The 3D overlay uses dedicated `_draw_skel_3d` and `_draw_keypts_3d` methods with
 | Line thickness | 2 | 4 |
 | Keypoint radius | 6 | 12 |
 | Color scheme | Same | Same (right=orange, left=green, center=blue; RdYlGn for confidence) |
+
+## IK Joint Centres Overlay ("IK joint centres")
+
+Projects OpenSim inverse kinematics body centre positions onto the video as filled circles, synchronized with playback. Shows where the model's joint centres are after IK fitting, useful for assessing IK quality against the video.
+
+- **Source**: `.osim` (scaled model) and `.mot` (joint angles) from `[trial]/processed/kinematics/`
+- **Pre-computation**: On trial load, a background thread extracts body centre positions for all frames using the OpenSim API (`body.getTransformInGround(state)`), following the pattern from `Pose2Sim/Utilities/bodykin_from_mot_osim.py`. Positions are converted from OpenSim Y-up to Go2Kin Z-up (same `[2, 0, 1]` reorder as TRC overlay).
+- **Rendering**: Projects 3D body centres to 2D with `cv2.projectPoints()` using the same camera calibration as the TRC overlay. Draws filled circles (radius 12, bone color RGB 227/218/201).
+- **Frame sync**: Maps video frame to motion frame via timestamp (`frame_idx / fps` → nearest motion time via `np.searchsorted`).
+- **Note**: Currently displays all model bodies. May need filtering to show only relevant joint centres.
+
+## OpenSim Visualizer ("View in OpenSim")
+
+Launches the OpenSim simbody-visualizer in a separate popup window to play back the IK result with the full 3D model.
+
+- **Source**: `.osim` (scaled model) and `.mot` (joint angles) from `[trial]/processed/kinematics/`
+- **Button**: "View in OpenSim" in the Overlay panel, enabled when kinematics output exists for the selected trial
+- **Mechanism**: Calls `opensim.VisualizerUtilities.showMotion(model, motion)` in a background thread. The simbody-visualizer opens as a separate OpenGL window with playback controls. The button shows "Visualizer Open..." while active and re-enables when the window is closed.
+- **Geometry**: Model meshes are loaded from `Pose2Sim/OpenSim_Setup/Geometry/`
 
 ## Key Files
 
