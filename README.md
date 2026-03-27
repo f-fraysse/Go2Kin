@@ -2,15 +2,15 @@
 
 **WORK IN PROGRESS**
 
-Integrated markerless motion capture pipeline for biomechanics research. Provides a single tkinter GUI for the full workflow - from camera setup to OpenSim output.
+Integrated markerless motion capture pipeline with 2-4 USB-connected GoPro cameras. Single GUI for the full workflow - from camera setup to OpenSim output.
 
-**Pipeline**: Camera connection & control → multi-camera calibration → recording → audio-based synchronisation → pose estimation, triangulation, filtering, interpolation → kinematics
+**Pipeline**: Camera connection & control (OpenGoPro HTTP API) → multi-camera calibration (Caliscope) → recording → audio-based synchronisation → pose estimation, triangulation, filtering, interpolatio (Pose2Sim) → kinematics (openSim)
 
-Designed for indoor motion capture labs where you need to record many repeated trials across sessions and participants - similar to a traditional marker-based workflow (e.g. Vicon Nexus), but markerless. Opinionated choices like USB-connected cameras and audio sync via hand claps keep things simple and reliable in a lab setting.
+Designed mainly for indoor motion capture labs, to replicate a traditional marker-based workflow (e.g. Vicon Nexus). Opinionated choices like USB-connected cameras and audio sync via hand claps keep things simple and reliable in a lab setting.
 
-**Hardware**: Up to 4 GoPro Hero 12 Black cameras connected via USB to a single PC. 
+**Hardware**: Up to 4 GoPro cameras connected via USB to a single PC.
 
-Tested on Hero 12 only but should work with any GoPro supporting the HTTP API (9+).
+developed and tested with Hero 12. Should work with any GoPro supporting the HTTP API (9+).
 
 **Built on**:
 - [Pose2Sim](https://github.com/perfanalytics/pose2sim) - pose estimation, triangulation, filtering, and kinematics (included as a submodule, run directly from the GUI)
