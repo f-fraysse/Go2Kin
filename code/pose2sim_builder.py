@@ -1,15 +1,14 @@
 """
-Build Pose2Sim project directories from Go2Kin trials and run the pipeline.
+Build Pose2Sim project directories from Go2Kin trials.
 
 Creates the expected Pose2Sim folder structure from Go2Kin's project/session/trial
-hierarchy, then runs pose estimation, triangulation, filtering, and kinematics.
+hierarchy (calibration, videos, Config.toml).
 """
 
 import logging
 import os
 import re
 import shutil
-import sys
 
 
 from pathlib import Path
@@ -138,59 +137,3 @@ def build_pose2sim_project(project_manager, project, session, trial_name):
     log("Generated Config.toml")
 
     return processed_path
-
-
-def run_pose2sim_pipeline(processed_path, stop_event=None):
-    """Run the Pose2Sim pipeline on a prepared directory.
-
-    Args:
-        processed_path: Path to the processed/ directory with Config.toml
-        stop_event: Optional threading.Event to request stop between steps
-
-    Returns:
-        True on success, False on failure or stop
-    """
-    original_cwd = os.getcwd()
-
-    try:
-        os.chdir(str(processed_path))
-
-        # Import Pose2Sim (submodule at code/pose2sim/)
-        pose2sim_path = str(Path(__file__).parent / "pose2sim")
-        if pose2sim_path not in sys.path:
-            sys.path.insert(0, pose2sim_path)
-
-        from Pose2Sim import Pose2Sim as P2S
-
-        # Run pipeline steps individually for stop-event granularity
-        steps = [
-            ("Calibration", P2S.calibration),
-            ("Pose Estimation", P2S.poseEstimation),
-            ("Triangulation", P2S.triangulation),
-            ("Filtering", P2S.filtering),
-            ("Kinematics", P2S.kinematics),
-        ]
-
-        for step_name, step_fn in steps:
-            if stop_event and stop_event.is_set():
-                print(f"Pipeline stopped before {step_name}")
-                return False
-
-            print(f"--- Starting {step_name} ---")
-            try:
-                step_fn()
-            except Exception as e:
-                print(f"ERROR in {step_name}: {e}")
-                logger.exception(f"Pose2Sim {step_name} failed")
-                return False
-
-        print("Pipeline completed successfully")
-        return True
-
-    except Exception as e:
-        print(f"Pipeline error: {e}")
-        logger.exception("Pose2Sim pipeline failed")
-        return False
-
-    finally:
-        os.chdir(original_cwd)

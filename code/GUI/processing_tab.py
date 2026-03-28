@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 _PIPELINE_STEPS = [
     "Calibration",
     "Pose Estimation",
+    # "Person Association",
     "Triangulation",
     "Filtering",
     "Kinematics",
@@ -253,6 +254,7 @@ class ProcessingTab:
             steps = [
                 ("Calibration", P2S.calibration),
                 ("Pose Estimation", P2S.poseEstimation),
+                # ("Person Association", P2S.personAssociation),
                 ("Triangulation", P2S.triangulation),
                 ("Filtering", P2S.filtering),
                 ("Kinematics", P2S.kinematics),
