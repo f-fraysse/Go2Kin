@@ -3,30 +3,30 @@
 ###############################################################################
 
 
-# Configure your project parameters here. 
-# 
+# Configure your project parameters here.
+#
 # IMPORTANT:
-# If a parameter is not found here, Pose2Sim will look for its value in the 
-# Config.toml file of the level above. This way, you can set global 
+# If a parameter is not found here, Pose2Sim will look for its value in the
+# Config.toml file of the level above. This way, you can set global
 # instructions for the Session and alter them for specific Participants or Trials.
 #
-# If you wish to overwrite a parameter for a specific trial or participant,  
+# If you wish to overwrite a parameter for a specific trial or participant,
 # edit its Config.toml file by uncommenting its key (e.g., [project])
-# and editing its value (e.g., frame_range = [10,300]). Or else, uncomment 
+# and editing its value (e.g., frame_range = [10,300]). Or else, uncomment
 # [filtering.butterworth] and set cut_off_frequency = 10, etc.
 
 
 
 [project]
 multi_person = false # true for trials with multiple participants. If false, only the person with lowest reprojection error is analyzed.
-participant_height = '1.69' # 'auto', float (eg 1.72), or list of floats (eg [1.72, 1.40])  # meters  # Only used for marker augmentation 
+participant_height = '1.69' # 'auto', float (eg 1.72), or list of floats (eg [1.72, 1.40])  # meters  # Only used for marker augmentation
 participant_mass = 64.0             # float (eg 70.0), or list of floats (eg [70.0, 63.5])  # kg      # Only used for marker augmentation and scaling, no impact on results unless you need to further compute forces
 
-frame_rate = 'auto' # fps # int or 'auto'. If 'auto', finds from video (or defaults to 60 fps if you work with images) 
+frame_rate = 'auto' # fps # int or 'auto'. If 'auto', finds from video (or defaults to 60 fps if you work with images)
 frame_range = 'all' # 'auto', 'all', or range like [10,300]. If 'auto', will trim around the frames with low reprojection error (useful if a person enters/exits the scene)
                      # If cameras are not synchronized, designates the frame range of the camera with the shortest recording time
                      # N.B.: If you want a time range instead, use frame_range = time_range * frame_rate
-                     # For example if you want to analyze from 0.1 to 2 seconds with a 60 fps frame rate, 
+                     # For example if you want to analyze from 0.1 to 2 seconds with a 60 fps frame rate,
                      # frame_range = [0.1, 2.0]*frame_rate = [6, 120]
 
 exclude_from_batch = [] # List of trials to be excluded from batch analysis, ['<participant_dir/trial_dir>', 'etc'].
@@ -34,15 +34,13 @@ exclude_from_batch = [] # List of trials to be excluded from batch analysis, ['<
 
 
 [pose]
-vid_img_extension = 'mp4' # any video or image extension
-
-pose_model = 'Body_with_feet'  #With RTMLib: 
-                         # - Body_with_feet (default HALPE_26 model), 
-                         # - Whole_body_wrist (COCO_133_WRIST: body + feet + 2 hand_points), 
-                         # - Whole_body (COCO_133: body + feet + hands), 
+pose_model = 'Body_with_feet'  #With RTMLib:
+                         # - Body_with_feet (default HALPE_26 model),
+                         # - Whole_body_wrist (COCO_133_WRIST: body + feet + 2 hand_points),
+                         # - Whole_body (COCO_133: body + feet + hands),
                          # - Body (COCO_17). Marker augmentation won't work, Kinematic analysis will,
-                         # - Hand (HAND_21, only lightweight mode. Potentially better results with Whole_body), 
-                         # - Face (FACE_106), 
+                         # - Hand (HAND_21, only lightweight mode. Potentially better results with Whole_body),
+                         # - Face (FACE_106),
                          # - Animal (ANIMAL2D_17)
                          # /!\ Only RTMPose is natively embeded in Pose2Sim. For all other pose estimation methods, you will have to run them yourself, and then refer to the documentation to convert the output files if needed
                          # /!\ For Face and Animal, use mode="""{dictionary}""", and find the corresponding .onnx model there https://github.com/open-mmlab/mmpose/tree/main/projects/rtmpose
@@ -52,11 +50,11 @@ pose_model = 'Body_with_feet'  #With RTMLib:
                          #With alphapose: HALPE_26, HALPE_68, HALPE_136, COCO_133
                          #With deeplabcut: CUSTOM. See example at the end of the file
 
-mode = 'balanced' # 'lightweight', 'balanced', 'performance', 
+mode = 'balanced' # 'lightweight', 'balanced', 'performance',
                   # or """{dictionary}""" (see below)
-# A dictionary (WITHIN THREE DOUBLE QUOTES) allows you to manually select the person detection (if top_down approach) and/or pose estimation models (see https://github.com/Tau-J/rtmlib). 
+# A dictionary (WITHIN THREE DOUBLE QUOTES) allows you to manually select the person detection (if top_down approach) and/or pose estimation models (see https://github.com/Tau-J/rtmlib).
 # Models can be local paths or URLs.
-# Make sure the input_sizes are within square brackets, and that they are in the opposite order from the one in the model path (for example, it would be [192,256] for rtmpose-m_simcc-body7_pt-body7-halpe26_700e-256x192-4d3e73dd_20230605.zip). 
+# Make sure the input_sizes are within square brackets, and that they are in the opposite order from the one in the model path (for example, it would be [192,256] for rtmpose-m_simcc-body7_pt-body7-halpe26_700e-256x192-4d3e73dd_20230605.zip).
 # If your pose_model is not provided in skeletons.py, you may have to create your own one (see example at the end of the file).
 # Example, equivalent to mode='balanced':
 # mode = """{'det_class':'YOLOX',
@@ -66,8 +64,8 @@ mode = 'balanced' # 'lightweight', 'balanced', 'performance',
 #          'pose_model':'https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/rtmpose-m_simcc-body7_pt-body7-halpe26_700e-256x192-4d3e73dd_20230605.zip',
 #          'pose_input_size':[192,256]}"""
 # Example with one-stage RTMO model (Requires pose_model = 'Body'):
-# mode = """{'pose_class':'RTMO', 
-#          'pose_model':'https://download.openmmlab.com/mmpose/v1/projects/rtmo/onnx_sdk/rtmo-m_16xb16-600e_body7-640x640-39e78cc4_20231211.zip', 
+# mode = """{'pose_class':'RTMO',
+#          'pose_model':'https://download.openmmlab.com/mmpose/v1/projects/rtmo/onnx_sdk/rtmo-m_16xb16-600e_body7-640x640-39e78cc4_20231211.zip',
 #          'pose_input_size':[640, 640]}"""
 # Example with animal pose estimation:
 # mode = """{'pose_class':'RTMPose',
@@ -75,30 +73,28 @@ mode = 'balanced' # 'lightweight', 'balanced', 'performance',
 #          'pose_input_size':[256,256]}"""
 
 
-det_frequency = 4 # Run person detection only every N frames, and inbetween track previously detected bounding boxes (pose estimation is still run on all frames). 
-                  # Equal to or greater than 1, can be as high as you want in simple uncrowded cases. Much faster, but might be less accurate. 
+det_frequency = 4 # Run person detection only every N frames, and inbetween track previously detected bounding boxes (pose estimation is still run on all frames).
+                  # Equal to or greater than 1, can be as high as you want in simple uncrowded cases. Much faster, but might be less accurate.
 device = 'CUDA' # 'auto', 'CPU', 'CUDA', 'MPS', 'ROCM'
 backend = 'onnxruntime' # 'auto', 'openvino', 'onnxruntime', 'opencv'
-parallel_pose = 'auto' # 'off' = sequential (default), 'auto' = one thread per video,
-                                # or an integer (e.g., 2) to specify the number of threads.
-                                # Each thread loads its own ONNX model into VRAM (~0.5-2GB each).
-                                # Higher thread counts (4+) need good CPU, GPU, and VRAM.
-                                # Try with 2 first, monitor CPU/GPU utilisation, then increase.
-                                # Falls back to sequential if display_detection is true or device is not CUDA.
+parallel_workers_pose = 'auto' # 'auto', int, or false # One worker per video, using GPU if available
+                               # Requires display_detection = false, otherwise falls back to sequential (ie parallel_workers_pose = 1/false).
+                               # Each worker loads its own ONNX model into VRAM (~0.5-2GB each).
+                               # Higher counts (4+) need good CPU, GPU, and VRAM.
+                               # Try with 2 first, monitor CPU/GPU utilisation, then increase.
+display_detection = false # Real-time display of the videos with pose estimation. Set to false for parallel processing.
+overwrite_pose = true # Set to false if you don't want to recalculate pose estimation when it has already been done
+save_video = 'none' # 'to_video' or 'to_images', 'none', or ['to_video', 'to_images']
+output_format = 'openpose' # 'openpose', 'mmpose', 'deeplabcut', 'none' or a list of them # /!\ only 'openpose' is supported for now
 
+average_likelihood_threshold_pose = 0.5 # Detections dropped if their average keypoint likelihood is below average_likelihood_threshold_pose
 tracking_mode = 'sports2d' # 'none', 'sports2d' or 'deepsort'. 'deepsort' is slower but more robust in difficult configurations
 max_distance_px = 100  # px # If a person is detected further than max_distance from its position on the previous frame, it will be considered as a new one
 deepsort_params = """{'max_age':30, 'n_init':3, 'nms_max_overlap':0.8, 'max_cosine_distance':0.3, 'nn_budget':200, 'max_iou_distance':0.8}""" # """{dictionary between 3 double quotes}"""
                   # More robust in crowded scenes but Can be tricky to parametrize. More information there: https://github.com/levan92/deep_sort_realtime/blob/master/deep_sort_realtime/deepsort_tracker.py#L51
                   # Note: For faster and more robust tracking, use {'embedder_gpu': True, embedder':'torchreid'}, which uses the GPU and runs osnet_ain_x1_0 by default. requires `pip install torch torchvision torchreid gdown tensorboard`
-
-handle_LR_swap = false # Might be useful if cameras film from the sagittal plane and the right and left sides are hard to differenciate to your eye.
-undistort_points = false # Better if distorted image (parallel lines curvy on the edge or at least one param > 10^-2), but unnecessary (and slightly slower) if distortions are low
-
-display_detection = false # Real-time display of the videos with pose estimation
-overwrite_pose = true # Set to false if you don't want to recalculate pose estimation when it has already been done
-save_video = 'none' # 'to_video' or 'to_images', 'none', or ['to_video', 'to_images']
-output_format = 'openpose' # 'openpose', 'mmpose', 'deeplabcut', 'none' or a list of them # /!\ only 'openpose' is supported for now
+handle_LR_swap = false # Not implemented yet. Might be useful if cameras film from the sagittal plane and the right and left sides are hard to differenciate to your eye.
+undistort_points = false # Not implemented yet. Better if distorted image (parallel lines curvy on the edge or at least one param > 10^-2), but unnecessary (and slightly slower) if distortions are low
 
 
 [synchronization]
@@ -110,7 +106,7 @@ keypoints_to_consider = 'all' # 'all' if all points should be considered, for ex
 approx_time_maxspeed = 'auto' # 'auto' if you want to consider the whole capture (default, slower if long sequences)
                            # [10.0, 2.0, 8.0, 11.0] list of times (seconds) if you want to specify the approximate time of a clear vertical event for each camera
 time_range_around_maxspeed = 2.0 # Search for best correlation in the range [approx_time_maxspeed - time_range_around_maxspeed, approx_time_maxspeed  + time_range_around_maxspeed]
-likelihood_threshold = 0.4 # Keypoints whose likelihood is below likelihood_threshold are filtered out
+likelihood_threshold_synchronization = 0.4 # Keypoints whose likelihood is below likelihood_threshold are filtered out
 filter_cutoff = 6 # time series are smoothed to get coherent time-lagged correlation
 filter_order = 4
 
@@ -131,22 +127,22 @@ calibration_type = 'convert' # 'convert' or 'calculate'
       [calibration.convert.biocv]      # No parameter needed
       [calibration.convert.anipose]    # No parameter needed
       [calibration.convert.freemocap]  # No parameter needed
-  
 
-   [calibration.calculate] 
+
+   [calibration.calculate]
       save_debug_images = true       # Save images with clicked points (and their reprojections for extrinsic calibration)
       # Camera properties, theoretically need to be calculated only once in a camera lifetime
       [calibration.calculate.intrinsics]
       overwrite_intrinsics = true # set to false if you don't want to recalculate intrinsic parameters
       intrinsics_extension = 'MP4' # any video or image extension
       extract_every_N_sec = 1 # if video, extract frames every N seconds (can be <1 )
-      intrinsics_corners_nb = [4,5] 
+      intrinsics_corners_nb = [4,5]
       intrinsics_square_size = 35 # mm
       show_detection_intrinsics = true # true or false (lowercase)
 
       # Camera placements, need to be done before every session
       [calibration.calculate.extrinsics]
-      calculate_extrinsics = true # true or false (lowercase) 
+      calculate_extrinsics = true # true or false (lowercase)
       extrinsics_method = 'scene' # 'board', 'scene', 'keypoints'
       extrinsics_extension = 'MP4' # any video or image extension
       # 'board' should be large enough to be detected when laid on the floor. Not recommended.
@@ -161,18 +157,18 @@ calibration_type = 'convert' # 'convert' or 'calculate'
          extrinsics_square_size = 60 # mm # [h,w] if square is actually a rectangle
 
          [calibration.calculate.extrinsics.scene]
-         # list of 3D coordinates to be manually labelled on images. Can also be a 2 dimensional plane. 
+         # list of 3D coordinates to be manually labelled on images. Can also be a 2 dimensional plane.
          # in m -> unlike for intrinsics, NOT in mm!
          # [X,Y,Z], which becomes [Z,X,Y] in the TRC reference frame, and [-Y,X,Z] in the Blender one
-         object_coords_3d =   [[0.0, 0.0,  0.0], 
-                              [0.605, 0.0,  0.0], 
-                              [1.21, 0.0,  0.0], 
-                              [1.81, 0.0,  0.0], 
-                              [0.0,  1.212,  0.0], 
-                              [0.605, 1.212,  0.0], 
-                              [1.21, 1.212,  0.0], 
+         object_coords_3d =   [[0.0, 0.0,  0.0],
+                              [0.605, 0.0,  0.0],
+                              [1.21, 0.0,  0.0],
+                              [1.81, 0.0,  0.0],
+                              [0.0,  1.212,  0.0],
+                              [0.605, 1.212,  0.0],
+                              [1.21, 1.212,  0.0],
                               [1.81, 1.212,  0.0]]
-        
+
          [calibration.calculate.extrinsics.keypoints]
          # Coming soon!
 
@@ -183,25 +179,27 @@ calibration_type = 'convert' # 'convert' or 'calculate'
    [personAssociation.single_person]
    likelihood_threshold_association = 0.3
    reproj_error_threshold_association = 20 # px
-   tracked_keypoint = 'Neck' # If the neck is not detected by the pose_model, check skeleton.py 
+   tracked_keypoint = 'Neck' # If the neck is not detected by the pose_model, check skeleton.py
                # and choose a stable point for tracking the person of interest (e.g., 'right_shoulder' or 'RShoulder')
-   
+
    [personAssociation.multi_person]
    reconstruction_error_threshold = 0.1 # 0.1 = 10 cm
-   min_affinity = 0.2 # affinity below which a correspondence is ignored. 
+   min_affinity = 0.2 # affinity below which a correspondence is ignored.
                       # affinity is high when reconstruction_error << reconstruction_error_threshold
    # if reconstruction_error_threshold too low or min_affinity too high: no correspondences will be found
    # if reconstruction_error_threshold too high or min_affinity too low: wrong correspondences will be found. If one person is associated to several ones on a different view, only the first is kept
-                      
+
 
 [triangulation]
 # for each frame, each keypoint: if results are not good, we remove a camera and try again
 reproj_error_threshold_triangulation = 50 # px # if reprojection error is above, triangulation results won't be accepted
 likelihood_threshold_triangulation= 0.3 # if 2D likelihood is below, estimations for this camera won't be accepted
-min_cameras_for_triangulation = 2 # won't try below N cameras if the triangulation is still not good
+min_cameras_for_triangulation = 2 # stops trying to triangulate if results still not good with min_cameras_for_triangulation cameras.
+                                  # Increase if you have many cameras and want to be more robust to occlusions
 
 # gap filling
-max_distance_m = 1.0 # m # max_distance a person can jump from its previous position before being considered as a new one
+max_distance_m = 1.0 # m # max distance a person can jump from their previous position before being considered as a new one
+max_unseen_frames = 100 # max number of frames that a person can be unseen before the next person passing by is given a new ID
 interp_if_gap_smaller_than = 20 # do not interpolate larger gaps
 interpolation = 'linear' # linear, slinear, quadratic, cubic, or none # 'none' if you don't want to interpolate missing points
 
@@ -210,7 +208,7 @@ remove_incomplete_frames = false # true or false (lowercase) # If true, frame is
 sections_to_keep = 'all' # 'all', 'largest', 'first', 'last'
                         # keep 'all' correctly triangulated sections, or the 'largest' valid section, or the 'first' one, or the 'last' one
 min_chunk_size = 10 # Minimum number of consecutive valid frames to make it a section to keep
-fill_large_gaps_with = 'last_value' # 'last_value', 'nan', or 'zeros' 
+fill_large_gaps_with = 'last_value' # 'last_value', 'nan', or 'zeros'
 
 # output
 show_interp_indices = true # true or false (lowercase). For each keypoint, return the frames that need to be interpolated
@@ -222,31 +220,31 @@ reject_outliers = true      # Hampel filter for outlier rejection before other f
 filter = true               # Proceed to further filtering after outlier rejection.
 type = 'butterworth' # butterworth, kalman, one_euro, gvc_spline, gaussian, LOESS, median, butterworth_on_speed
 
-display_figures = false # true or false (lowercase) 
+display_figures = false # true or false (lowercase)
 save_filt_plots = false # true or false (lowercase) # save filtering plots
 make_c3d = true # also save triangulated data in c3d format
 
    # Most intuitive and standard filter in biomechanics
    [filtering.butterworth]
-   cut_off_frequency = 6 # Hz # Will be divided by slowmo_factor to be equivalent to non slowed-down video
-   order = 4 
+   cut_off_frequency = 6 # Hz
+   order = 4
 
-   # Used in countless applications, especially real-time. This one is a simplified Kalman filter 
+   # Used in countless applications, especially real-time. This one is a simplified Kalman filter
    [filtering.kalman]
    # How much more do you trust triangulation results (measurements), than the assumption of constant acceleration(process)?
    trust_ratio = 500 # = measurement_trust/process_trust ~= process_noise/measurement_noise
    smooth = true # should be true, unless you need real-time filtering
 
-   # Simpler and even faster alternative to Kalman filter for real-time but tends to blunt RoM. Similar to a 1st order Butterworth but with adaptive cut-off frequency. This one is zero-phase
+   # Simpler and even faster alternative to Kalman filter for real-time, but tends to blunt RoM. Similar to a 1st order Butterworth but with adaptive cut-off frequency. This one is zero-phase
    [filtering.one_euro]
-   cut_off_frequency = 4.0 # Hz # cutoff frequency, similar to Butterworth but adapts to velocity (with beta)
+   cut_off_frequency = 4 # Hz # cutoff frequency, similar to Butterworth but adapts to velocity (with beta)
    beta = 1.5 # cutoff adaptation to velocity: cut_off_frequency = cut_off_frequency + beta*velocity
    d_cut_off_frequency = 1.0 # Hz # cutoff frequency for derivative (1.0 is usually good)
 
    # Automatically determines optimal parameters for each point, which is good when some move faster than others (eg fingers vs hips).
    [filtering.gcv_spline]
-   cut_off_frequency = 'auto' # 'auto' or int # If int, behaves like a Butterworth filter. 'auto' is usually better, unless the signal is too short (noise can then be considered as signal -> trajectories not filtered)
-   smoothing_factor = 1.0 # >=0, ignored if cut_off_frequency != 'auto'. Biases results towards more smoothing (>1) or more fidelity to data (<1) 
+   cut_off_frequency = 'auto' # 'auto' or int # If int, behaves like a Butterworth filter. 'auto' is usually better, unless the signal is too short or you got a triangular wave + drift (eg pelvis Y coordinates of a subject walking uphill)
+   smoothing_factor = 1.0 # >=0, ignored if cut_off_frequency != 'auto'. Biases results towards more smoothing (>1) or more fidelity to data (<1)
 
    [filtering.loess]
    nb_values_used = 5 # = fraction of data used * nb frames
@@ -255,11 +253,11 @@ make_c3d = true # also save triangulated data in c3d format
    [filtering.median]
    kernel_size = 3
    [filtering.butterworth_on_speed]
-   order = 4 
    cut_off_frequency = 10 # Hz
+   order = 4
 
 
-[markerAugmentation] 
+[markerAugmentation]
 ## Requires the following markers: ["Neck", "RShoulder", "LShoulder", "RHip", "LHip", "RKnee", "LKnee",
 ##        "RAnkle", "LAnkle", "RHeel", "LHeel", "RSmallToe", "LSmallToe",
 ##        "RBigToe", "LBigToe", "RElbow", "LElbow", "RWrist", "LWrist"]
@@ -270,15 +268,17 @@ make_c3d = true # save triangulated data in c3d format in addition to trc
 [kinematics]
 use_augmentation = false  # true or false (lowercase) # Set to true if you want to use the model with augmented markers
 use_simple_model = false # true or false # >10 times faster IK if true. No muscles, no constraints (eg stiff spine and shoulders, no patella)
-right_left_symmetry = true # true or false (lowercase) # Set to false only if you have good reasons to think the participant is not symmetrical (e.g. prosthetic limb)
+filter_ik = true # true or false # at TWICE the cut-off frequency defined in the [filtering] section. Useful for force estimations if results are noisy
+                 # Note: when true, c3d export from [filtering] is skipped (filtering.py writes .mot, not .trc).
 
+right_left_symmetry = true # true or false (lowercase) # Set to false only if you have good reasons to think the participant is not symmetrical (e.g. prosthetic limb)
 default_height = 1.7 # meters # If automatic height calculation did not work, this value is used to scale the model
+parallel_workers_kinematics = 'auto' # 'auto', int, or false # One worker per person, uses CPU. Only available in multi-person mode
+
 remove_individual_scaling_setup = true # true or false (lowercase) # If true, the individual scaling setup files are removed to avoid cluttering
 remove_individual_ik_setup = true # true or false (lowercase) # If true, the individual IK setup files are removed to avoid cluttering
-fastest_frames_to_remove_percent = 0.1 # Frames with high speed are considered as outliers
-close_to_zero_speed_m = 0.2 # Sum for all keypoints: about 50 px/frame or 0.2 m/frame
-large_hip_knee_angles = 45 # Hip and knee angles below this value are considered as imprecise
-trimmed_extrema_percent = 0.5 # Proportion of the most extreme segment values to remove before calculating their mean
+large_hip_knee_angles = 135 # Hip and knee angles beyond this value are considered as imprecise
+trimmed_extrema_percent = 0.5 # Proportion of the most extreme segment values to remove before calculating their mean)
 
 
 [logging]
@@ -288,18 +288,18 @@ use_custom_logging = false # if integrated in an API that already has logging
 
 # CUSTOM skeleton
 # If you use a model with different keypoints and/or different ordering
-# Useful if you trained your own model, from DeepLabCut or MMPose for example. 
+# Useful if you trained your own model, from DeepLabCut or MMPose for example.
 # Make sure the ids are set in the right order and start from zero.
-# 
+#
 # If you want to perform inverse kinematics, you will also need to create an OpenSim model
 # and add to its markerset the location where you expect the triangulated keypoints to be detected.
-# 
+#
 # In this example, CUSTOM reproduces the HALPE_26 skeleton (default skeletons are stored in skeletons.py).
 # You can create as many custom skeletons as you want, just add them further down and rename them.
-# 
-# Check your model hierarchy with:  
+#
+# Check your model hierarchy with:
 # from anytree import Node, RenderTree
-# for pre, _, node in RenderTree(model): 
+# for pre, _, node in RenderTree(model):
 #     print(f'{pre}{node.name} id={node.id}')
 [[pose.CUSTOM]]
 name = "Hip"
