@@ -18,7 +18,7 @@
 
 
 [project]
-multi_person = false # true for trials with multiple participants. If false, only the person with lowest reprojection error is analyzed.
+multi_person = true # true for trials with multiple participants. If false, only the person with lowest reprojection error is analyzed.
 participant_height = '1.69' # 'auto', float (eg 1.72), or list of floats (eg [1.72, 1.40])  # meters  # Only used for marker augmentation
 participant_mass = 64.0             # float (eg 70.0), or list of floats (eg [70.0, 63.5])  # kg      # Only used for marker augmentation and scaling, no impact on results unless you need to further compute forces
 
@@ -83,7 +83,7 @@ parallel_workers_pose = 'auto' # 'auto', int, or false # One worker per video, u
                                # Higher counts (4+) need good CPU, GPU, and VRAM.
                                # Try with 2 first, monitor CPU/GPU utilisation, then increase.
 display_detection = false # Real-time display of the videos with pose estimation. Set to false for parallel processing.
-overwrite_pose = true # Set to false if you don't want to recalculate pose estimation when it has already been done
+overwrite_pose = false # Set to false if you don't want to recalculate pose estimation when it has already been done
 save_video = 'none' # 'to_video' or 'to_images', 'none', or ['to_video', 'to_images']
 output_format = 'openpose' # 'openpose', 'mmpose', 'deeplabcut', 'none' or a list of them # /!\ only 'openpose' is supported for now
 
