@@ -114,8 +114,7 @@ Multi-camera calibration using a printed charuco board. The calibration pipeline
 - **Charuco Board Config** - set board dimensions, square size, ArUco dictionary. Save a printable board image.
 - **Intrinsic Calibration** - per-camera lens calibration from a video of the board. Uses smart frame selection for orientation and spatial coverage diversity.
 - **Extrinsic Calibration** - multi-camera pose estimation from synced videos. Includes PnP solving, outlier rejection, graph bridging, triangulation, and bundle adjustment.
-- **Set Origin** - stand the charuco board vertically in portrait mode at the lab origin. Aligns the coordinate system using a Umeyama similarity transform. Can be re-run after loading a saved calibration.
-- **Sound Source Position** - optional X/Y/Z coordinates (in metres) of the sync sound source (speaker or clap location). Used for speed-of-sound compensation during audio sync. Displayed as a black cross in the 3D viewer.
+- **Set Origin** - stand the charuco board vertically in portrait mode at the lab origin. Records a short video on all cameras, trims them to a common duration / frame count (audio sync is skipped — the board is static), then aligns the coordinate system using a Umeyama similarity transform. Can be re-run after loading a saved calibration.
 - **Save/Load** - persist calibration to `config/calibration/calibration.json` (also auto-exports `camera_array_go2kin.toml` for Pose2Sim compatibility).
 
 ### Tab 3 - Recording
@@ -258,9 +257,9 @@ Original files are never modified. `trial.json` is updated with `synced: true` o
 
 When cameras are at different distances from the clap/speaker, sound arrives at each microphone at slightly different times (e.g. 3m difference = ~8.8ms). At high frame rates (100+ fps) this can cause sub-frame sync errors.
 
-To correct for this, set the sound source position in the **Calibration tab** (Sound Source Position section - X, Y, Z in metres in the calibration coordinate system). When a calibration with camera positions is loaded and a sound source position is set, the sync algorithm automatically subtracts the differential propagation delay from measured offsets. Both raw and compensated offsets are logged in the console.
+To correct for this, set the sound source position in the **Recording tab** (Sound source X / Y / Z in metres, in the calibration coordinate system). When a calibration is loaded so camera world positions are known, the sync algorithm automatically subtracts the differential propagation delay (distance / 340 m/s) from measured offsets. Both raw and compensated offsets are logged in the console. The Recording tab persists its own sound-source values to `go2kin_config.json` so they survive between sessions.
 
-The sound source position is saved in the calibration JSON file and restored when loading a calibration.
+Compensation is **not** applied during extrinsic calibration (camera poses don't yet exist when the calibration video is synced) or during Set Origin (sync is skipped entirely — the board is static). For extrinsic calibration, clap near the centre of the camera volume so per-camera distance differences largely cancel.
 
 ### Requirements
 
