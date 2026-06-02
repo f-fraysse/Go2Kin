@@ -770,15 +770,6 @@ class Go2KinMainWindow:
         if not connected:
             bar['battery_var'].set("\u2014")
 
-        # Enable/disable recording checkbox based on connection status
-        if hasattr(self, 'recording_tab') and camera_num in self.recording_tab.camera_selection_checkboxes:
-            if connected:
-                self.recording_tab.camera_selection_checkboxes[camera_num].config(state="normal")
-                self.recording_tab.camera_selection_vars[camera_num].set(True)
-            else:
-                self.recording_tab.camera_selection_checkboxes[camera_num].config(state="disabled")
-                self.recording_tab.camera_selection_vars[camera_num].set(False)
-
         # Update calibration tab camera checkboxes
         if hasattr(self, 'calibration_tab'):
             self.calibration_tab.update_camera_checkboxes(camera_num, connected)

@@ -331,7 +331,7 @@ class RecordingTab:
             cam_positions = None
             calibration_tab = self._get_calibration_tab()
             if calibration_tab is not None:
-                cam_positions, _ = calibration_tab._get_sync_compensation_data(video_paths)
+                cam_positions = calibration_tab.get_camera_positions_for_sync(video_paths)
 
             # Sound source position from recording tab UI
             sound_pos = self._get_sound_source_position()

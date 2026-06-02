@@ -65,9 +65,6 @@ class CalibrationTab:
         self._bundle = None
         self._intrinsic_results: dict[int, dict] = {}
 
-        # Sound source position
-        self._sound_source_pos = None
-
         # Recording state
         self._calib_recording = False
         self._calib_stop_event = threading.Event()
@@ -249,18 +246,11 @@ class CalibrationTab:
         section = ttk.LabelFrame(parent, text="Extrinsic Calibration", padding=10)
         section.pack(fill="x", padx=10, pady=5)
 
-        # Sound source position (inline, centred)
-        self._sound_x_var = tk.StringVar(value="")
-        self._sound_y_var = tk.StringVar(value="")
-        self._sound_z_var = tk.StringVar(value="")
-
-        sound_frame = ttk.Frame(section)
-        sound_frame.pack(pady=2)
-        ttk.Label(sound_frame, text="Sound source:").pack(side="left")
-        for label, var in [("X:", self._sound_x_var), ("Y:", self._sound_y_var), ("Z:", self._sound_z_var)]:
-            ttk.Label(sound_frame, text=label).pack(side="left", padx=(8, 0))
-            ttk.Entry(sound_frame, textvariable=var, width=7).pack(side="left", padx=2)
-        ttk.Label(sound_frame, text="(m)", foreground="#666666").pack(side="left", padx=4)
+        ttk.Label(
+            section,
+            text="Tip: clap near the centre of the camera volume",
+            foreground="#666666",
+        ).pack(pady=2)
 
         # Action button + countdown (centred)
         action_frame = ttk.Frame(section)
@@ -297,15 +287,6 @@ class CalibrationTab:
     def _create_origin_section(self, parent):
         section = ttk.LabelFrame(parent, text="Set Origin", padding=10)
         section.pack(fill="x", padx=10, pady=5)
-
-        # Sound source display (same vars as extrinsic, centred)
-        sound_frame = ttk.Frame(section)
-        sound_frame.pack(pady=2)
-        ttk.Label(sound_frame, text="Sound source:").pack(side="left")
-        for label, var in [("X:", self._sound_x_var), ("Y:", self._sound_y_var), ("Z:", self._sound_z_var)]:
-            ttk.Label(sound_frame, text=label).pack(side="left", padx=(8, 0))
-            ttk.Entry(sound_frame, textvariable=var, width=7).pack(side="left", padx=2)
-        ttk.Label(sound_frame, text="(m)", foreground="#666666").pack(side="left", padx=4)
 
         # Action button + countdown (centred)
         action_frame = ttk.Frame(section)
@@ -411,20 +392,6 @@ class CalibrationTab:
         self._update_intrinsic_status()
 
     # =================================================================
-    # Sound source (inline — read silently before sync)
-    # =================================================================
-
-    def _read_sound_source_fields(self):
-        """Read sound source X/Y/Z from inline fields. Sets self._sound_source_pos or None."""
-        try:
-            x = float(self._sound_x_var.get())
-            y = float(self._sound_y_var.get())
-            z = float(self._sound_z_var.get())
-            self._sound_source_pos = [x, y, z]
-        except (ValueError, TypeError):
-            self._sound_source_pos = None
-
-    # =================================================================
     # Countdown helper
     # =================================================================
 
@@ -448,8 +415,6 @@ class CalibrationTab:
         if not self._intrinsic_results:
             messagebox.showwarning("Warning", "Run intrinsic calibration first")
             return
-
-        self._read_sound_source_fields()
 
         # Disable button, show countdown
         self._ext_auto_btn.config(state="disabled", text="Starting...")
@@ -561,8 +526,6 @@ class CalibrationTab:
             messagebox.showwarning("Warning", "Run extrinsic calibration first")
             return
 
-        self._read_sound_source_fields()
-
         self._origin_auto_btn.config(state="disabled", text="Starting...")
         self._origin_status.set("Starting countdown...")
         self._set_origin_indicator("grey")
@@ -595,6 +558,7 @@ class CalibrationTab:
                     cam_list, video_dir, "origin", timestamp,
                     self._origin_status,
                     on_synced=lambda synced_dir: self._origin_auto_run(synced_dir, video_dir, timestamp),
+                    skip_sync=True,
                 )
             except Exception as e:
                 self.frame.after(0, lambda: self._origin_status.set(f"Error: {e}"))
@@ -680,8 +644,6 @@ class CalibrationTab:
             messagebox.showwarning("Warning", "No project selected")
             return
 
-        self._read_sound_source_fields()
-
         today = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M")
         filename = f"calibration_{today}.json"
         filepath = calib_dir / filename
@@ -692,8 +654,7 @@ class CalibrationTab:
             from calibration.persistence import save_calibration
 
             charuco = self._get_charuco()
-            save_calibration(filepath, self._camera_array, charuco,
-                             sound_source_position=self._sound_source_pos)
+            save_calibration(filepath, self._camera_array, charuco)
 
             # Persist to app config
             self.app_config["last_calibration"] = str(filepath)
@@ -993,10 +954,13 @@ class CalibrationTab:
     # --- Multi-camera recording (extrinsic / origin) ---
 
     def _multi_record_worker(self, cam_list, video_dir, purpose, timestamp, status_var,
-                             on_synced=None):
+                             on_synced=None, skip_sync=False):
         """Worker thread for multi-camera recording + auto-sync.
 
         If on_synced is provided, calls on_synced(synced_dir) after sync completes.
+        If skip_sync is True, audio sync is bypassed: videos are trimmed to a common
+        duration and frame-count-equalised but no clap detection is run. Used for the
+        Set Origin step where the board is static and per-camera sync is unnecessary.
         """
         cam_nums = [num for num, cam in cam_list]
         print(f"Calibration: starting {purpose} recording on cameras: {cam_nums}")
@@ -1046,10 +1010,15 @@ class CalibrationTab:
                 except Exception as e:
                     print(f"  Error downloading GoPro {num}: {e}")
 
-        # Auto-sync
-        print("Calibration: starting audio sync...")
-        self.frame.after(0, lambda: status_var.set("Running audio sync..."))
-        synced_dir = self._run_calib_sync(video_dir, purpose, timestamp, status_var)
+        # Auto-sync (or trim-only for static-board recordings)
+        if skip_sync:
+            print("Calibration: trimming videos (sync skipped — static board)...")
+            self.frame.after(0, lambda: status_var.set("Trimming videos..."))
+        else:
+            print("Calibration: starting audio sync...")
+            self.frame.after(0, lambda: status_var.set("Running audio sync..."))
+        synced_dir = self._run_calib_sync(video_dir, purpose, timestamp, status_var,
+                                          skip_sync=skip_sync)
 
         if on_synced:
             on_synced(synced_dir)
@@ -1060,8 +1029,13 @@ class CalibrationTab:
             else:
                 self.frame.after(0, lambda: status_var.set("Sync skipped (< 2 files)"))
 
-    def _run_calib_sync(self, video_dir, purpose, timestamp, status_var):
-        """Run audio sync on recorded calibration videos. Returns synced dir Path or None."""
+    def _run_calib_sync(self, video_dir, purpose, timestamp, status_var, skip_sync=False):
+        """Run audio sync on recorded calibration videos. Returns synced dir Path or None.
+
+        If skip_sync is True, clap detection is bypassed and all per-video offsets are
+        set to zero. trim_and_sync_videos is still called so the outputs share a common
+        duration and identical frame counts.
+        """
         from audio_sync import (check_ffmpeg, check_audio_track, compute_sync_offsets,
                                 trim_and_sync_videos, AudioSyncError)
 
@@ -1077,57 +1051,66 @@ class CalibrationTab:
             self.frame.after(0, lambda: status_var.set("ffmpeg not found — sync skipped"))
             return None
 
-        # Verify audio tracks
-        for vp in video_paths:
-            if not check_audio_track(vp):
-                raise AudioSyncError(f"No audio track in: {Path(vp).name}")
+        if skip_sync:
+            offsets = {
+                vp: {"offset_seconds": 0.0, "is_reference": (i == 0), "status": "NO-SYNC"}
+                for i, vp in enumerate(video_paths)
+            }
+            self.frame.after(0, lambda: status_var.set(
+                f"Trimming {len(video_paths)} videos (no sync)..."))
+        else:
+            # Verify audio tracks
+            for vp in video_paths:
+                if not check_audio_track(vp):
+                    raise AudioSyncError(f"No audio track in: {Path(vp).name}")
 
-        # Build camera positions for speed-of-sound compensation (if available)
-        cam_positions, sound_pos = self._get_sync_compensation_data(video_paths)
+            # Camera-position-based ToF compensation is not used during extrinsic
+            # calibration (poses don't exist yet). Sound-source position lives in
+            # the Recording tab and is only used for trial sync.
+            offsets = compute_sync_offsets(
+                video_paths, output_dir=str(video_dir),
+                progress_callback=lambda msg: print(f"  {msg}"),
+            )
 
-        # Compute sync offsets
-        offsets = compute_sync_offsets(video_paths, output_dir=str(video_dir),
-                                       camera_positions=cam_positions,
-                                       sound_source_position=sound_pos)
+            # Log sync quality
+            sync_msgs = []
+            low_quality = False
+            for path, info in offsets.items():
+                name = Path(path).name
+                ref = " (REF)" if info["is_reference"] else ""
+                status = info.get("status", "")
+                sync_msgs.append(f"{name}: {info['offset_seconds']:.4f}s {status}{ref}")
+                if status == "WARN":
+                    low_quality = True
 
-        # Log sync quality
-        sync_msgs = []
-        low_quality = False
-        for path, info in offsets.items():
-            name = Path(path).name
-            ref = " (REF)" if info["is_reference"] else ""
-            status = info.get("status", "")
-            sync_msgs.append(f"{name}: {info['offset_seconds']:.4f}s {status}{ref}")
-            if status == "WARN":
-                low_quality = True
-
-        detail = " | ".join(sync_msgs)
-        if low_quality:
-            detail += " | WARNING: Inconsistent clap offsets"
-        self.frame.after(0, lambda: status_var.set(detail))
+            detail = " | ".join(sync_msgs)
+            if low_quality:
+                detail += " | WARNING: Inconsistent clap offsets"
+            self.frame.after(0, lambda: status_var.set(detail))
 
         # Trim and sync — trim_and_sync_videos creates a synced/ subfolder inside output_dir
         sync_parent = video_dir / f"{purpose}_{timestamp}_sync"
         sync_parent.mkdir(parents=True, exist_ok=True)
-        trim_and_sync_videos(video_paths, offsets, str(sync_parent))
+        print("Trimming videos (stream copy, no re-encoding)...")
+        trim_and_sync_videos(
+            video_paths, offsets, str(sync_parent),
+            progress_callback=lambda msg: print(f"  {msg}"),
+        )
 
         synced_dir = sync_parent / "synced"
         return synced_dir
 
-    def _get_sync_compensation_data(self, video_paths):
-        """Build camera_positions dict and sound_source_position for sync compensation.
+    def get_camera_positions_for_sync(self, video_paths):
+        """Build a {filename: [x, y, z]} dict of camera world positions for ToF sync.
 
-        Returns (camera_positions, sound_source_position) — either or both may be None.
-        camera_positions maps filename (e.g. 'trial_GP1.mp4') to [x, y, z] world coords.
+        Returns None if no posed cameras are available. Filenames are matched to
+        camera IDs via the '_GP{N}' suffix used by the recording pipeline.
         """
-        import numpy as np
         import re
 
-        if (self._camera_array is None or not self._camera_array.posed_cameras
-                or self._sound_source_pos is None):
-            return None, None
+        if self._camera_array is None or not self._camera_array.posed_cameras:
+            return None
 
-        # Build cam_id -> world position
         cam_world_pos = {}
         for cam_id, cam in self._camera_array.posed_cameras.items():
             if cam.rotation is not None and cam.translation is not None:
@@ -1135,9 +1118,8 @@ class CalibrationTab:
                 cam_world_pos[cam_id] = pos.tolist()
 
         if not cam_world_pos:
-            return None, None
+            return None
 
-        # Map filenames to camera positions via _GP{N} suffix
         camera_positions = {}
         for vp in video_paths:
             fname = Path(vp).name
@@ -1147,10 +1129,7 @@ class CalibrationTab:
                 if cam_id in cam_world_pos:
                     camera_positions[fname] = cam_world_pos[cam_id]
 
-        if not camera_positions:
-            return None, None
-
-        return camera_positions, self._sound_source_pos
+        return camera_positions or None
 
     # =================================================================
     # Intrinsic calibration
@@ -1346,12 +1325,6 @@ class CalibrationTab:
         ax.quiver(0, 0, 0, 0, 1, 0, length=1.0, arrow_length_ratio=0.1, color="green", linewidth=2)
         ax.quiver(0, 0, 0, 0, 0, 1, length=1.0, arrow_length_ratio=0.1, color="blue", linewidth=2)
 
-        # Sound source position marker
-        if self._sound_source_pos is not None:
-            sp = self._sound_source_pos
-            ax.scatter(sp[0], sp[1], sp[2], marker="x", s=200, c="black",
-                       linewidths=3, zorder=6)
-            ax.text(sp[0], sp[1], sp[2], "  Speaker", fontsize=9, color="black")
 
         self._viewer_fig.tight_layout()
         self._viewer_canvas.draw_idle()
@@ -1380,20 +1353,8 @@ class CalibrationTab:
             sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
             from calibration.persistence import load_calibration
 
-            camera_array, charuco, sound_pos = load_calibration(filepath)
+            camera_array, charuco, _ = load_calibration(filepath)
             self._camera_array = camera_array
-
-            # Restore sound source position
-            if sound_pos is not None:
-                self._sound_source_pos = sound_pos
-                self._sound_x_var.set(f"{sound_pos[0]:.3f}")
-                self._sound_y_var.set(f"{sound_pos[1]:.3f}")
-                self._sound_z_var.set(f"{sound_pos[2]:.3f}")
-            else:
-                self._sound_source_pos = None
-                self._sound_x_var.set("")
-                self._sound_y_var.set("")
-                self._sound_z_var.set("")
 
             # Update charuco GUI
             self._charuco_cols.set(charuco.columns)
