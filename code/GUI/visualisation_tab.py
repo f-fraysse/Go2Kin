@@ -57,7 +57,7 @@ class VisualisationTab:
 
         # 3D TRC overlay state
         self._trc_overlay = tk.BooleanVar(value=False)
-        self._trc_data = None       # np.ndarray (n_frames, n_markers, 3) or None
+        self._trc_persons = []      # list of (trc_data, frame_numbers) — one entry per person
         self._trc_keypoint_ids = None  # list mapping TRC col index → skeleton node ID
         self._cam_K = None           # 3x3 intrinsic matrix
         self._cam_dist = None        # distortion coefficients
@@ -314,7 +314,7 @@ class VisualisationTab:
         self._current_frame_idx = -1
         self._pose_json_dir = None
         self._pose_model = None
-        self._trc_data = None
+        self._trc_persons = []
         self._trc_keypoint_ids = None
         self._cam_K = None
         self._cam_dist = None
@@ -363,7 +363,7 @@ class VisualisationTab:
             frame = self._overlay_pose(frame, frame_idx)
 
         # 3D TRC overlay
-        if self._trc_overlay.get() and self._trc_data is not None:
+        if self._trc_overlay.get() and self._trc_persons:
             frame = self._overlay_trc(frame, frame_idx)
 
         # IK joint centres overlay
@@ -432,7 +432,11 @@ class VisualisationTab:
             w = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH)) if self._cap else 0
             h = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) if self._cap else 0
             pose_2d = str(len(list(self._pose_json_dir.glob("*.json")))) if self._pose_json_dir else "no"
-            pose_3d = str(self._trc_data.shape[0]) if self._trc_data is not None else "no"
+            if self._trc_persons:
+                n_frames = max(len(fn) for _, fn in self._trc_persons)
+                pose_3d = f"{len(self._trc_persons)}p / {n_frames}f"
+            else:
+                pose_3d = "no"
             self._info_label.configure(
                 text=f"Subject: {subject}\n"
                      f"FPS: {fps}  |  {w}x{h}\n"
@@ -650,8 +654,8 @@ class VisualisationTab:
     # =========================================================================
 
     def _detect_trc_data(self):
-        """Load TRC 3D marker data and camera calibration for reprojection."""
-        self._trc_data = None
+        """Load TRC 3D marker data (all persons) and camera calibration for reprojection."""
+        self._trc_persons = []
         self._cam_K = None
         self._cam_dist = None
         self._cam_rvec = None
@@ -667,16 +671,21 @@ class VisualisationTab:
         if not pose3d_dir.exists():
             return
 
-        # Find .trc file
-        trc_files = list(pose3d_dir.glob("*.trc"))
+        # One TRC file per person. Prefer the Butterworth-filtered output; this also
+        # skips the duplicate unfiltered file. Fall back to any .trc if no filtered files.
+        trc_files = sorted(pose3d_dir.glob("*_filt_butterworth.trc"))
+        if not trc_files:
+            trc_files = sorted(pose3d_dir.glob("*.trc"))
         if not trc_files:
             return
 
-        try:
-            self._trc_data = self._parse_trc(trc_files[0])
-        except Exception:
-            logger.warning(f"Could not parse TRC file: {trc_files[0]}")
-            self._trc_data = None
+        # Parse each person into (trc_data, frame_numbers)
+        for trc_file in trc_files:
+            try:
+                self._trc_persons.append(self._parse_trc(trc_file))
+            except Exception:
+                logger.warning(f"Could not parse TRC file: {trc_file}")
+        if not self._trc_persons:
             return
 
         # Load calibration for this camera
@@ -699,7 +708,14 @@ class VisualisationTab:
                 self._trc_keypoint_ids = None
 
     def _parse_trc(self, trc_path):
-        """Parse a TRC file into a numpy array of shape (n_frames, n_markers, 3).
+        """Parse a TRC file into (trc_data, frame_numbers).
+
+        Returns:
+          trc_data:      np.ndarray (n_frames, n_markers, 3) in Go2Kin Z-up coords
+          frame_numbers: np.ndarray (n_frames,) of the TRC Frame# column — the video
+                         frame each row corresponds to. Row 0 is OrigDataStartFrame
+                         (the first tracked frame), NOT video frame 0, because Pose2Sim
+                         trims each person's output to their tracked section.
 
         TRC format:
           Line 1: PathFileType header
@@ -730,6 +746,9 @@ class VisualisationTab:
         data = pd.read_csv(trc_path, sep="\t", skiprows=5, index_col=False,
                            header=None, names=all_cols)
 
+        # Frame# column → maps each TRC row to its video frame index (see docstring)
+        frame_numbers = data["Frame"].values.astype(np.int64)
+
         # Extract coordinates as numpy array (n_frames, n_markers*3)
         coords = data.iloc[:, 2:].values.astype(np.float64)
 
@@ -739,7 +758,7 @@ class VisualisationTab:
 
         # Convert OpenSim coords (X,Y,Z) to Go2Kin coords (Z_osim, X_osim, Y_osim)
         trc_data = trc_data[:, :, [2, 0, 1]]
-        return trc_data
+        return trc_data, frame_numbers
 
     def _load_camera_calibration(self):
         """Load camera intrinsics/extrinsics from the Pose2Sim TOML calibration."""
@@ -780,37 +799,45 @@ class VisualisationTab:
             self._cam_K = None
 
     def _overlay_trc(self, frame, frame_idx):
-        """Project 3D TRC markers onto the frame using camera calibration."""
-        if (self._trc_data is None or self._cam_K is None
-                or frame_idx >= len(self._trc_data)):
+        """Project 3D TRC markers (all persons) onto the frame using camera calibration.
+
+        Each person's TRC covers only the frames where they were tracked, so the video
+        frame is mapped to a TRC row via that person's Frame# column (row 0 is the
+        person's OrigDataStartFrame, not video frame 0).
+        """
+        if not self._trc_persons or self._cam_K is None or not self._trc_keypoint_ids:
             return frame
 
         try:
-            markers_3d = self._trc_data[frame_idx]  # (n_markers, 3)
+            max_id = max(self._trc_keypoint_ids) + 1
+            X, Y, S = [], [], []
 
-            # Build full arrays, keeping NaN markers as NaN in output
-            n_markers = markers_3d.shape[0]
-            x_2d = np.full(n_markers, np.nan)
-            y_2d = np.full(n_markers, np.nan)
+            for trc_data, frame_numbers in self._trc_persons:
+                # Map this video frame → TRC row for this person (skip if untracked here)
+                rows = np.nonzero(frame_numbers == frame_idx)[0]
+                if len(rows) == 0:
+                    continue
+                markers_3d = trc_data[rows[0]]  # (n_markers, 3)
+                n_markers = markers_3d.shape[0]
 
-            # Find valid (non-NaN) markers
-            valid = ~np.isnan(markers_3d).any(axis=1)
-            if not valid.any():
-                return frame
+                # Find valid (non-NaN) markers and project them
+                valid = ~np.isnan(markers_3d).any(axis=1)
+                if not valid.any():
+                    continue
 
-            pts_3d = markers_3d[valid].reshape(-1, 1, 3)
-            pts_2d, _ = cv2.projectPoints(
-                pts_3d, self._cam_rvec, self._cam_tvec,
-                self._cam_K, self._cam_dist)
-            pts_2d = pts_2d.reshape(-1, 2)
+                pts_3d = markers_3d[valid].reshape(-1, 1, 3)
+                pts_2d, _ = cv2.projectPoints(
+                    pts_3d, self._cam_rvec, self._cam_tvec,
+                    self._cam_K, self._cam_dist)
+                pts_2d = pts_2d.reshape(-1, 2)
 
-            x_2d[valid] = pts_2d[:, 0]
-            y_2d[valid] = pts_2d[:, 1]
+                x_2d = np.full(n_markers, np.nan)
+                y_2d = np.full(n_markers, np.nan)
+                x_2d[valid] = pts_2d[:, 0]
+                y_2d[valid] = pts_2d[:, 1]
 
-            # Reorder from TRC traversal order → skeleton ID order
-            # TRC col i has skeleton ID self._trc_keypoint_ids[i]
-            if self._trc_keypoint_ids:
-                max_id = max(self._trc_keypoint_ids) + 1
+                # Reorder from TRC traversal order → skeleton ID order
+                # TRC col i has skeleton ID self._trc_keypoint_ids[i]
                 x_by_id = np.full(max_id, np.nan)
                 y_by_id = np.full(max_id, np.nan)
                 s_by_id = np.full(max_id, np.nan)
@@ -819,11 +846,11 @@ class VisualisationTab:
                         x_by_id[skel_id] = x_2d[trc_idx]
                         y_by_id[skel_id] = y_2d[trc_idx]
                         s_by_id[skel_id] = 1.0 if not np.isnan(x_2d[trc_idx]) else np.nan
+                X.append(x_by_id)
+                Y.append(y_by_id)
+                S.append(s_by_id)
 
-                X = [x_by_id]
-                Y = [y_by_id]
-                S = [s_by_id]
-
+            if X:
                 if self._pose_model:
                     frame = self._draw_skel_3d(frame, X, Y, self._pose_model)
                 frame = self._draw_keypts_3d(frame, X, Y, S)
@@ -913,10 +940,31 @@ class VisualisationTab:
         osim_files = sorted(kin_dir.glob("*.osim"))
         mot_files = sorted(kin_dir.glob("*.mot"))
         if osim_files and mot_files:
-            self._kin_osim_path = osim_files[0]
-            self._kin_mot_path = mot_files[0]
+            # IK is single-person: pick the longest-tracked person (.mot with most rows).
+            # Person IDs are arbitrary association IDs, so frame count is a better choice
+            # than lowest index. Pair the .osim by the same stem.
+            mot_path = max(mot_files, key=self._read_mot_nrows)
+            osim_match = mot_path.with_suffix(".osim")
+            osim_path = osim_match if osim_match.exists() else osim_files[0]
+
+            self._kin_osim_path = osim_path
+            self._kin_mot_path = mot_path
             self._osim_viewer_btn.configure(state=tk.NORMAL)
-            self._precompute_kin_data(osim_files[0], mot_files[0])
+            self._precompute_kin_data(osim_path, mot_path)
+
+    @staticmethod
+    def _read_mot_nrows(mot_path):
+        """Read the nRows value from a .mot header (0 if not found)."""
+        try:
+            with open(mot_path) as f:
+                for line in f:
+                    if line.lower().startswith("nrows"):
+                        return int(line.split("=")[1])
+                    if line.strip() == "endheader":
+                        break
+        except Exception:
+            pass
+        return 0
 
     def _launch_opensim_viewer(self):
         """Launch OpenSim simbody-visualizer in a separate window (background thread)."""
@@ -1033,8 +1081,12 @@ class VisualisationTab:
             return frame
 
         try:
-            # Map video frame to motion frame via timestamp
+            # Map video frame to motion frame via timestamp. The .mot uses absolute
+            # time (same base as the TRC), so this aligns directly. Outside the tracked
+            # range there is no IK data — draw nothing rather than a frozen first/last pose.
             video_time = frame_idx / self._fps
+            if video_time < self._kin_times[0] or video_time > self._kin_times[-1]:
+                return frame
             mot_idx = int(np.searchsorted(self._kin_times, video_time, side='right') - 1)
             mot_idx = max(0, min(mot_idx, len(self._kin_body_positions) - 1))
 
