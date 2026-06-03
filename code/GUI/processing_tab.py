@@ -21,7 +21,7 @@ _PIPELINE_STEPS = [
     "Pose Estimation",
     "Person Association",
     "Triangulation",
-    "Participant Filter",
+    # "Participant Filter",
     "Filtering",
     "Kinematics",
 ]
@@ -265,8 +265,8 @@ class ProcessingTab:
                 ("Pose Estimation", P2S.poseEstimation),
                 ("Person Association", P2S.personAssociation),
                 ("Triangulation", P2S.triangulation),
-                ("Participant Filter",
-                 lambda: filter_participants_by_volume(processed_path, calib_json_path)),
+                # ("Participant Filter",
+                #  lambda: filter_participants_by_volume(processed_path, calib_json_path)),
                 ("Filtering", P2S.filtering),
                 ("Kinematics", P2S.kinematics),
             ]
