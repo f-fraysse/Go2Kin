@@ -10,6 +10,8 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 
+from post_triangulation_filter import filter_participants_by_volume
+
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +19,9 @@ logger = logging.getLogger(__name__)
 _PIPELINE_STEPS = [
     "Calibration",
     "Pose Estimation",
-    # "Person Association",
+    "Person Association",
     "Triangulation",
+    "Participant Filter",
     "Filtering",
     "Kinematics",
 ]
@@ -201,9 +204,15 @@ class ProcessingTab:
                 logger.exception(f"Build failed for {trial_name}")
                 continue
 
+            # Resolve calibration JSON path (used by Participant Filter step).
+            # build_pose2sim_project already validated the TOML; the JSON sits next to it.
+            trial = self.pm.get_trial(project, session, trial_name)
+            calib_name = trial.get("calibration_file", "none")
+            calib_json_path = self.pm.get_calibration_path(project, calib_name, fmt="json")
+
             # Run pipeline with step-by-step progress
             print(f"Processing {session}/{trial_name}...")
-            ok = self._run_pipeline_with_progress(processed_path)
+            ok = self._run_pipeline_with_progress(processed_path, calib_json_path)
 
             if ok:
                 success_count += 1
@@ -230,7 +239,7 @@ class ProcessingTab:
 
         self.root.after(0, finish)
 
-    def _run_pipeline_with_progress(self, processed_path):
+    def _run_pipeline_with_progress(self, processed_path, calib_json_path):
         """Run Pose2Sim pipeline, updating step circles after each step.
 
         Returns True on success, False on failure or cancel.
@@ -254,8 +263,10 @@ class ProcessingTab:
             steps = [
                 ("Calibration", P2S.calibration),
                 ("Pose Estimation", P2S.poseEstimation),
-                # ("Person Association", P2S.personAssociation),
+                ("Person Association", P2S.personAssociation),
                 ("Triangulation", P2S.triangulation),
+                ("Participant Filter",
+                 lambda: filter_participants_by_volume(processed_path, calib_json_path)),
                 ("Filtering", P2S.filtering),
                 ("Kinematics", P2S.kinematics),
             ]
