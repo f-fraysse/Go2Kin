@@ -135,7 +135,6 @@ Batch processing runs trials sequentially. A **Stop** button halts processing af
 Experimental. Plays back synced trial video with optional overlay of 2D pose keypoints (from per-camera detection) and 3D keypoints (triangulated markers reprojected via camera calibration). Useful for visually checking pose detection and triangulation quality. See [`docs/Visualisation.md`](docs/Visualisation.md) for technical details.
 
 **Known issues:** 
-- if participant is not detected at the start of the recording, the pose detection output does not line up with the video frames. Keypoints display will be off by the number of empty frames.
 - selecting a different trial sometimes does not load the video properly. Select another camera viewpoint to force refresh.
 - mp4 frame decoding / display is slow with cv2. "1 frame back" button, and using the scrubber, take time to respond.
 
@@ -278,7 +277,6 @@ Misc / small:
 - defer or remove the creation of "stitched preview" after sync (takes ~10sec) - after audio sync cleanup
 - check camera configs (double up between old system in config/ and go2kin_config in root)
 - keep extra info in JSON calib file (e.g. quality metrics - to be displayed in Calibration tab later)
-- visualisation tab: does not handle 2d / 3d keypoints having different number of frames than video (e.g. if person is not detected at start of recording) - need to investigate what pose2sim does with video frames that do not return a pose / if it discards some video frames in whole pipeline
 - make charuco board vertical offset editable by user (one/few times setup probably)
 - check how calibration age is set in top bar (should be date only)
 - bigger tabs / tab names, more visible in UI. All text bigger in UI?

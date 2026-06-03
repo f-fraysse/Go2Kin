@@ -34,8 +34,16 @@ Draws per-camera 2D pose detection results from OpenPose JSON files.
 
 Projects triangulated 3D markers from TRC files onto the camera view using calibration data.
 
-- **Source**: `[trial]/processed/pose-3d/*.trc` (output of Pose2Sim triangulation + filtering, before IK)
+- **Source**: `[trial]/processed/pose-3d/*_filt_butterworth.trc` — the Butterworth-filtered triangulation output, **one file per person** (falls back to `*.trc` if no filtered files exist). All persons are loaded and overlaid.
 - **Calibration**: Pose2Sim TOML from `[project]/calibrations/{name}.toml`
+
+### Frame Alignment (per person)
+
+Pose2Sim writes one 2D JSON per video frame, but **triangulation trims each person's 3D output to the contiguous range where they were tracked** — so a person's TRC covers only, say, frames 152–384 of a 0–384 video. TRC row 0 is the person's `OrigDataStartFrame`, **not** video frame 0.
+
+To line the skeleton up with the video, `_parse_trc()` also reads the TRC `Frame#` column (`frame_numbers`), and `_overlay_trc()` maps the current video frame to a TRC row by lookup (`frame_numbers == frame_idx`) rather than by raw index. This is exact (no off-by-one) and gap-safe. Frames outside a person's tracked range draw nothing for that person. Each overlaid person uses its own `Frame#` mapping, so people tracked over different ranges all stay aligned.
+
+> Previously the overlay indexed `trc_data[frame_idx]` directly, which shifted the skeleton by the number of untracked lead-in frames — a "ghost" skeleton matching no one in the scene.
 
 ### Coordinate System Change
 
@@ -88,10 +96,10 @@ The 3D overlay uses dedicated `_draw_skel_3d` and `_draw_keypts_3d` methods with
 
 Projects OpenSim inverse kinematics body centre positions onto the video as filled circles, synchronized with playback. Shows where the model's joint centres are after IK fitting, useful for assessing IK quality against the video.
 
-- **Source**: `.osim` (scaled model) and `.mot` (joint angles) from `[trial]/processed/kinematics/`
+- **Source**: `.osim` (scaled model) and `.mot` (joint angles) from `[trial]/processed/kinematics/`. IK is single-person: when several persons were processed, the **longest-tracked** one is chosen (the `.mot` with the most rows, via its `nRows=` header), and its `.osim` is paired by stem.
 - **Pre-computation**: On trial load, a background thread extracts body centre positions for all frames using the OpenSim API (`body.getTransformInGround(state)`), following the pattern from `Pose2Sim/Utilities/bodykin_from_mot_osim.py`. Positions are converted from OpenSim Y-up to Go2Kin Z-up (same `[2, 0, 1]` reorder as TRC overlay).
 - **Rendering**: Projects 3D body centres to 2D with `cv2.projectPoints()` using the same camera calibration as the TRC overlay. Draws filled circles (radius 12, bone color RGB 227/218/201).
-- **Frame sync**: Maps video frame to motion frame via timestamp (`frame_idx / fps` → nearest motion time via `np.searchsorted`).
+- **Frame sync**: The `.mot` uses absolute time on the same base as the TRC (first row = `OrigDataStartFrame / fps`), so the video frame maps directly to a motion row by timestamp (`frame_idx / fps` → nearest motion time via `np.searchsorted`) — no row-offset needed. A range guard skips drawing when `video_time` is outside `[kin_times[0], kin_times[-1]]`, so untracked frames show nothing instead of a frozen first/last pose.
 - **Note**: Currently displays all model bodies. May need filtering to show only relevant joint centres.
 
 ## OpenSim Visualizer ("View in OpenSim")
