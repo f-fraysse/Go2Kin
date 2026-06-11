@@ -1,6 +1,6 @@
 # Go2Kin
 
-📖 **[User Manual & Documentation](https://f-fraysse.github.io/Go2Kin/)**
+📖 **[User Manual & Documentation (AI generated)](https://f-fraysse.github.io/Go2Kin/)**
 
 **WORK IN PROGRESS**
 
