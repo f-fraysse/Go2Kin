@@ -1,0 +1,51 @@
+site_name: Go2Kin
+site_description: Markerless motion capture from USB-wired GoPros — user manual
+site_url: https://f-fraysse.github.io/Go2Kin/   # TODO: confirm once Pages is enabled
+repo_url: https://github.com/f-fraysse/Go2Kin
+repo_name: f-fraysse/Go2Kin
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.footer
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - pymdownx.details
+  - pymdownx.superfences
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Equipment: equipment.md
+  - First-Time Setup:
+      - Overview: first-time-setup/index.md
+      - "1. Install Go2Kin": first-time-setup/01-installation.md
+      - "2. Create the data folder": first-time-setup/02-data-folder.md
+      - "3. Configure your GoPros": first-time-setup/03-gopro-configuration.md
+      - "4. Connecting the GoPros": first-time-setup/04-connecting-gopros.md
+      - "5. First launch of the GUI": first-time-setup/05-first-launch.md
+      - "6. Intrinsic calibration": first-time-setup/06-intrinsic-calibration.md
+      - "7. Verify your setup": first-time-setup/07-verification.md
+  - Regular Use: regular-use.md
+  - GUI Reference:
+      - Overview: gui/index.md
+      - "Top bar — project, session & participant": gui/top-bar.md
+      - "Bottom bar — camera status & controls": gui/bottom-bar.md
+      - "Tab 1 — Live Preview": gui/live-preview.md
+      - "Tab 2 — Calibration": gui/calibration-tab.md
+      - "Tab 3 — Recording": gui/recording-tab.md
+      - "Tab 4 — Processing": gui/processing-tab.md
+      - "Tab 5 — Visualisation": gui/visualisation-tab.md
+  - Reference:
+      - Data organisation: reference/data-organisation.md
+  - Known Issues & Tips: troubleshooting.md
