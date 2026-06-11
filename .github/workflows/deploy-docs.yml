@@ -2,7 +2,7 @@ name: Deploy user manual
 on:
   push:
     branches: [main]
-    paths: ["docs/**", "mkdocs.yml"]
+    paths: ["docs/manual/**", "mkdocs.yml"]
 permissions:
   contents: write
 jobs:

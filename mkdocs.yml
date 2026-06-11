@@ -4,6 +4,8 @@ site_url: https://f-fraysse.github.io/Go2Kin/   # TODO: confirm once Pages is en
 repo_url: https://github.com/f-fraysse/Go2Kin
 repo_name: f-fraysse/Go2Kin
 
+docs_dir: docs/manual   # user manual only; dev notes live elsewhere in docs/
+
 theme:
   name: material
   features:
