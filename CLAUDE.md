@@ -66,8 +66,13 @@ tools/
   audio_sync_test.py      # Audio sync test utility
 tests/
   test_project_manager.py  # ProjectManager unit tests
+docs/
+  manual/                 # Published user manual (MkDocs Material) → GitHub Pages
+  *.md                    # Dev/technical notes (NOT published; cited from Architecture)
 go2kin_config.json         # App config (data_root, serials, last selection) — gitignored
 go2kin_config_template.json # Template for go2kin_config.json (tracked in git)
+mkdocs.yml                 # MkDocs config (docs_dir: docs/manual)
+.github/workflows/deploy-docs.yml  # Auto-deploys manual to GitHub Pages on push to main
 ```
 
 ## Architecture
@@ -84,6 +89,14 @@ go2kin_config_template.json # Template for go2kin_config.json (tracked in git)
 - **Calibration** (`calibration/`): Charuco-based intrinsic/extrinsic calibration adapted from Caliscope (BSD-2-Clause). Orchestrated by `calibrate.py`.
 - **Pose2Sim integration** (`pose2sim_builder.py`): Stages trial data into Pose2Sim directory structure and runs the pipeline. See `docs/pose2sim_integration.md`.
 - **Visualisation** (`GUI/visualisation_tab.py`): Video playback with keypoint overlays. See `docs/Visualisation.md`.
+
+## Documentation
+
+- **User manual**: MkDocs (Material theme), source in `docs/manual/`, published to GitHub Pages at https://f-fraysse.github.io/Go2Kin/ (linked from the README). Config: `mkdocs.yml` (`docs_dir: docs/manual`).
+- **Auto-deploy**: pushing to `main` with changes under `docs/manual/**` or `mkdocs.yml` triggers `.github/workflows/deploy-docs.yml`, which runs `mkdocs gh-deploy --force` to rebuild the `gh-pages` branch. Never edit `gh-pages` directly — it is generated output.
+- **Editing**: edit the `.md` files in `docs/manual/` and push to `main`. A new page must also be added to `nav:` in `mkdocs.yml`. Images go in `docs/manual/assets/`.
+- **Local preview**: `pip install mkdocs-material` then `mkdocs serve` (build-only dep; not in `requirements.txt`).
+- **Dev/technical notes** live at `docs/` root (e.g. `pose2sim_integration.md`, `project_manager.md`, `Visualisation.md`) and are deliberately **not** part of the published site.
 
 ## Hardware
 
