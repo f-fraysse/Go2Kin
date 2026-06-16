@@ -31,7 +31,7 @@ from audio_sync import (  # noqa: E402
 )
 
 DEFAULT_VIDEO_DIR = (
-    r"D:\Markerless_Projects\tests_Francois\sessions\Charlotte_Pilot1\180_turn01\video"
+    r"D:\Markerless_Projects\tests_Francois\sessions\Charlotte_Pilot1\walk02\video"
 )
 
 
