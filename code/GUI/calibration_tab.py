@@ -478,7 +478,7 @@ class CalibrationTab:
     def _ext_auto_run_calibration(self, synced_dir, video_dir, timestamp):
         """Chain extrinsic calibration after sync completes (called from worker thread)."""
         if synced_dir is None:
-            self.frame.after(0, lambda: self._extrinsic_status.set("Sync failed — no synced folder"))
+            self.frame.after(0, lambda: self._extrinsic_status.set("Sync failed/rejected — calibration aborted"))
             self.frame.after(0, lambda: self._set_extrinsic_indicator("red"))
             return
 
@@ -1037,7 +1037,8 @@ class CalibrationTab:
         duration and identical frame counts.
         """
         from audio_sync import (check_ffmpeg, check_audio_track, compute_sync_offsets,
-                                trim_and_sync_videos, AudioSyncError)
+                                trim_and_sync_videos, evaluate_sync_acceptance,
+                                format_sync_summary, AudioSyncError)
 
         prefix = f"{purpose}_{timestamp}"
         video_paths = sorted([
@@ -1088,10 +1089,29 @@ class CalibrationTab:
                 detail += " | WARNING: Inconsistent clap offsets"
             self.frame.after(0, lambda: status_var.set(detail))
 
+            # Same acceptance gate as trial recordings (2 claps + consistency +
+            # max offset). On failure, show the shared red popup and abort BEFORE
+            # the wasteful trim re-encode and the multi-minute extrinsic compute.
+            acceptable, reasons = evaluate_sync_acceptance(offsets, max_offset_ms=200.0)
+            if not acceptable:
+                from GUI.components.sync_discard_dialog import show_sync_discard_dialog
+                print("Extrinsic audio sync unacceptable — aborting calibration:")
+                for r in reasons:
+                    print(f"  - {r}")
+                table = format_sync_summary(offsets)
+                parent = self.frame.winfo_toplevel()
+                self.frame.after(0, lambda: show_sync_discard_dialog(
+                    parent, table, reasons,
+                    heading="SYNC ISSUE — CALIBRATION ABORTED",
+                    subtext="Extrinsic calibration aborted. Please re-record.",
+                    on_ok=lambda: self._cleanup_temp_videos(video_dir, purpose, timestamp),
+                ))
+                return None
+
         # Trim and sync — trim_and_sync_videos creates a synced/ subfolder inside output_dir
         sync_parent = video_dir / f"{purpose}_{timestamp}_sync"
         sync_parent.mkdir(parents=True, exist_ok=True)
-        print("Trimming videos (stream copy, no re-encoding)...")
+        print("Trimming videos (frame-accurate re-encode)...")
         trim_and_sync_videos(
             video_paths, offsets, str(sync_parent),
             progress_callback=lambda msg: print(f"  {msg}"),

@@ -227,9 +227,19 @@ Even when starting all cameras simultaneously, each GoPro begins recording at a 
 
 ### How to use
 
-1. At the start of each recording, perform **two loud hand claps** within the first 3 seconds while all cameras are recording. Two claps enable a consistency check; a single clap also works but without cross-validation.
+1. At the start of each recording, perform **two loud hand claps** within the first 3 seconds while all cameras are recording. Two claps are required for the consistency check.
 2. After files are downloaded, synchronisation runs automatically. The terminal log shows a step-by-step onset detection report with a summary table of offsets and consistency status per camera.
-3. If any camera shows status `WARN` (clap 1 and clap 2 offsets disagree by more than 1 frame), a warning is displayed - consider re-recording with clearer claps.
+
+#### Pass/fail criteria and auto-discard
+
+A sync is considered **acceptable** only when all of the following hold:
+- **Two claps** are detected on every camera.
+- For each camera, the offsets derived from clap 1 vs clap 2 agree within **half a frame** (10 ms at 50 fps; scales with frame rate).
+- No camera's final offset relative to the reference exceeds **200 ms**.
+
+If any criterion fails — or a file has no audio track / no clap is detected at all — a **red popup** appears showing the sync table and the failure reasons, headed *"SYNC ISSUE — TRIAL DISCARDED"*. Clicking **OK** deletes the entire trial folder so you can simply re-record. (Environment problems such as a missing ffmpeg do **not** discard the trial — they only log an error.)
+
+The **same criteria and popup apply to extrinsic calibration recording**: if the calibration sync fails, the popup is headed *"SYNC ISSUE — CALIBRATION ABORTED"* and the calibration is aborted immediately — before the multi-minute extrinsic computation — so you can re-record without waiting. (Set Origin is not gated: the board is static, so no clap sync is needed.)
 
 ### Output
 
@@ -271,7 +281,7 @@ Compensation is **not** applied during extrinsic calibration (camera poses don't
 
 Big ones:
 1. calibration: save calibration "quality metrics" for extrinsics (ie RMSE etc). For intrinsics we already do this. Need to figure out what to keep and where to store it. And define heuristics for extrinsic calib quality check.
-2. sync (audio based): criteria for "sync pass / good sync" is : all cameras detect 2 peaks AND all peaks to background noise ratio is above a set threshold (tbc) AND the 2 offsets computed from the 2 peaks are <10ms apart AND final offset for any camera is <300ms (check value). If all true = good sync / pass / green circle, delete raw unsynced videos and keep only synced ones. If not: keep raw videos, only trim end of videos so frame numbers match and keep those. Whether audio sync passes or fails we only keep 1 video per camera
+2. sync (audio based): pass/fail criteria + auto-discard now implemented — all cameras detect 2 peaks AND the 2 offsets per camera agree within half a frame AND final offset for any camera <200ms; on failure a red popup shows the sync table and the trial folder is discarded. Remaining: (a) peak-to-background-noise ratio criterion (tbc); (b) on PASS, delete raw unsynced videos and keep only synced ones (currently raw videos are retained), so only 1 video per camera is kept.
 3. Currently functionality is: after recording ends, save raw videos to [trial data path]/video/ (with /synced/ subfolder) and create trial.json with calib file name and participant name. Then when Processing trial, create the staging folder (move videos, copy calib file, copy pose2sim config file). New functionality: create pose2sim staging folder after recording rather than at Processing step - move videos and calib file (if exists) right after recording, create trial JSON (already done then?) Safer to move calib file while we know it exists. (see above for sync pass fail: if sync pass, copy synced and cropped files. If sync failed copy raw unsynced files cropped to same frame numbers) Also avoids duplicate videos (some in [trial]/video, some in [trial]/processed/videos)
 4. user manual — scaffolded & published to GitHub Pages (MkDocs, `docs/manual/`); content still being written
 

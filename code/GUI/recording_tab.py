@@ -293,9 +293,16 @@ class RecordingTab:
             self.root.after(0, self.reset_recording_ui)
 
     def _auto_sync(self, trial_info):
-        """Automatically synchronise downloaded video files after recording."""
+        """Automatically synchronise downloaded video files after recording.
+
+        If the sync is unacceptable (a bad recording — failed criteria, no audio
+        track, or no clap detected), the trial is discarded: a red popup shows the
+        sync table and the trial folder is deleted. Environment problems (ffmpeg
+        missing) or trimming errors keep the trial.
+        """
         from audio_sync import (check_ffmpeg, check_audio_track, compute_sync_offsets,
                                 trim_and_sync_videos, create_stitched_preview,
+                                evaluate_sync_acceptance, format_sync_summary,
                                 AudioSyncError)
 
         project = trial_info["project"]
@@ -312,14 +319,18 @@ class RecordingTab:
             print(f"Only {len(mp4_files)} video file(s) — skipping sync.")
             return
 
+        # ── Environment check (never discards the trial) ──
+        if not check_ffmpeg():
+            print("ffmpeg not found — skipping sync. Install with: conda install -c conda-forge ffmpeg")
+            return
+
+        video_paths = [str(f) for f in mp4_files]
+
+        # ── Detection + acceptance (these failures discard the trial) ──
+        offsets = None
+        sync_table = None
+        discard_reasons = None
         try:
-            # Check ffmpeg
-            if not check_ffmpeg():
-                print("ffmpeg not found — skipping sync. Install with: conda install -c conda-forge ffmpeg")
-                return
-
-            video_paths = [str(f) for f in mp4_files]
-
             # Verify audio tracks
             for vp in video_paths:
                 name = Path(vp).name
@@ -346,22 +357,30 @@ class RecordingTab:
                 sound_source_position=sound_pos,
             )
 
-            # Check for warnings
-            for path, info in offsets.items():
-                if info.get("status") == "WARN":
-                    name = Path(path).name
-                    print(
-                        f"  WARNING: Inconsistent clap offsets for {name}. "
-                        f"Consider re-recording with clearer claps.")
+            sync_table = format_sync_summary(offsets)
+            acceptable, reasons = evaluate_sync_acceptance(offsets, max_offset_ms=200.0)
+            if not acceptable:
+                discard_reasons = reasons
+        except AudioSyncError as e:
+            # No audio track / no clap detected — a bad recording, discard it.
+            discard_reasons = [str(e)]
 
-            # Trim and sync videos
-            print("Trimming videos (stream copy, no re-encoding)...")
+        if discard_reasons is not None:
+            print("Audio sync unacceptable — trial will be discarded:")
+            for r in discard_reasons:
+                print(f"  - {r}")
+            self.root.after(0, lambda: self._show_sync_discard_dialog(
+                trial_info, sync_table, discard_reasons))
+            return
+
+        # ── Acceptable: trim, build preview, mark synced ──
+        try:
+            print("Trimming videos (frame-accurate re-encode)...")
             output_files = trim_and_sync_videos(
                 video_paths, offsets, str(video_dir),
                 progress_callback=lambda msg: print(f"  {msg}")
             )
 
-            # Create stitched preview
             synced_dir = str(self.project_manager.get_trial_synced_path(project, session, trial_name))
             print("Creating 2x2 stitched preview...")
             create_stitched_preview(
@@ -381,6 +400,36 @@ class RecordingTab:
                 self.project_manager.update_trial(project, session, trial_name, synced=False)
             except Exception:
                 pass
+
+    def _show_sync_discard_dialog(self, trial_info, table_text, reasons):
+        """Red modal popup shown when a trial's audio sync is unacceptable.
+
+        The single OK button (and the window close button) discard the entire trial
+        folder. Runs on the GUI thread.
+        """
+        from GUI.components.sync_discard_dialog import show_sync_discard_dialog
+
+        project = trial_info["project"]
+        session = trial_info["session"]
+        trial_name = trial_info["trial_name"]
+
+        def on_ok():
+            try:
+                self.project_manager.delete_trial(project, session, trial_name)
+                print(f"Discarded trial '{trial_name}' (folder deleted).")
+            except Exception as e:
+                print(f"Failed to delete discarded trial '{trial_name}': {e}")
+            try:
+                self.trials_list.refresh()
+            except Exception:
+                pass
+
+        show_sync_discard_dialog(
+            self.root, table_text, reasons,
+            heading="SYNC ISSUE — TRIAL DISCARDED",
+            subtext=f"Trial '{trial_name}' will be deleted. Please re-record.",
+            on_ok=on_ok,
+        )
 
     def _get_sound_source_position(self):
         """Read sound source X/Y/Z from UI fields. Returns [x, y, z] or None."""

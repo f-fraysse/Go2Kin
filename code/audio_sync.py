@@ -238,6 +238,84 @@ def save_onset_plot(audio_tracks: List[np.ndarray],
     return output_path
 
 
+def format_sync_summary(results: Dict[str, dict]) -> str:
+    """
+    Build the multi-line camera/offset summary table from the enriched results
+    dict returned by compute_sync_offsets. Reference camera marked with '*';
+    '--' shown for a missing second clap. Shared by the terminal log and the
+    Recording-tab discard popup so both render identically.
+    """
+    header = (f"{'Camera':<30} | {'Clap1 Lag(ms)':>13} | {'Clap2 Lag(ms)':>13} | "
+              f"{'Diff(ms)':>9} | {'Status':>12} | {'Final Lag(ms)':>14} | {'Final(frames)':>14}")
+    lines = [header, "-" * len(header)]
+
+    fps = None
+    for vp, info in results.items():
+        fps = info.get("fps", fps)
+        name = Path(vp).name
+        if info.get("is_reference"):
+            name += "*"
+        o1 = info["clap1_ms"]
+        o2 = info["clap2_ms"]
+        diff = info["diff_ms"]
+        o2_str = f"{o2:+.3f}" if o2 is not None else "--"
+        diff_str = f"{diff:.3f}" if diff is not None else "--"
+        row = (f"{name:<30} | {o1:>+13.3f} | {o2_str:>13} | "
+               f"{diff_str:>9} | {info['status']:>12} | "
+               f"{info['final_offset_ms']:>+14.3f} | {info['offset_frames']:>+14.3f}")
+        lines.append(row)
+
+    lines.append("")
+    lines.append("(* = reference camera, clap 1 used for final offset)")
+    if fps is not None:
+        lines.append(f"FPS for frame conversion: {fps:.0f}")
+    return "\n".join(lines)
+
+
+def evaluate_sync_acceptance(results: Dict[str, dict],
+                             max_offset_ms: float = 200.0
+                             ) -> Tuple[bool, List[str]]:
+    """
+    Decide whether a trial's audio sync is good enough to keep. All criteria
+    must hold:
+      1. Every camera detected two claps.
+      2. Each camera's clap1 vs clap2 offsets agree within half a frame.
+      3. No camera's final offset (vs reference) exceeds max_offset_ms.
+
+    Returns (acceptable, reasons); reasons is empty iff acceptable.
+    """
+    reasons: List[str] = []
+
+    # fps drives the half-frame consistency threshold
+    fps = next((info.get("fps") for info in results.values() if info.get("fps")), None)
+    half_frame_ms = (0.5 * 1000.0 / fps) if fps else 10.0
+
+    # Criterion 1: two claps on every camera (single-clap fallback => clap2 None)
+    if any(info.get("clap2_ms") is None for info in results.values()):
+        reasons.append("Not all cameras detected two claps")
+
+    # Criterion 2: clap1 vs clap2 consistency (non-reference cameras)
+    for vp, info in results.items():
+        if info.get("is_reference"):
+            continue
+        diff = info.get("diff_ms")
+        if diff is not None and diff > half_frame_ms:
+            reasons.append(
+                f"{Path(vp).name}: clap1/clap2 differ by {diff:.1f} ms "
+                f"(> {half_frame_ms:.1f} ms = half a frame)"
+            )
+
+    # Criterion 3: inter-camera offset ceiling
+    for vp, info in results.items():
+        off = info.get("final_offset_ms", 0.0)
+        if abs(off) > max_offset_ms:
+            reasons.append(
+                f"{Path(vp).name}: offset {off:+.1f} ms exceeds {max_offset_ms:.0f} ms limit"
+            )
+
+    return (not reasons, reasons)
+
+
 def compute_sync_offsets(video_paths: List[str],
                          output_dir: Optional[str] = None,
                          progress_callback: Optional[Callable] = None,
@@ -444,40 +522,37 @@ def compute_sync_offsets(video_paths: List[str],
         else:
             log("  Skipping: no camera positions or sound source position provided")
 
+    # Build return dict keyed by video path (enriched for acceptance evaluation
+    # and the discard popup; clap1-based offset in seconds is used for trimming).
+    results = {}
+    for cam, vp in enumerate(video_paths):
+        fo = final_offsets[cam]
+        o1 = offsets_by_clap[cam][0]["offset_ms"]
+        if len(available_claps) == 2:
+            o2 = offsets_by_clap[cam][1]["offset_ms"]
+            diff = abs(o1 - o2)
+        else:
+            o2 = None
+            diff = None
+        results[vp] = {
+            "offset_seconds": fo["offset_ms"] / 1000.0,
+            "is_reference": (cam == ref_cam),
+            "status": fo["status"],
+            "clap1_ms": o1,
+            "clap2_ms": o2,
+            "diff_ms": diff,
+            "final_offset_ms": fo["offset_ms"],
+            "offset_frames": fo["offset_frames"],
+            "fps": fps,
+        }
+
     # ── Summary table ──
     log("")
     log("=" * 60)
     log("Summary")
     log("=" * 60)
-
-    header = (f"{'Camera':<30} | {'Clap1 Lag(ms)':>13} | {'Clap2 Lag(ms)':>13} | "
-              f"{'Diff(ms)':>9} | {'Status':>12} | {'Final Lag(ms)':>14} | {'Final(frames)':>14}")
-    log(header)
-    log("-" * len(header))
-
-    for cam in range(n_cams):
-        name = filenames[cam]
-        if cam == ref_cam:
-            name += "*"
-
-        o1 = offsets_by_clap[cam][0]["offset_ms"]
-        if len(available_claps) == 2:
-            o2 = offsets_by_clap[cam][1]["offset_ms"]
-            diff = abs(o1 - o2)
-            o2_str = f"{o2:+.3f}"
-            diff_str = f"{diff:.3f}"
-        else:
-            o2_str = "--"
-            diff_str = "--"
-
-        fo = final_offsets[cam]
-        row = (f"{name:<30} | {o1:>+13.3f} | {o2_str:>13} | "
-               f"{diff_str:>9} | {fo['status']:>12} | {fo['offset_ms']:>+14.3f} | "
-               f"{fo['offset_frames']:>+14.3f}")
-        log(row)
-
-    log(f"\n(* = reference camera, clap 1 used for final offset)")
-    log(f"FPS for frame conversion: {fps:.0f}")
+    for line in format_sync_summary(results).splitlines():
+        log(line)
 
     # Save onset plot
     if output_dir:
@@ -487,19 +562,6 @@ def compute_sync_offsets(video_paths: List[str],
         log("Saving onset plot...")
         save_onset_plot(audio_tracks, envelopes, onsets, filenames, sr, plot_path)
         log(f"  Created: synced/sync_onsets.png")
-
-    # Build return dict keyed by video path
-    # Convert clap1-based offsets to seconds for trimming
-    results = {}
-    for cam, vp in enumerate(video_paths):
-        fo = final_offsets[cam]
-        is_ref = (cam == ref_cam)
-        offset_seconds = fo["offset_ms"] / 1000.0
-        results[vp] = {
-            "offset_seconds": offset_seconds,
-            "is_reference": is_ref,
-            "status": fo["status"],
-        }
 
     return results
 
