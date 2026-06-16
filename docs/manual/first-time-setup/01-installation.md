@@ -30,6 +30,36 @@ pip install -r requirements.txt
 conda install -c conda-forge ffmpeg
 ```
 
+### NVENC ffmpeg (required for high-resolution / high-frame-rate recording)
+
+The automatic audio synchronisation re-encodes each clip on the NVIDIA GPU using
+ffmpeg's `hevc_nvenc` encoder. The `conda-forge` ffmpeg installed above **does not
+include NVENC** and cannot process high-resolution / high-frame-rate footage (for
+example 2.7K at 200 fps) — sync will fail with an encoder error. You must replace it with
+a full ffmpeg build that has NVENC:
+
+1. **Close Go2Kin** if it is running (otherwise the ffmpeg file is locked and cannot be replaced).
+2. Download a build that matches your NVIDIA driver. The **n7.1** build from
+   [BtbN's FFmpeg Builds](https://github.com/BtbN/FFmpeg-Builds/releases) —
+   `ffmpeg-n7.1-latest-win64-gpl-7.1.zip` — works with current drivers. (Avoid the
+   `master`/`latest` build: it requires a very new driver and otherwise fails with
+   *"Driver does not support the required nvenc API version"*.)
+3. Unzip it, then copy `bin\ffmpeg.exe` and `bin\ffprobe.exe` from the unzipped folder
+   **over** the existing files in your Conda environment's binary folder, e.g.
+   `C:\Users\<you>\miniconda3\envs\Go2Kin\Library\bin\` (or `D:\Miniconda3\envs\Go2Kin\Library\bin\`).
+   Back up the originals first (rename them to `ffmpeg.exe.bak` / `ffprobe.exe.bak`) in case you want to revert.
+4. Verify in an activated environment:
+
+   ```
+   ffmpeg -hide_banner -encoders | findstr nvenc
+   ```
+
+   This should list `hevc_nvenc`.
+
+> ⚠️ Running `conda update ffmpeg` (or recreating the environment) reverts ffmpeg to the
+> NVENC-less conda version. If high-frame-rate sync stops working after an update, repeat
+> the steps above.
+
 Install Pose2Sim as a submodule:
 
 ```

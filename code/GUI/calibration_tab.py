@@ -451,9 +451,10 @@ class CalibrationTab:
                     on_synced=lambda synced_dir: self._ext_auto_run_calibration(synced_dir, video_dir, timestamp),
                 )
             except Exception as e:
-                self.frame.after(0, lambda: self._extrinsic_status.set(f"Error: {e}"))
+                msg = str(e)
+                self.frame.after(0, lambda m=msg: self._extrinsic_status.set(f"Error: {m}"))
                 self.frame.after(0, lambda: self._set_extrinsic_indicator("red"))
-                self.frame.after(0, lambda: messagebox.showerror("Recording Error", str(e)))
+                self.frame.after(0, lambda m=msg: messagebox.showerror("Recording Error", m))
             finally:
                 self._calib_recording = False
                 self.frame.after(0, self.stop_bar_timer)
@@ -561,9 +562,10 @@ class CalibrationTab:
                     skip_sync=True,
                 )
             except Exception as e:
-                self.frame.after(0, lambda: self._origin_status.set(f"Error: {e}"))
+                msg = str(e)
+                self.frame.after(0, lambda m=msg: self._origin_status.set(f"Error: {m}"))
                 self.frame.after(0, lambda: self._set_origin_indicator("red"))
-                self.frame.after(0, lambda: messagebox.showerror("Recording Error", str(e)))
+                self.frame.after(0, lambda m=msg: messagebox.showerror("Recording Error", m))
             finally:
                 self._calib_recording = False
                 self.frame.after(0, self.stop_bar_timer)

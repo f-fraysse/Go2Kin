@@ -9,7 +9,22 @@ Multi-camera GoPro control application for research. Controls up to 4 GoPro Hero
 - **IDE**: VSCode
 - **Run**: `python code/go2kin.py`
 - **Dependencies**: `pip install -r requirements.txt` (requests, opencv-contrib-python, Pillow, numpy, scipy, pandas, matplotlib, sounddevice)
-- **External tools**: `ffmpeg` in PATH (for audio sync; install via `conda install -c conda-forge ffmpeg`)
+- **External tools**: `ffmpeg` in PATH (for audio sync; install via `conda install -c conda-forge ffmpeg`).
+  - **NVENC build required for high-res/high-fps sync** (e.g. 2.7K @ 200fps): the audio-sync
+    trim re-encodes with `hevc_nvenc` (NVIDIA GPU). The conda-forge ffmpeg is LGPL
+    (`--disable-gpl`) and has **no NVENC** — its only encoders are the Windows MediaFoundation
+    `h264_mf`/`hevc_mf`, which cannot encode 2.7K@200fps (H.264 level ceiling; `hevc_mf` MFT
+    often missing). Install a full GPL build with NVENC and overwrite the conda binaries:
+    1. Close Go2Kin (so `ffmpeg.exe` isn't locked).
+    2. Download a build matching your NVIDIA driver's NVENC API — the **n7.1** BtbN GPL build
+       (`https://github.com/BtbN/FFmpeg-Builds/releases` → `ffmpeg-n7.1-latest-win64-gpl-7.1.zip`)
+       works with NVENC API 12.2 drivers. The bleeding-edge `master` build needs a very new
+       driver (610+) and will fail with "Driver does not support the required nvenc API version".
+    3. Copy its `bin\ffmpeg.exe` and `bin\ffprobe.exe` over the ones in
+       `<conda>\envs\Go2Kin\Library\bin\` (back up the originals first, e.g. `*.lgpl-bak`).
+    4. Verify: `ffmpeg -hide_banner -encoders | findstr nvenc` lists `hevc_nvenc`.
+    - **Caveat:** `conda update ffmpeg` (or recreating the env) reverts these to the LGPL build —
+      re-apply the overwrite afterwards.
 - **Tests**: `python tests/test_project_manager.py` (run from repo root)
 
 ## Project Structure

@@ -16,6 +16,7 @@ A loose collection of notes — promote items into the main guide as they firm u
 - **Claps not detected** — *(🚧 TODO: common causes — background noise, claps too quiet or too late — and fixes.)*
 - **High frame rates** — at 100+ fps, camera-to-source distance differences cause sub-frame errors; set the sound source position in the Recording tab (requires a loaded calibration).
 - **During extrinsic calibration** — sound-delay compensation can't apply (camera poses don't exist yet); clap near the centre of the camera volume so distance differences largely cancel.
+- **Sync fails with "ffmpeg trim failed … received no packets" / "error in an external library" / "Driver does not support the required nvenc API version"** — at high resolution / frame rate (e.g. 2.7K @ 200 fps) the trim step needs ffmpeg's `hevc_nvenc` (GPU) encoder. The default conda ffmpeg has no NVENC; install a full NVENC build and (if you get the *nvenc API version* message) one matching your NVIDIA driver. See [Installation → NVENC ffmpeg](first-time-setup/01-installation.md).
 
 ## Calibration
 

@@ -575,8 +575,10 @@ def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
     to a shortest common frame count.
 
     Front trimming is done in the FRAME domain with a frame-accurate re-encode
-    (h264_mf, Windows MediaFoundation H.264 — the conda-forge ffmpeg here has no
-    libx264). Stream copy cannot do this: GoPro files keyframe only every ~1s
+    (hevc_nvenc, HEVC on the NVIDIA GPU — matches the GoPro source codec and handles
+    high res/fps, e.g. 2.7K @ 200fps, which the Windows MediaFoundation encoders
+    cannot). Requires a full ffmpeg build with NVENC on PATH (see CLAUDE.md / install
+    docs). Stream copy cannot do this: GoPro files keyframe only every ~1s
     (50 frames @ 50fps), so a sub-GOP `-ss` + `-c copy` snaps back to frame 0 and
     nothing is trimmed. Re-encoding decodes from the start and cuts on the exact
     frame, so small inter-camera offsets are honoured.
@@ -601,7 +603,11 @@ def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
         offset = offsets[vp]["offset_seconds"]
         drop = max(0, round(offset * fps))
         n_drop[vp] = drop
-        available[vp] = total_frames - drop
+        # The (drop + 0.5)/fps output-seek below lands just past frame index `drop`,
+        # so it actually discards drop + 1 frames. Account for that extra frame here,
+        # otherwise common_frames can exceed what the seek leaves on the constraining
+        # camera and that output ends up one frame short (unequal frame counts).
+        available[vp] = total_frames - drop - 1
         log(f"  {Path(vp).name}: total={total_frames} frames, "
             f"offset={offset:.4f}s, drop={drop} frames, remaining={available[vp]} frames")
 
@@ -622,8 +628,7 @@ def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
             "-i", vp,
             "-ss", f"{seek_seconds:.6f}",
             "-frames:v", str(common_frames),
-            "-c:v", "h264_mf", "-rate_control", "quality", "-quality", "90",
-            "-scenario", "archive",
+            "-c:v", "hevc_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "19", "-b:v", "0",
             "-c:a", "aac", "-b:a", "192k",
             str(out_path)
         ]

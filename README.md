@@ -60,6 +60,24 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
    conda install -c conda-forge ffmpeg
    ```
 
+   **Replace ffmpeg with an NVENC build** (required for high-resolution / high-frame-rate
+   sync, e.g. 2.7K @ 200 fps). The audio-sync trim re-encodes on the NVIDIA GPU with
+   `hevc_nvenc`, but the conda-forge ffmpeg is LGPL (`--disable-gpl`) and has **no NVENC** —
+   high-fps sync fails with an encoder error. Swap in a full GPL build:
+
+   1. **Close Go2Kin** if running (so `ffmpeg.exe` isn't locked).
+   2. Download a build matching your NVIDIA driver's NVENC API. The **n7.1** build from
+      [BtbN's FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases) —
+      `ffmpeg-n7.1-latest-win64-gpl-7.1.zip` — works with current drivers. (The `master`
+      build needs a very new driver, 610+, and otherwise fails with *"Driver does not
+      support the required nvenc API version"*.)
+   3. Unzip and copy its `bin\ffmpeg.exe` and `bin\ffprobe.exe` **over** the ones in the
+      Conda env, e.g. `<conda>\envs\Go2Kin\Library\bin\` (back the originals up first).
+   4. Verify: `ffmpeg -hide_banner -encoders | findstr nvenc` lists `hevc_nvenc`.
+
+   > ⚠️ `conda update ffmpeg` (or recreating the env) reverts to the NVENC-less build —
+   > re-apply this swap if high-fps sync stops working.
+
 4. Install pose2sim as a submodule:
     ```
    git submodule init
@@ -260,7 +278,7 @@ Original files are never modified. `trial.json` is updated with `synced: true` o
 | Consistency check | Dual-clap | If both claps detected in all cameras, clap 1 vs clap 2 offsets must agree within 1 frame |
 | Reference selection | Earliest onset | Camera with earliest clap 1 onset is the reference; others offset relative to it |
 | End alignment | Common frame count | All files trimmed to the shortest remaining frame count after start alignment |
-| Video trimming | Frame-accurate re-encode | Drops integer front frames per offset, then re-encodes (h264_mf, quality 90). Stream copy can't cut sub-GOP - GoPro keyframes only every ~1s |
+| Video trimming | Frame-accurate re-encode | Drops integer front frames per offset, then re-encodes (`hevc_nvenc`, NVIDIA GPU - handles 2.7K@200fps, which MediaFoundation can't). Stream copy can't cut sub-GOP - GoPro keyframes only every ~1s |
 | Stitched preview | ffmpeg xstack filter | 4 inputs downscaled to 480x480, arranged in 2x2 grid, encoded with built-in mpeg4 codec |
 | Speed-of-sound compensation | Optional | If calibration is loaded and a sound source position is set, subtracts differential sound propagation delay (distance / 340 m/s) from measured offsets |
 
@@ -274,7 +292,9 @@ Compensation is **not** applied during extrinsic calibration (camera poses don't
 
 ### Requirements
 
-- **ffmpeg** must be installed and in PATH (included when installed via `conda install -c conda-forge ffmpeg`)
+- **ffmpeg** must be installed and in PATH. For high-resolution / high-frame-rate sync
+  (e.g. 2.7K @ 200 fps) it must be a build with **NVENC** (`hevc_nvenc`) — the conda-forge
+  ffmpeg has no NVENC and will fail. See the NVENC step under [Setup](#setup).
 - **numpy**, **scipy**, and **matplotlib** (included in `requirements.txt`)
 
 ## TODO
@@ -286,6 +306,8 @@ Big ones:
 4. user manual — scaffolded & published to GitHub Pages (MkDocs, `docs/manual/`); content still being written
 
 Misc / small:
+- extrinsic calibration at 2.7K misses too many ArUco/charuco markers for a reliable calibration — record extrinsic at 4K. Investigate why 2.7K detection is poor (resolution/sharpness, detector params).
+- audio sync: frame-accurate re-encode (`hevc_nvenc`, GPU) is slow at high res/fps — 4K@100fps took >2× the usual time. Investigate encoder tuning (preset, lookahead/B-frames, rate-control) or whether HEVC-source decode is the bottleneck.
 - drop audio (`-an`) from synced per-camera MP4s once sync quality is validated - audio is currently kept (re-encoded/aligned) only to help verify sync during development
 - defer or remove the creation of "stitched preview" after sync (takes ~10sec) - after audio sync cleanup
 - check camera configs (double up between old system in config/ and go2kin_config in root)
