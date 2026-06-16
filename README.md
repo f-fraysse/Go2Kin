@@ -249,8 +249,8 @@ Original files are never modified. `trial.json` is updated with `synced: true` o
 | Onset detection | Derivative threshold | Positive-only first derivative, threshold at 20% of peak, 0.3s cooldown between claps |
 | Consistency check | Dual-clap | If both claps detected in all cameras, clap 1 vs clap 2 offsets must agree within 1 frame |
 | Reference selection | Earliest onset | Camera with earliest clap 1 onset is the reference; others offset relative to it |
-| End alignment | Common duration | All files trimmed to the shortest remaining duration after start alignment |
-| Video trimming | ffmpeg stream copy | `-ss` + `-t` + `-c copy` - no re-encoding, lossless, fast |
+| End alignment | Common frame count | All files trimmed to the shortest remaining frame count after start alignment |
+| Video trimming | Frame-accurate re-encode | Drops integer front frames per offset, then re-encodes (h264_mf, quality 90). Stream copy can't cut sub-GOP - GoPro keyframes only every ~1s |
 | Stitched preview | ffmpeg xstack filter | 4 inputs downscaled to 480x480, arranged in 2x2 grid, encoded with built-in mpeg4 codec |
 | Speed-of-sound compensation | Optional | If calibration is loaded and a sound source position is set, subtracts differential sound propagation delay (distance / 340 m/s) from measured offsets |
 
@@ -276,6 +276,7 @@ Big ones:
 4. user manual — scaffolded & published to GitHub Pages (MkDocs, `docs/manual/`); content still being written
 
 Misc / small:
+- drop audio (`-an`) from synced per-camera MP4s once sync quality is validated - audio is currently kept (re-encoded/aligned) only to help verify sync during development
 - defer or remove the creation of "stitched preview" after sync (takes ~10sec) - after audio sync cleanup
 - check camera configs (double up between old system in config/ and go2kin_config in root)
 - keep extra info in JSON calib file (e.g. quality metrics - to be displayed in Calibration tab later)

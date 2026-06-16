@@ -509,8 +509,16 @@ def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
                          progress_callback: Optional[Callable] = None
                          ) -> List[str]:
     """
-    Trim videos: align starts (by offset) and trim ends (to shortest common duration).
-    Uses ffmpeg stream copy (no re-encoding).
+    Trim videos: align starts (drop integer front frames per offset) and trim ends
+    to a shortest common frame count.
+
+    Front trimming is done in the FRAME domain with a frame-accurate re-encode
+    (h264_mf, Windows MediaFoundation H.264 — the conda-forge ffmpeg here has no
+    libx264). Stream copy cannot do this: GoPro files keyframe only every ~1s
+    (50 frames @ 50fps), so a sub-GOP `-ss` + `-c copy` snaps back to frame 0 and
+    nothing is trimmed. Re-encoding decodes from the start and cuts on the exact
+    frame, so small inter-camera offsets are honoured.
+
     Returns list of output file paths.
     """
     def log(msg):
@@ -520,46 +528,55 @@ def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
     synced_dir = Path(output_dir) / "synced"
     synced_dir.mkdir(exist_ok=True)
 
-    # Compute common duration (shortest remaining after start trim)
-    remaining_durations = []
+    fps = get_frame_rate(video_paths[0])
+    log(f"FPS: {fps:.0f}")
+
+    # Compute integer front-trim (frames) and remaining frames per camera
+    n_drop = {}
+    available = {}
     for vp in video_paths:
-        total = get_video_duration(vp)
+        total_frames = get_frame_count(vp)
         offset = offsets[vp]["offset_seconds"]
-        remaining = total - offset
-        remaining_durations.append(remaining)
-        log(f"  {Path(vp).name}: total={total:.2f}s, offset={offset:.4f}s, remaining={remaining:.2f}s")
+        drop = max(0, round(offset * fps))
+        n_drop[vp] = drop
+        available[vp] = total_frames - drop
+        log(f"  {Path(vp).name}: total={total_frames} frames, "
+            f"offset={offset:.4f}s, drop={drop} frames, remaining={available[vp]} frames")
 
-    common_duration = min(remaining_durations)
-    log(f"Common duration: {common_duration:.2f}s")
+    common_frames = min(available.values())
+    log(f"Common frame count: {common_frames}")
 
-    # Trim each video
+    # Re-encode each video: drop n_drop front frames, keep exactly common_frames.
+    # Output seeking (-ss after -i) is frame-accurate when re-encoding; the
+    # half-frame nudge avoids float rounding landing on the previous frame.
     output_files = []
     for vp in video_paths:
         info = offsets[vp]
         out_path = synced_dir / Path(vp).name
-        offset = info["offset_seconds"]
+        seek_seconds = (n_drop[vp] + 0.5) / fps
 
         cmd = [
             ffmpeg_path, "-y",
-            "-ss", f"{offset:.6f}",
             "-i", vp,
-            "-t", f"{common_duration:.6f}",
-            "-c", "copy",
-            "-avoid_negative_ts", "make_zero",
+            "-ss", f"{seek_seconds:.6f}",
+            "-frames:v", str(common_frames),
+            "-c:v", "h264_mf", "-rate_control", "quality", "-quality", "90",
+            "-scenario", "archive",
+            "-c:a", "aac", "-b:a", "192k",
             str(out_path)
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if result.returncode != 0:
             raise AudioSyncError(
                 f"ffmpeg trim failed for {Path(vp).name}: {result.stderr[-300:]}"
             )
 
         ref_marker = " (reference)" if info["is_reference"] else ""
-        log(f"  Created: {Path(vp).name}{ref_marker}")
+        log(f"  Created: {Path(vp).name}{ref_marker} (dropped {n_drop[vp]} front frames)")
         output_files.append(str(out_path))
 
-    # Frame equalization: ensure all files have identical frame counts
+    # Verify all outputs have the identical frame count (should always hold)
     log("Verifying frame counts...")
     frame_counts = {}
     for out_path in output_files:
@@ -567,32 +584,11 @@ def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
         frame_counts[out_path] = count
         log(f"  {Path(out_path).name}: {count} frames")
 
-    min_frames = min(frame_counts.values())
-    max_frames = max(frame_counts.values())
-
-    if min_frames != max_frames:
-        log(f"Frame mismatch ({min_frames}-{max_frames}), equalising to {min_frames} frames...")
-        for out_path in output_files:
-            if frame_counts[out_path] > min_frames:
-                temp_path = Path(out_path).with_suffix(".tmp.mp4")
-                cmd = [
-                    ffmpeg_path, "-y",
-                    "-i", out_path,
-                    "-frames:v", str(min_frames),
-                    "-c", "copy",
-                    str(temp_path)
-                ]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-                if result.returncode != 0:
-                    raise AudioSyncError(
-                        f"Frame equalization failed for {Path(out_path).name}: "
-                        f"{result.stderr[-300:]}"
-                    )
-                Path(out_path).unlink()
-                temp_path.rename(out_path)
-                log(f"  {Path(out_path).name}: trimmed {frame_counts[out_path]} -> {min_frames}")
+    if len(set(frame_counts.values())) != 1:
+        log(f"  WARNING: frame counts differ across cameras: "
+            f"{ {Path(p).name: c for p, c in frame_counts.items()} }")
     else:
-        log(f"All files have {min_frames} frames")
+        log(f"All files have {common_frames} frames")
 
     return output_files
 
