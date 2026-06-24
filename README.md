@@ -321,3 +321,5 @@ Misc / small:
 - set camera datetime on camera connect
 - top bar "manage" button redundant with "+" butto nto add participant
 - Pose2Sim re-runs leave stale files in `pose-3d/` and `kinematics/` (e.g. a `processed_0-256_filt_butterworth.trc` from a previous frame range alongside today's `processed_0-255_*`) that get globbed by kinematics as phantom "person 1" entries — extra OpenSim scaling with default 1.75m/70kg, extra IK filter pass. Fix: wipe `pose-3d/` and `kinematics/` at the start of `build_pose2sim_project()` (keep `pose/` and `pose-associated/` so `overwrite_pose=false` workflow stays viable).
+- Remove 5 second countdown before "Set Origin" recording in Calibration tab
+- Remove "Apply calibration" button from calibration tab and auto apply after "Set Origin" instead
