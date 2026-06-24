@@ -25,7 +25,7 @@ class RecordingTab:
                  save_camera_settings, save_app_config,
                  get_calibration_tab,
                  rec_delay_enabled, rec_delay_seconds, rec_delay_countdown_label,
-                 sync_method_var):
+                 sync_method_var, get_camera_zoom=None):
         self.notebook = notebook
         self.root = notebook.winfo_toplevel()
         self.config = config
@@ -40,6 +40,7 @@ class RecordingTab:
         self.save_camera_settings = save_camera_settings
         self.save_app_config = save_app_config
         self._get_calibration_tab = get_calibration_tab
+        self._get_camera_zoom = get_camera_zoom or (lambda camera_num: 0)
 
         # Bottom bar widget references (owned by main_window, shared)
         self.rec_delay_enabled = rec_delay_enabled
@@ -508,8 +509,24 @@ class RecordingTab:
 
     # -- Camera recording helpers ----------------------------------------------
 
+    def _apply_saved_zoom(self, camera_num, camera):
+        """Re-apply the digital zoom set in the Preview tab before recording.
+
+        Resolution/FPS changes reset the GoPro's digital zoom, so the saved
+        framing must be re-applied right before the shutter starts (same as
+        the Preview tab does when starting a stream).
+        """
+        try:
+            zoom = self._get_camera_zoom(camera_num)
+            if zoom and zoom > 0:
+                camera.setDigitalZoom(zoom)
+                time.sleep(0.3)
+        except Exception as e:
+            print(f"  ⚠ Failed to apply zoom to camera {camera_num}: {e}")
+
     def start_camera_recording(self, camera_num, camera):
-        """Start recording on a single camera (settings already applied via GUI)."""
+        """Start recording on a single camera (re-applies saved zoom first)."""
+        self._apply_saved_zoom(camera_num, camera)
         camera.shutterStart()
 
     def stop_and_download(self, camera_num, camera, video_dir, trial_name):

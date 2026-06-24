@@ -40,7 +40,7 @@ class CalibrationTab:
                  play_sync_sound=None,
                  app_config=None, save_app_config=None,
                  on_calibration_saved=None,
-                 sync_method_var=None):
+                 sync_method_var=None, get_camera_zoom=None):
         self.notebook = notebook
         self.config = config
         self.frame = ttk.Frame(notebook)
@@ -58,6 +58,7 @@ class CalibrationTab:
         self._save_app_config = save_app_config or (lambda: None)
         self._on_calibration_saved = on_calibration_saved or (lambda: None)
         self.sync_method_var = sync_method_var or tk.StringVar(value="manual")
+        self._get_camera_zoom = get_camera_zoom or (lambda cam_num: 0)
 
         # Lazy imports to avoid circular imports and slow startup
         self._charuco = None
@@ -894,6 +895,28 @@ class CalibrationTab:
         temp_dir.mkdir(parents=True, exist_ok=True)
         return temp_dir
 
+    # --- Recording helpers ---
+
+    def _apply_saved_zoom(self, cam_num, camera):
+        """Re-apply the digital zoom set in the Preview tab before recording.
+
+        Resolution/FPS changes reset the GoPro's digital zoom, so the saved
+        framing must be re-applied right before the shutter starts (same as
+        the Preview tab does when starting a stream).
+        """
+        try:
+            zoom = self._get_camera_zoom(cam_num)
+            if zoom and zoom > 0:
+                camera.setDigitalZoom(zoom)
+                time.sleep(0.3)
+        except Exception as e:
+            print(f"  ⚠ Failed to apply zoom to camera {cam_num}: {e}")
+
+    def _start_camera_with_zoom(self, cam_num, camera):
+        """Apply saved zoom then start the shutter (used for multi-cam start)."""
+        self._apply_saved_zoom(cam_num, camera)
+        camera.shutterStart()
+
     # --- Intrinsic recording ---
 
     def _toggle_intrinsic_record(self, cam_num: int):
@@ -917,6 +940,7 @@ class CalibrationTab:
             def worker():
                 try:
                     self.run_rec_delay()
+                    self._apply_saved_zoom(cam_num, camera)
                     camera.shutterStart()
                     self.frame.after(0, self.start_bar_timer)
                     self.play_sync_sound()
@@ -969,7 +993,8 @@ class CalibrationTab:
 
         # Start all cameras
         with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = {executor.submit(cam.shutterStart): (num, cam) for num, cam in cam_list}
+            futures = {executor.submit(self._start_camera_with_zoom, num, cam): (num, cam)
+                       for num, cam in cam_list}
             for f in futures:
                 num, cam = futures[f]
                 try:

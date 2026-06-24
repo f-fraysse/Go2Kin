@@ -313,6 +313,7 @@ class Go2KinMainWindow:
             save_app_config=self.save_app_config,
             on_calibration_saved=lambda: self.top_bar.refresh_calibration_status(),
             sync_method_var=self.sync_method_var,
+            get_camera_zoom=self.get_camera_zoom,
         )
 
     def create_processing_tab(self):
@@ -350,8 +351,21 @@ class Go2KinMainWindow:
             rec_delay_seconds=self.rec_delay_seconds,
             rec_delay_countdown_label=self.rec_delay_countdown_label,
             sync_method_var=self.sync_method_var,
+            get_camera_zoom=self.get_camera_zoom,
         )
     
+    def get_camera_zoom(self, camera_num):
+        """Return the saved digital-zoom level (0-100) set in the Preview tab.
+
+        Source of truth for the user's framing intent. Recording paths re-apply
+        this before shutter start because resolution/FPS changes reset the
+        GoPro's digital zoom.
+        """
+        profile = self.camera_profiles.get(camera_num)
+        if profile:
+            return profile.get('current_zoom', 0)
+        return 0
+
     def load_camera_settings(self):
         """Load last-used resolution/fps into global dropdowns"""
         if "1" in self.config["cameras"]:
@@ -498,6 +512,17 @@ class Go2KinMainWindow:
                         time.sleep(0.3)
                     else:
                         print(f"  {name} already {value_desc}")
+
+            # Sync camera clock to computer time (keeps video timestamps consistent)
+            print(f"  Syncing date/time to computer clock...")
+            try:
+                dt_response = camera.setDateTimeNow()
+                if dt_response.status_code == 200:
+                    print(f"  ✓ Date/time synced")
+                else:
+                    print(f"  ⚠ Failed to sync date/time (status: {dt_response.status_code})")
+            except Exception as dt_err:
+                print(f"  ⚠ Failed to sync date/time: {dt_err}")
 
             # Restore critical recording settings from saved profile
             # This ensures settings survive camera power-cycles between sessions
