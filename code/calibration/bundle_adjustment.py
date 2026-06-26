@@ -199,11 +199,16 @@ class PointDataBundle:
 
     def optimize(
         self,
-        ftol: float = 1e-8,
+        ftol: float = 1e-4,
         max_nfev: int = 1000,
         verbose: int = 2,
     ) -> PointDataBundle:
-        """Run bundle adjustment. Returns NEW optimized bundle (immutable)."""
+        """Run bundle adjustment. Returns NEW optimized bundle (immutable).
+
+        ftol defaults to 1e-4: bundle adjustment converges to pixel-level
+        reprojection accuracy well before the scipy default 1e-8, so the tighter
+        tolerance just burns extra iterations for calibration purposes.
+        """
         _, matched_img_df, _, camera_indices, image_coords = self._get_matched_data()
         combined_mask = self.img_to_obj_map >= 0
         posed_cam_ids = set(self.camera_array.posed_cam_id_to_index.keys())

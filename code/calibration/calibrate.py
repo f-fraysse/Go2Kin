@@ -8,6 +8,7 @@ as the main entry points for the calibration pipeline.
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -116,18 +117,22 @@ def run_extrinsic_calibration(
         PointDataBundle with optimized camera poses and world points
     """
     logger.info(f"Extrinsic calibration from {synced_folder}")
+    t_total = time.perf_counter()
 
     # 1. Discover videos
     video_map = discover_synced_videos(synced_folder)
     logger.info(f"Found {len(video_map)} cameras")
 
     # 2. Extract charuco corners
+    t0 = time.perf_counter()
     image_points = extract_charuco_points_from_videos(
         video_map, charuco, sample_fps, progress_callback,
     )
     logger.info(f"Extracted {len(image_points.df)} observations")
+    print(f"[timing] corner extraction: {time.perf_counter() - t0:.1f}s")
 
     # 3-4. PnP + outlier rejection + aggregation -> pose network
+    t0 = time.perf_counter()
     network = (
         PoseNetworkBuilder(camera_array, image_points)
         .estimate_camera_to_object_poses()
@@ -139,10 +144,13 @@ def run_extrinsic_calibration(
     # 5. Apply network to get global camera poses
     network.apply_to(camera_array)
     logger.info("Camera poses computed")
+    print(f"[timing] pose network (PnP+relative+outliers): {time.perf_counter() - t0:.1f}s")
 
     # 6. Triangulate
+    t0 = time.perf_counter()
     world_points = triangulate_image_points(image_points, camera_array)
     logger.info(f"Triangulated {len(world_points.df)} 3D points")
+    print(f"[timing] triangulation: {time.perf_counter() - t0:.1f}s")
 
     # 7. Bundle adjustment
     bundle = PointDataBundle(
@@ -151,11 +159,14 @@ def run_extrinsic_calibration(
         world_points=world_points,
     )
 
+    t0 = time.perf_counter()
     optimized_bundle = bundle.optimize(verbose=0)
     logger.info(
         f"Bundle adjustment: converged={optimized_bundle.optimization_status.converged}, "
         f"RMSE={optimized_bundle.reprojection_report.overall_rmse:.3f}px"
     )
+    print(f"[timing] bundle adjustment: {time.perf_counter() - t0:.1f}s")
+    print(f"[timing] extrinsic total: {time.perf_counter() - t_total:.1f}s")
 
     return optimized_bundle
 

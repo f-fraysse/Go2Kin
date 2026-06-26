@@ -5,7 +5,9 @@ producing ImagePoints DataFrames for the calibration pipelines.
 """
 
 import logging
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -61,16 +63,30 @@ def extract_charuco_points_from_video(
     frames_with_corners = 0
     total_corners = 0
 
-    for frame_idx in range(0, total_frames, step):
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-        ret, frame = cap.read()
+    # Sequential decode: walk the stream in order and only fully decode every
+    # step-th frame. cap.grab() advances cheaply without decoding to BGR, while
+    # cap.retrieve() decodes the current frame. This avoids the slow
+    # cap.set(POS_FRAMES) seek-per-frame pattern, which forces a re-decode from
+    # the nearest keyframe on every sampled frame (GoPro keyframes are ~1s apart).
+    frame_idx = 0
+    while True:
+        if total_frames and frame_idx >= total_frames:
+            break
+
+        if not cap.grab():
+            break
+
+        if frame_idx % step != 0:
+            frame_idx += 1
+            continue
+
+        ret, frame = cap.retrieve()
         if not ret:
             break
 
         point_packet = tracker.get_points(frame, cam_id=cam_id)
         n_corners = len(point_packet.point_id)
         frames_sampled += 1
-        print(f"  Camera {cam_id} frame {frame_idx}/{total_frames}: {n_corners} corners")
 
         if n_corners > 0:
             frames_with_corners += 1
@@ -88,14 +104,18 @@ def extract_charuco_points_from_video(
                 }
                 all_rows.append(row)
 
+        # sync_index increments once per *sampled* frame so the same sync_index
+        # lines up across cameras (videos are pre-synchronized, same fps).
         sync_index += 1
 
         if progress_callback:
             progress_callback(cam_id, frame_idx, total_frames)
 
+        frame_idx += 1
+
     cap.release()
 
-    print(f"  Camera {cam_id} summary: {frames_with_corners}/{frames_sampled} frames with detections, {total_corners} total corners")
+    logger.debug(f"  Camera {cam_id} summary: {frames_with_corners}/{frames_sampled} frames with detections, {total_corners} total corners")
 
     if not all_rows:
         logger.warning(f"No charuco corners detected in {video_path}")
@@ -126,17 +146,28 @@ def extract_charuco_points_from_videos(
     Returns:
         Combined ImagePoints from all cameras.
     """
-    all_dfs = []
+    if not video_paths:
+        raise ValueError("No video files provided")
 
-    for cam_id, video_path in sorted(video_paths.items()):
+    items = sorted(video_paths.items())
+
+    def _process(item: tuple[int, Path]) -> pd.DataFrame:
+        cam_id, video_path = item
         logger.info(f"Processing camera {cam_id}: {video_path.name}")
         ip = extract_charuco_points_from_video(
             video_path, cam_id, charuco, sample_fps, progress_callback,
         )
-        all_dfs.append(ip.df)
+        return ip.df
 
-    if not all_dfs:
-        raise ValueError("No video files provided")
+    # Process each camera's video concurrently. OpenCV decode + ArUco detection
+    # release the GIL, so threads give a near-linear speedup up to core count.
+    # Each task uses its own VideoCapture and CharucoTracker, so they're independent.
+    max_workers = min(len(items), os.cpu_count() or 1)
+    if max_workers > 1:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            all_dfs = list(executor.map(_process, items))
+    else:
+        all_dfs = [_process(item) for item in items]
 
     combined = pd.concat(all_dfs, ignore_index=True)
     return ImagePoints(combined)

@@ -61,7 +61,7 @@ class CharucoTracker:
 
         n_markers = len(marker_ids) if marker_ids is not None else 0
         n_corners = len(_ids) if _ids is not None else 0
-        print(f"    detectBoard: {n_markers} markers, {n_corners} charuco corners{' (mirrored)' if mirror else ''}")
+        logger.debug(f"    detectBoard: {n_markers} markers, {n_corners} charuco corners{' (mirrored)' if mirror else ''}")
 
         if _ids is not None and len(_ids) > 0:
             try:
