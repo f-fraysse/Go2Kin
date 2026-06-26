@@ -54,7 +54,6 @@ class VisualisationTab:
         self._draw_funcs_loaded = False
         self._draw_skel = None
         self._draw_keypts = None
-        self._conf_overlay = tk.BooleanVar(value=False)
 
         # 3D TRC overlay state
         self._trc_overlay = tk.BooleanVar(value=False)
@@ -120,11 +119,6 @@ class VisualisationTab:
             overlay_frame, text="2D kpts", variable=self._pose_overlay,
             command=self._on_overlay_toggle)
         self._pose_check.pack(anchor=tk.W)
-
-        self._conf_check = ttk.Checkbutton(
-            overlay_frame, text="2D confidence", variable=self._conf_overlay,
-            command=self._on_overlay_toggle)
-        self._conf_check.pack(anchor=tk.W)
 
         self._trc_check = ttk.Checkbutton(
             overlay_frame, text="3D kpts", variable=self._trc_overlay,
@@ -650,16 +644,6 @@ class VisualisationTab:
                     frame = self._draw_skel(frame, X, Y, self._pose_model)
                 if self._draw_keypts:
                     frame = self._draw_keypts(frame, X, Y, S)
-
-                if self._conf_overlay.get():
-                    for x_arr, y_arr, s_arr in zip(X, Y, S):
-                        for xi, yi, si in zip(x_arr, y_arr, s_arr):
-                            if xi == 0 and yi == 0:  # missing/undetected keypoint
-                                continue
-                            cv2.putText(
-                                frame, f"{si:.2f}", (int(xi) + 5, int(yi) - 5),
-                                cv2.FONT_HERSHEY_SIMPLEX, 2.0, (255, 255, 255), 2,
-                                cv2.LINE_AA)
         except Exception:
             pass  # Silently skip malformed JSON
 

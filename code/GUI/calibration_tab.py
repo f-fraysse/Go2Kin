@@ -466,6 +466,7 @@ class CalibrationTab:
     def _ext_stop_recording(self):
         """Stop the extrinsic recording."""
         self._calib_stop_event.set()
+        self.stop_bar_timer()  # stop timer immediately, not after download/sync
         self._ext_auto_btn.config(text="Stopping...", state="disabled")
 
     def _ext_reset_button(self):
@@ -529,10 +530,10 @@ class CalibrationTab:
             return
 
         self._origin_auto_btn.config(state="disabled", text="Starting...")
-        self._origin_status.set("Starting countdown...")
+        self._origin_status.set("Starting...")
         self._set_origin_indicator("grey")
 
-        self._run_countdown(5, self._origin_countdown_var, self._origin_start_recording)
+        self._origin_start_recording()
 
     def _origin_start_recording(self):
         """Start multi-camera recording for origin."""
@@ -577,6 +578,7 @@ class CalibrationTab:
     def _origin_stop_recording(self):
         """Stop the origin recording."""
         self._calib_stop_event.set()
+        self.stop_bar_timer()  # stop timer immediately, not after download/sync
         self._origin_auto_btn.config(text="Stopping...", state="disabled")
 
     def _origin_reset_button(self):

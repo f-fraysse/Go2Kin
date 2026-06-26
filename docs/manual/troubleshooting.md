@@ -7,7 +7,6 @@ A loose collection of notes — promote items into the main guide as they firm u
 - **Camera won't connect** — check the order (battery → power on → USB), that the cable is data-capable, and that the serial number is in `go2kin_config.json`. *(🚧 TODO: further diagnostics — does it enumerate in Windows? Can you reach the derived IP?)*
 - **Popup warning when connecting** ("camera checkbox not available") — harmless; a leftover from a removed Recording-tab checkbox. Fix planned.
 - **Camera rejects a Resolution/FPS option** — the camera returns an error and a popup lists the actually available options; pick one of those.
-- **Trial timer keeps running after Stop** — cosmetic known issue.
 - **60 Hz regions / other camera models** — the Resolution/FPS lists are hardcoded for the Hero 12 with 50 Hz anti-flicker (Australia). For 60 Hz regions the options are typically 24/30/60/120/240 — edit the combo values in `code/GUI/main_window.py` (`global_fps_var`, `global_res_var`). For other models, run the settings discovery tool first.
 
 ## Synchronisation
