@@ -860,9 +860,13 @@ class VisualisationTab:
         return frame
 
     @staticmethod
-    def _draw_skel_3d(img, X, Y, model, line_thickness=4):
-        """Draw skeleton lines for 3D keypoints with configurable thickness."""
+    def _draw_skel_3d(img, X, Y, model, line_thickness=None):
+        """Draw skeleton lines for 3D keypoints. Thickness scales with resolution
+        (full at 4K, half at 1080p) unless an explicit value is given."""
         from anytree import PreOrderIter
+
+        if line_thickness is None:
+            line_thickness = max(1, round(4 * img.shape[1] / 3840))
 
         # Get bone pairs from skeleton tree
         id_pairs, name_pairs = [], []
@@ -898,20 +902,17 @@ class VisualisationTab:
         return img
 
     @staticmethod
-    def _draw_keypts_3d(img, X, Y, scores, radius=12, cmap_str='RdYlGn'):
-        """Draw keypoint circles for 3D keypoints with configurable radius."""
-        import matplotlib.pyplot as plt
+    def _draw_keypts_3d(img, X, Y, scores, radius=None):
+        """Draw red keypoint circles for 3D keypoints. Radius scales with resolution
+        (full at 4K, half at 1080p) unless an explicit value is given."""
+        if radius is None:
+            radius = max(1, round(12 * img.shape[1] / 3840))
 
-        scores = np.where(np.isnan(scores), 0, scores)
-        scores = np.clip(scores, 0, 0.99)
-
-        cmap = plt.get_cmap(cmap_str)
-        for (x, y, s) in zip(X, Y, scores):
-            colors = np.array(cmap(s))[:, :-1] * 255
+        color = (0, 0, 255)  # red (BGR)
+        for (x, y) in zip(X, Y):
             for i in range(len(x)):
                 if not (np.isnan(x[i]) or np.isnan(y[i])):
-                    cv2.circle(img, (int(x[i]), int(y[i])),
-                               radius, colors[i][::-1].tolist(), -1)
+                    cv2.circle(img, (int(x[i]), int(y[i])), radius, color, -1)
         return img
 
     # =========================================================================
@@ -1099,11 +1100,13 @@ class VisualisationTab:
                 self._cam_K, self._cam_dist)
             pts_2d = pts_2d.reshape(-1, 2)
 
-            # Draw filled circles at each body centre — bone color (227, 218, 201) as BGR
+            # Draw filled circles at each body centre — bone color (227, 218, 201) as BGR.
+            # Radius scales with resolution (full at 4K, half at 1080p).
             color = (201, 218, 227)
+            radius = max(1, round(12 * frame.shape[1] / 3840))
             for pt in pts_2d:
                 if not (np.isnan(pt[0]) or np.isnan(pt[1])):
-                    cv2.circle(frame, (int(pt[0]), int(pt[1])), 12, color, -1)
+                    cv2.circle(frame, (int(pt[0]), int(pt[1])), radius, color, -1)
         except Exception:
             pass
 
