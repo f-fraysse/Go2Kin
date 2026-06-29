@@ -129,7 +129,6 @@ docs/phase2a_prompt.md
 docs/phase2b_prompt.md
 docs/phase3_prompt.md
 docs/phase4_prompt.md
-docs/audio_sync_spec.md
 
 # setup specific camera configs
 config/cameras.json

@@ -565,11 +565,46 @@ def compute_sync_offsets(video_paths: List[str],
         else:
             log("  Skipping: no camera positions or sound source position provided")
 
+    # ── Step 7: Re-baseline reference after compensation ──
+    # Speed-of-sound compensation can make a camera other than the onset-reference
+    # the genuinely earliest one, giving it a negative offset. trim_and_sync_videos
+    # clamps negatives to 0 (max(0, round(...))), which would silently mis-align it.
+    # Re-baseline so the minimum compensated offset is the reference (0) and every
+    # other camera gets a positive front-trim. No-op without compensation: raw
+    # offsets are all >= 0 with the onset-reference already at the minimum.
+    new_ref = min(range(n_cams), key=lambda c: final_offsets[c]["offset_ms"])
+    baseline = final_offsets[new_ref]["offset_ms"]
+    if new_ref != ref_cam or baseline != 0.0:
+        log("")
+        log("=" * 60)
+        log("Step 7: Re-baseline reference after compensation")
+        log("=" * 60)
+        for cam in range(n_cams):
+            shifted = final_offsets[cam]["offset_ms"] - baseline
+            final_offsets[cam]["offset_ms"] = shifted
+            final_offsets[cam]["offset_frames"] = shifted / (1000.0 / fps)
+        # Move the REF marker to the new (genuinely earliest) reference; the
+        # displaced old reference trivially passed (clap1==clap2==0), so PASS.
+        single_clap = len(available_claps) != 2
+        for cam in range(n_cams):
+            if cam == new_ref:
+                final_offsets[cam]["status"] = "REF"
+            elif final_offsets[cam]["status"] == "REF":
+                final_offsets[cam]["status"] = "PASS (1 clap)" if single_clap else "PASS"
+        log(f"  New reference (earliest after compensation): {filenames[new_ref]} "
+            f"(was {filenames[ref_cam]})")
+        log(f"  Offsets shifted by {baseline:+.3f} ms so reference = 0")
+        ref_cam = new_ref
+
     # Build return dict keyed by video path (enriched for acceptance evaluation
     # and the discard popup; clap1-based offset in seconds is used for trimming).
     results = {}
     for cam, vp in enumerate(video_paths):
         fo = final_offsets[cam]
+        # clap1_ms / clap2_ms are raw onset lags vs the onset-reference (purely
+        # diagnostic) and are deliberately NOT re-baselined — only final_offset_ms
+        # and the REF marker move in Step 7. The REF camera may therefore show a
+        # non-zero Clap1 Lag while its Final Lag is 0; this is expected.
         o1 = offsets_by_clap[cam][0]["offset_ms"]
         if len(available_claps) == 2:
             o2 = offsets_by_clap[cam][1]["offset_ms"]
