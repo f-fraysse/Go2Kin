@@ -10,6 +10,7 @@ Requires: ffmpeg (in PATH), numpy, scipy
 import io
 import math
 import subprocess
+import time
 import wave
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
@@ -28,6 +29,35 @@ PEAK_HEIGHT_FACTOR = 0.2  # threshold = 20% of max derivative
 class AudioSyncError(Exception):
     """Custom exception for audio sync failures."""
     pass
+
+
+class StepTimer:
+    """Records wall-clock duration of named sync steps for benchmarking.
+
+    Call mark(label) at the start of each step; a step's duration is the gap
+    until the next mark. Call stop() after the last step, then format_table()
+    for a printable per-step + total summary.
+    """
+
+    def __init__(self):
+        self._marks = []  # list of (label, perf_counter)
+
+    def mark(self, label):
+        self._marks.append((label, time.perf_counter()))
+
+    def stop(self):
+        self._marks.append(("(end)", time.perf_counter()))
+
+    def format_table(self):
+        header = f"{'Step':<40} | {'Time (s)':>9}"
+        lines = ["=" * 54, "Sync step timing", "=" * 54, header, "-" * 54]
+        for (label, t0), (_, t1) in zip(self._marks, self._marks[1:]):
+            lines.append(f"{label:<40} | {t1 - t0:>9.3f}")
+        total = self._marks[-1][1] - self._marks[0][1]
+        lines.append("-" * 54)
+        lines.append(f"{'TOTAL':<40} | {total:>9.3f}")
+        lines.append("=" * 54)
+        return "\n".join(lines)
 
 
 def check_ffmpeg(ffmpeg_path: str = "ffmpeg") -> bool:
@@ -322,6 +352,7 @@ def compute_sync_offsets(video_paths: List[str],
                          camera_positions: Optional[Dict[str, List[float]]] = None,
                          sound_source_position: Optional[List[float]] = None,
                          speed_of_sound: float = 340.0,
+                         timer: Optional[StepTimer] = None,
                          ) -> Dict[str, dict]:
     """
     Compute sync offsets using envelope onset detection (dual-clap with
@@ -346,6 +377,7 @@ def compute_sync_offsets(video_paths: List[str],
     log(f"Video FPS: {fps:.0f}")
 
     # ── Step 0: Load audio ──
+    if timer: timer.mark("Step 0: Load audio")
     log("=" * 60)
     log("Step 0: Load audio")
     log("=" * 60)
@@ -357,6 +389,7 @@ def compute_sync_offsets(video_paths: List[str],
         log(f"  {filenames[i]}: {len(audio)} samples, {len(audio)/sr:.2f}s")
 
     # ── Step 1: Compute envelope ──
+    if timer: timer.mark("Step 1: Compute envelope")
     log("")
     log("=" * 60)
     log("Step 1: Compute envelope")
@@ -369,6 +402,7 @@ def compute_sync_offsets(video_paths: List[str],
         log(f"  {filenames[i]}: envelope max = {env.max():.4f}")
 
     # ── Step 2: First derivative ──
+    if timer: timer.mark("Step 2: First derivative of envelope")
     log("")
     log("=" * 60)
     log("Step 2: First derivative of envelope")
@@ -381,6 +415,7 @@ def compute_sync_offsets(video_paths: List[str],
         log(f"  {filenames[i]}: derivative max = {deriv.max():.6f}")
 
     # ── Step 3: Detect clap onsets ──
+    if timer: timer.mark("Step 3: Detect clap onsets")
     log("")
     log("=" * 60)
     log("Step 3: Detect clap onsets")
@@ -405,6 +440,7 @@ def compute_sync_offsets(video_paths: List[str],
         log(f"  {filenames[i]}: clap1 = {t1:.4f}s (sample {c1}), clap2 = {t2_str}")
 
     # ── Step 4: Compute offsets from onset times ──
+    if timer: timer.mark("Step 4: Compute offsets from onset times")
     log("")
     log("=" * 60)
     log("Step 4: Compute offsets from onset times")
@@ -441,6 +477,7 @@ def compute_sync_offsets(video_paths: List[str],
                     f"{offset_ms:+.3f} ms = {offset_frames:+.3f} frames@{fps:.0f}fps")
 
     # ── Step 5: Consistency check ──
+    if timer: timer.mark("Step 5: Consistency check")
     log("")
     log("=" * 60)
     log("Step 5: Consistency check")
@@ -478,6 +515,7 @@ def compute_sync_offsets(video_paths: List[str],
         }
 
     # ── Step 6: Speed-of-sound compensation ──
+    if timer: timer.mark("Step 6: Speed-of-sound compensation")
     log("")
     log("=" * 60)
     log("Step 6: Speed-of-sound compensation")
@@ -546,7 +584,8 @@ def compute_sync_offsets(video_paths: List[str],
             "fps": fps,
         }
 
-    # ── Summary table ──
+    # ── Summary table + onset plot ──
+    if timer: timer.mark("Onset plot / summary")
     log("")
     log("=" * 60)
     log("Summary")
@@ -568,7 +607,8 @@ def compute_sync_offsets(video_paths: List[str],
 
 def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
                          output_dir: str, ffmpeg_path: str = "ffmpeg",
-                         progress_callback: Optional[Callable] = None
+                         progress_callback: Optional[Callable] = None,
+                         timer: Optional[StepTimer] = None,
                          ) -> List[str]:
     """
     Trim videos: align starts (drop integer front frames per offset) and trim ends
@@ -589,6 +629,7 @@ def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
         if progress_callback:
             progress_callback(msg)
 
+    if timer: timer.mark("10a. Frame count + common")
     synced_dir = Path(output_dir) / "synced"
     synced_dir.mkdir(exist_ok=True)
 
@@ -617,6 +658,7 @@ def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
     # Re-encode each video: drop n_drop front frames, keep exactly common_frames.
     # Output seeking (-ss after -i) is frame-accurate when re-encoding; the
     # half-frame nudge avoids float rounding landing on the previous frame.
+    if timer: timer.mark("10b. Re-encode (trim)")
     output_files = []
     for vp in video_paths:
         info = offsets[vp]
@@ -644,6 +686,7 @@ def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
         output_files.append(str(out_path))
 
     # Verify all outputs have the identical frame count (should always hold)
+    if timer: timer.mark("11. Verifying frame counts")
     log("Verifying frame counts...")
     frame_counts = {}
     for out_path in output_files:
@@ -661,7 +704,8 @@ def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
 
 
 def create_stitched_preview(synced_dir: str, ffmpeg_path: str = "ffmpeg",
-                            progress_callback: Optional[Callable] = None) -> str:
+                            progress_callback: Optional[Callable] = None,
+                            timer: Optional[StepTimer] = None) -> str:
     """
     Create a grid preview video from synced files (2 or more).
     Each input is downscaled to 480x480, arranged in an auto-sized grid.
@@ -671,6 +715,7 @@ def create_stitched_preview(synced_dir: str, ffmpeg_path: str = "ffmpeg",
         if progress_callback:
             progress_callback(msg)
 
+    if timer: timer.mark("12. Stitched preview")
     synced_path = Path(synced_dir)
     mp4_files = sorted(
         f for f in synced_path.glob("*.mp4")

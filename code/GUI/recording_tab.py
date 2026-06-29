@@ -263,6 +263,9 @@ class RecordingTab:
                 time.sleep(0.5)
 
             # Stop recording and download files
+            from audio_sync import StepTimer
+            timer = StepTimer()
+            timer.mark("1. Download")
             print("Stopping cameras and downloading files...")
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
@@ -285,7 +288,7 @@ class RecordingTab:
             print("Recording complete. Starting audio synchronisation...")
 
             # Auto-sync
-            self._auto_sync(info)
+            self._auto_sync(info, timer)
 
         except Exception as e:
             print(f"Recording error: {e}")
@@ -293,7 +296,7 @@ class RecordingTab:
         finally:
             self.root.after(0, self.reset_recording_ui)
 
-    def _auto_sync(self, trial_info):
+    def _auto_sync(self, trial_info, timer=None):
         """Automatically synchronise downloaded video files after recording.
 
         If the sync is unacceptable (a bad recording — failed criteria, no audio
@@ -305,6 +308,8 @@ class RecordingTab:
                                 trim_and_sync_videos, create_stitched_preview,
                                 evaluate_sync_acceptance, format_sync_summary,
                                 AudioSyncError)
+
+        if timer: timer.mark("2. Audio checks / prep")
 
         project = trial_info["project"]
         session = trial_info["session"]
@@ -356,6 +361,7 @@ class RecordingTab:
                 progress_callback=lambda msg: print(f"  {msg}"),
                 camera_positions=cam_positions,
                 sound_source_position=sound_pos,
+                timer=timer,
             )
 
             sync_table = format_sync_summary(offsets)
@@ -379,14 +385,16 @@ class RecordingTab:
             print("Trimming videos (frame-accurate re-encode)...")
             output_files = trim_and_sync_videos(
                 video_paths, offsets, str(video_dir),
-                progress_callback=lambda msg: print(f"  {msg}")
+                progress_callback=lambda msg: print(f"  {msg}"),
+                timer=timer,
             )
 
             synced_dir = str(self.project_manager.get_trial_synced_path(project, session, trial_name))
             print("Creating 2x2 stitched preview...")
             create_stitched_preview(
                 synced_dir,
-                progress_callback=lambda msg: print(f"  {msg}")
+                progress_callback=lambda msg: print(f"  {msg}"),
+                timer=timer,
             )
 
             # Update trial.json
@@ -394,6 +402,10 @@ class RecordingTab:
             print(
                 f"Synchronisation complete! "
                 f"{len(output_files)} synced files + stitched preview in synced/ folder")
+
+            if timer:
+                timer.stop()
+                print(timer.format_table())
 
         except Exception as e:
             print(f"Sync error: {e}")
