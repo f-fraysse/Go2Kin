@@ -12,6 +12,7 @@ import math
 import subprocess
 import time
 import wave
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -382,10 +383,14 @@ def compute_sync_offsets(video_paths: List[str],
     log("Step 0: Load audio")
     log("=" * 60)
 
-    audio_tracks = []
-    for i, vp in enumerate(video_paths):
-        audio, sr = extract_audio(vp)
-        audio_tracks.append(audio)
+    # Extract the 4 cameras' audio in parallel — ffmpeg releases the GIL during
+    # subprocess.run, so the per-file decodes overlap (~4x faster than sequential).
+    # ex.map preserves input order, so audio_tracks stays aligned with video_paths.
+    with ThreadPoolExecutor(max_workers=n_cams) as ex:
+        results = list(ex.map(extract_audio, video_paths))
+    audio_tracks = [audio for audio, _ in results]
+    sr = results[0][1]
+    for i, audio in enumerate(audio_tracks):
         log(f"  {filenames[i]}: {len(audio)} samples, {len(audio)/sr:.2f}s")
 
     # ── Step 1: Compute envelope ──
