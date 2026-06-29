@@ -211,6 +211,11 @@ class Go2KinMainWindow:
                 'battery_label': battery_label,
             }
 
+        # Connect All button (after GP4, before resolution dropdown)
+        self.connect_all_btn = ttk.Button(cameras_frame, text="Connect All", width=12,
+                                          command=self.connect_all_cameras)
+        self.connect_all_btn.pack(side=tk.LEFT, padx=(8, 0))
+
         # Resolution dropdown (left-aligned after camera controls)
         ttk.Label(cameras_frame, text="Res:").pack(side=tk.LEFT, padx=(20, 0))
         self.global_res_var = tk.StringVar()
@@ -278,6 +283,30 @@ class Go2KinMainWindow:
             self.disconnect_camera(camera_num)
         else:
             self.connect_camera(camera_num)
+
+    def _run_on_main(self, fn):
+        """Run a GUI callable now if on the main thread, else marshal via root.after."""
+        if threading.current_thread() is threading.main_thread():
+            fn()
+        else:
+            self.root.after(0, fn)
+
+    def connect_all_cameras(self):
+        """Connect every configured, not-yet-connected camera in parallel."""
+        self.connect_all_btn.config(state="disabled")
+        threads = []
+        for i in range(1, 5):
+            if self.camera_serials.get(i) and not self.camera_status.get(i, False):
+                t = threading.Thread(target=self.connect_camera, args=(i,), daemon=True)
+                t.start()
+                threads.append(t)
+
+        def _reenable():
+            for t in threads:
+                t.join()
+            self.root.after(0, lambda: self.connect_all_btn.config(state="normal"))
+
+        threading.Thread(target=_reenable, daemon=True).start()
     
     def create_live_preview_tab(self):
         """Create the live preview tab (delegated to LivePreviewTab)"""
@@ -467,13 +496,13 @@ class Go2KinMainWindow:
             if reference is None:
                 print(f"⚠ No settings reference found for {model} {firmware}")
                 print(f"  Run: python tools/discover_camera_settings.py {serial}")
-                messagebox.showwarning(
+                self._run_on_main(lambda: messagebox.showwarning(
                     "Settings Reference Missing",
                     f"No settings reference found for {model} (firmware {firmware}).\n\n"
                     f"To enable full settings management, run:\n"
                     f"python tools/discover_camera_settings.py {serial}\n\n"
                     f"Camera will still connect, but settings display will be limited."
-                )
+                ))
                 # Continue without reference - basic functionality still works
             else:
                 print(f"✓ Loaded settings reference for {model} {firmware}")
@@ -591,7 +620,7 @@ class Go2KinMainWindow:
                     print(f"  Current FPS: {fps_setting['value_name']}")
                 
                 # Populate dropdowns from profile
-                self.populate_dropdowns_from_profile(camera_num, profile)
+                self._run_on_main(lambda: self.populate_dropdowns_from_profile(camera_num, profile))
                 
                 # Save profile with zoom level
                 profile_mgr.save_camera_profile(serial, profile)
@@ -599,7 +628,7 @@ class Go2KinMainWindow:
             # Store camera instance
             self.cameras[camera_num] = camera
             self.camera_status[camera_num] = True
-            self.update_camera_status(camera_num, True)
+            self._run_on_main(lambda: self.update_camera_status(camera_num, True))
             
             print(f"✓ GoPro {camera_num} connected successfully")
 
@@ -611,13 +640,15 @@ class Go2KinMainWindow:
                     battery_level = state.get('status', {}).get('2', None)
                     if battery_level is not None:
                         battery_level = int(battery_level)
-                        self._update_battery(camera_num, str(battery_level), low=(battery_level == 0))
+                        self._run_on_main(lambda: self._update_battery(
+                            camera_num, str(battery_level), low=(battery_level == 0)))
             except Exception:
                 pass  # Non-critical
 
         except Exception as e:
             print(f"✗ Failed to connect GoPro {camera_num}: {e}")
-            messagebox.showerror("Connection Error", f"Failed to connect GoPro {camera_num}:\n{e}")
+            self._run_on_main(lambda: messagebox.showerror(
+                "Connection Error", f"Failed to connect GoPro {camera_num}:\n{e}"))
     
     def populate_dropdowns_from_profile(self, camera_num, profile):
         """Set global dropdown values from camera profile"""
