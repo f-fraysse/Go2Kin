@@ -1,10 +1,10 @@
 # Go2Kin
 
-- **[Equipment](equipment.md)** — what you need before you start.
-- **[First-time setup](first-time-setup/index.md)** — install, configure and verify Go2Kin once, on a new PC or in a new lab.
-- **[Regular use](regular-use.md)** — the routine for a normal data-collection session.
-- **[GUI reference](gui/index.md)** — what every part of the interface does.
-- **[Known issues & tips](troubleshooting.md)** — fixes, workarounds and FAQ.
+- **[Equipment](equipment.md)**
+- **[First-time setup](first-time-setup/index.md)**
+- **[Regular use](regular-use.md)**
+- **[GUI reference](gui/index.md)**
+- **[Known issues & tips](troubleshooting.md)**
 
 !!! note "Work in progress"
     Go2Kin and this manual are under active development.
