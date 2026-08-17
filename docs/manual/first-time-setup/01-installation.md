@@ -2,10 +2,7 @@
 
 ## Prerequisites
 
-- Windows 11
-- `git`, `conda` (Miniconda or Anaconda) and a current NVIDIA driver installed
-
-> 🚧 **TODO:** links to installers; note any admin rights / IT requests needed on managed (e.g. university) PCs.
+- `git` and `conda` (Miniconda or Anaconda) and a current NVIDIA driver installed.
 
 ## Install
 
@@ -38,7 +35,7 @@ include NVENC** and cannot process high-resolution / high-frame-rate footage (fo
 example 2.7K at 200 fps) — sync will fail with an encoder error. You must replace it with
 a full ffmpeg build that has NVENC:
 
-1. **Close Go2Kin** if it is running (otherwise the ffmpeg file is locked and cannot be replaced).
+1. Close Go2Kin if it is running (otherwise the ffmpeg file is locked and cannot be replaced).
 2. Download a build that matches your NVIDIA driver. The **n7.1** build from
    [BtbN's FFmpeg Builds](https://github.com/BtbN/FFmpeg-Builds/releases) —
    `ffmpeg-n7.1-latest-win64-gpl-7.1.zip` — works with current drivers. (Avoid the
@@ -47,8 +44,8 @@ a full ffmpeg build that has NVENC:
 3. Unzip it, then copy `bin\ffmpeg.exe` and `bin\ffprobe.exe` from the unzipped folder
    **over** the existing files in your Conda environment's binary folder, e.g.
    `C:\Users\<you>\miniconda3\envs\Go2Kin\Library\bin\` (or `D:\Miniconda3\envs\Go2Kin\Library\bin\`).
-   Back up the originals first (rename them to `ffmpeg.exe.bak` / `ffprobe.exe.bak`) in case you want to revert.
-4. Verify in an activated environment:
+   Back up the originals first in case you want to revert.
+4. Verify in your conda environment:
 
    ```
    ffmpeg -hide_banner -encoders | findstr nvenc
@@ -60,7 +57,7 @@ a full ffmpeg build that has NVENC:
 > NVENC-less conda version. If high-frame-rate sync stops working after an update, repeat
 > the steps above.
 
-Install Pose2Sim as a submodule:
+## Install Pose2Sim as a submodule:
 
 ```
 git submodule init
@@ -70,7 +67,7 @@ pip uninstall onnxruntime
 pip install onnxruntime-gpu==1.20.1
 ```
 
-Install OpenSim:
+## Install OpenSim:
 
 ```
 conda install -c opensim-org opensim
@@ -78,4 +75,4 @@ conda install -c opensim-org opensim
 
 ## Check the install
 
-> 🚧 **TODO:** quick verification — e.g. `ffmpeg -version` works; `python -c "import onnxruntime; print(onnxruntime.get_device())"` reports `GPU`; the GUI launches. List common install errors and fixes here as they're encountered.
+> 🚧 **TODO:** quick verification — e.g. `ffmpeg -version` works; `python -c "import onnxruntime; print(onnxruntime.get_device())"` reports `GPU`; the GUI launches. 
