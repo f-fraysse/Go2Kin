@@ -6,8 +6,6 @@ Go2Kin stores all projects, sessions and trial videos under a single **data root
     Multi-camera video accumulates fast. Put the data root on a drive with plenty of free
     space (ideally an SSD), and avoid a small system (C:) drive.
 
-> 🚧 **TODO:** rough storage figures — GB per minute of 4-camera recording at common Resolution/FPS settings — and a recommended minimum free space.
-
 1. Create a folder on a large drive, e.g. `D:/Markerless_Projects`.
 2. Copy the config template and set the data root:
 
