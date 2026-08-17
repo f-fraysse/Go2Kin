@@ -4,7 +4,7 @@
 
 **WORK IN PROGRESS**
 
-Integrated markerless motion capture pipeline from 2-4 USB-connected GoPro cameras. Single GUI for the full workflow - from camera setup to OpenSim output.
+Integrated markerless motion capture pipeline from 2-4 USB-connected GoPro cameras. Single GUI for the full workflow, from camera setup to OpenSim output.
 
 **Pipeline**: Camera connection & control (OpenGoPro HTTP API) → multi-camera calibration (Caliscope) → recording → audio-based synchronisation → pose estimation, triangulation, filtering, interpolation (Pose2Sim, RTMlib) → kinematics (openSim)
 
