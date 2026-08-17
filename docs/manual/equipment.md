@@ -4,8 +4,8 @@ What you need before installing Go2Kin.
 
 ## Cameras
 
-- Up to **4 GoPro cameras**. Developed and tested with the **Hero 12 Black**; any model supporting the Open GoPro HTTP API (Hero 9 or later) should work.
-- One **battery** and one **SD card** per camera.
+- **Cameras and batteries:** up to **4 GoPro cameras**, and one battery per camera. Developed and tested with the **Hero 12 Black**; any model supporting the Open GoPro HTTP API (Hero 9 or later) should work.
+- **SD cards**: each camera needs a MicroSD card. Pay attention to the SD card rating [(see here for the rundown on SD card ratings)](https://www.kingston.com/en/blog/personal-storage/memory-card-speed-classes), lower rated ones won't be able to keep pace with recording at high resolutions / high FPS. We are using SanDisk UHS Mark I and record at 4K 50FPS / 1080p 100FPS so this rating should be enough.
 
 > 🚧 **TODO:** recommended SD card spec (capacity, speed/endurance rating) and battery notes — e.g. does the camera charge over USB while connected?
 
