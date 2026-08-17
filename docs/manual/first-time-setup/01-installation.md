@@ -67,6 +67,8 @@ pip uninstall onnxruntime
 pip install onnxruntime-gpu==1.20.1
 ```
 
+> ⚠️ Installing Pose2Sim installs RTMlib which installs onnxruntime (CPU version). The last two steps are to ensure onnxruntime-gpu is the installed version instead.
+> 
 ## Install OpenSim:
 
 ```
