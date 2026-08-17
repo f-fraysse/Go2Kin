@@ -29,6 +29,8 @@ What you need before installing Go2Kin. This page has some comments, tips, thing
 
 ## Calibration board
 
+![Calibration board](assets/calibration_board.png)
+
 A printed **charuco board**, generated from the Calibration tab (default size A1) and mounted on a rigid, flat surface.
 
 An A1-sized board (~800x600mm) works well for us with cameras in a ~9m square.
