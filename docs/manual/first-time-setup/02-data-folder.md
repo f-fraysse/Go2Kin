@@ -21,4 +21,3 @@ If you skip this step, Go2Kin will prompt you to select a data root folder on fi
 
 See [Data organisation](../reference/data-organisation.md) for what ends up inside this folder.
 
-> 🚧 **TODO:** backup / archiving policy for the data root.
