@@ -1,14 +1,14 @@
 # Tab 3 — Recording
 
-Synchronised recording across the selected cameras, with automatic download and audio
-synchronisation.
+Synchronised recording across the selected cameras, with automatic download and
+synchronisation (hand claps or LED flash, per the bottom-bar **Sync** setting).
 
 > 🚧 **TODO:** screenshot.
 
 ## Recording a trial
 
 1. Enter a **trial name** and select the cameras.
-2. **Start** — then perform **two loud hand claps within the first 3 seconds**. (Two claps enable a consistency check; one clap works, but without cross-validation.)
+2. **Start** — then perform **two loud hand claps within the first 3 seconds**. (Two claps enable a consistency check; one clap works, but without cross-validation.) With **Light** sync, the LED flashes instead — no clapping; see [LED light sync](led-sync.md).
 3. Perform the movement, then **Stop**.
 4. Files are downloaded from each camera into `[project]/sessions/[session]/[trial]/video/`, and audio synchronisation runs automatically — synced files appear in `video/synced/`.
 
@@ -17,7 +17,7 @@ A session/trial tree view at the bottom shows all recorded trials.
 ## Sync outputs (per trial)
 
 - Trimmed MP4s in `synced/` — start-aligned and end-trimmed to identical duration. Originals are never modified.
-- `sync_onsets.png` — detected clap onsets on each camera's audio envelope.
+- `sync_onsets.png` — detected clap onsets on each camera's audio envelope (audio sync), or `sync_led_signal.png` — ROI brightness with the detected LED on/off instants (light sync).
 - `stitched_videos.mp4` — a 2×2 grid preview for quick visual verification of sync.
 - A **`WARN`** status means the two clap offsets disagree by more than one frame — consider re-recording with clearer claps.
 

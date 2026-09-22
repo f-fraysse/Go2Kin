@@ -1,8 +1,14 @@
 # Light-based (LED flash) multi-camera sync — implementation plan
 
-> **Status: planned, NOT implemented** (plan agreed 2026-09-21). This document is the
-> hand-off for a future implementation session. Line numbers refer to the code as of commit
-> `c68f6ed` and may drift; function names are the stable anchors.
+> **Status: implemented** (plan agreed 2026-09-21, implemented 2026-09-22). This document
+> is kept as the design rationale; the as-built specification is
+> [`light_sync_spec.md`](light_sync_spec.md). Line numbers refer to the code as of commit
+> `c68f6ed` (before implementation) and have drifted; function names are the stable anchors.
+> Deviations from the plan: the per-frame ROI statistic is the mean of the 16 brightest pixels
+> (not the 95th percentile, which sat on the blob's edge at 1080p); ROI lookups are keyed by
+> camera id (`CalibrationTab.get_led_rois()` + `light_sync.resolve_rois_for_videos`) so the
+> Recording tab can gate before any file exists; the tab tracks `_loaded_calib_path` for the
+> in-place ROI write; `tools/light_sync_test.py` uses the repo's constants-at-top style.
 
 Companion notes: [`audio_sync_spec.md`](audio_sync_spec.md) (current audio algorithm),
 [`audio_sync_performance.md`](audio_sync_performance.md) (timing),

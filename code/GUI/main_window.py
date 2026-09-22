@@ -238,12 +238,25 @@ class Go2KinMainWindow:
         settings_frame = ttk.Frame(bar_frame)
         settings_frame.pack(side=tk.RIGHT)
 
-        self.sync_method_var = tk.StringVar(value="manual")
+        # Sync method: manual claps / speaker claps (audio) or LED flash (light).
+        # Persisted in go2kin_config.json so the lab setup survives restarts.
+        initial_sync = (self.app_config or {}).get("sync_method", "manual")
+        if initial_sync not in ("manual", "speaker", "light"):
+            initial_sync = "manual"
+        self.sync_method_var = tk.StringVar(value=initial_sync)
         ttk.Label(settings_frame, text="Sync:").pack(side=tk.LEFT, padx=(0, 3))
         ttk.Radiobutton(settings_frame, text="Manual", variable=self.sync_method_var,
                          value="manual").pack(side=tk.LEFT, padx=(0, 3))
         ttk.Radiobutton(settings_frame, text="Speaker", variable=self.sync_method_var,
-                         value="speaker").pack(side=tk.LEFT, padx=(0, 12))
+                         value="speaker").pack(side=tk.LEFT, padx=(0, 3))
+        ttk.Radiobutton(settings_frame, text="Light", variable=self.sync_method_var,
+                         value="light").pack(side=tk.LEFT, padx=(0, 12))
+
+        def _on_sync_method_change(*_):
+            if self.app_config is not None:
+                self.app_config["sync_method"] = self.sync_method_var.get()
+                self.save_app_config()
+        self.sync_method_var.trace_add("write", _on_sync_method_change)
 
         self.rec_delay_enabled = tk.BooleanVar(value=False)
         ttk.Checkbutton(settings_frame, text="Rec. delay",

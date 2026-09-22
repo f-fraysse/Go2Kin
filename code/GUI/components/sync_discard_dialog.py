@@ -14,16 +14,18 @@ _RED = "#c62828"
 
 
 def show_sync_discard_dialog(parent, table_text, reasons, *,
-                             heading, subtext, on_ok=None):
+                             heading, subtext, on_ok=None,
+                             table_label="Audio sync table:"):
     """Build and show the modal red sync-issue dialog.
 
     Args:
         parent: parent window (a Tk/Toplevel) to attach the dialog to.
-        table_text: the formatted audio sync table, or None if unavailable.
+        table_text: the formatted sync table (audio or LED), or None if unavailable.
         reasons: list of human-readable failure reasons.
         heading: bold white text in the red header band.
         subtext: one-line message under the header.
         on_ok: callable invoked after the dialog is closed (OK or window close).
+        table_label: caption above the table ("Audio sync table:" / "LED sync table:").
     """
     dlg = tk.Toplevel(parent)
     dlg.title("Sync Issue")
@@ -57,7 +59,7 @@ def show_sync_discard_dialog(parent, table_text, reasons, *,
 
     # Sync table (monospace)
     tk.Label(
-        body, text="Audio sync table:", bg="white", fg="#333333",
+        body, text=table_label, bg="white", fg="#333333",
         font=("Segoe UI", 9, "bold"), anchor="w",
     ).pack(fill="x", pady=(12, 4))
 

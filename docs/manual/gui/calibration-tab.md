@@ -18,11 +18,20 @@ Per-camera lens calibration from a video of the board, using smart frame selecti
 orientation and spatial coverage diversity. Procedure:
 [Intrinsic calibration](../first-time-setup/06-intrinsic-calibration.md).
 
+## LED Sync ROI
+
+Only used with the **Light** sync method ([LED light sync](led-sync.md)). **Record LED clip
+& set ROI** records a short clip on all cameras and opens a window where you click the LED
+in each view; **Set ROI from folder…** does the same from an existing recording. The ROIs are
+stored with the calibration (they depend on where the cameras are) and must be set before the
+extrinsic recording, which is synced with the LED as well.
+
 ## Extrinsic Calibration
 
 Multi-camera pose estimation from **synced** videos of the board moving through the
 shared volume — PnP solving, outlier rejection, graph bridging, triangulation and bundle
 adjustment. Browse to the trial's `synced/` folder and click **Calibrate Extrinsics**.
+The recording is synced with the method selected in the bottom bar (claps or LED).
 
 > 🚧 **TODO:** extrinsic quality metrics (RMSE etc.) are on the roadmap — document thresholds and a pass/fail heuristic once implemented.
 

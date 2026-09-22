@@ -87,6 +87,9 @@ class CameraData:
     translation: np.ndarray | None = None  # camera relative to world
     rotation: np.ndarray | None = None  # camera relative to world
     fisheye: bool = False
+    # LED sync ROI (x, y, w, h) in pixels of a `size` frame; tied to camera
+    # placement like the extrinsics (see light_sync.py).
+    led_roi: tuple[int, int, int, int] | None = None
 
     @property
     def transformation(self):
@@ -223,6 +226,7 @@ class CameraData:
         self.grid_count = None
         self.translation = None
         self.rotation = None
+        self.led_roi = None
 
 
 # =============================================================================

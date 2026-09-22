@@ -3,5 +3,6 @@
     "gopro_serial_numbers": ["C3XXXXXXXXXX01", "C3XXXXXXXXXX02", "C3XXXXXXXXXX03", "C3XXXXXXXXXX04"],
     "last_project": "",
     "last_session": "",
-    "last_calibration": ""
+    "last_calibration": "",
+    "sync_method": "manual"
 }

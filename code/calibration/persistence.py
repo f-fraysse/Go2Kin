@@ -151,6 +151,8 @@ def _camera_data_to_dict(cam: CameraData) -> dict:
         d["grid_count"] = cam.grid_count
     if cam.exposure is not None:
         d["exposure"] = cam.exposure
+    if cam.led_roi is not None:
+        d["led_roi"] = [int(v) for v in cam.led_roi]
 
     return d
 
@@ -165,6 +167,7 @@ def _dict_to_camera_data(cam_id: int, d: dict) -> CameraData:
         ignore=d.get("ignore", False),
         grid_count=d.get("grid_count"),
         exposure=d.get("exposure"),
+        led_roi=tuple(int(v) for v in d["led_roi"]) if d.get("led_roi") else None,
     )
 
     if "matrix" in d:

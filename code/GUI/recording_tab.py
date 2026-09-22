@@ -167,6 +167,21 @@ class RecordingTab:
             messagebox.showerror("Error", "No cameras are connected.")
             return
 
+        # Light sync needs an LED ROI for every camera. This is a configuration
+        # error, so block the recording rather than discard the trial afterwards.
+        if self.sync_method_var.get() == "light":
+            calibration_tab = self._get_calibration_tab()
+            rois = calibration_tab.get_led_rois() if calibration_tab is not None else {}
+            missing = [i for i in available_cameras if i not in rois]
+            if missing:
+                missing_str = ", ".join(f"GP{i}" for i in missing)
+                messagebox.showerror(
+                    "Error",
+                    f"No LED ROI for {missing_str}.\n\n"
+                    "Run 'Record LED clip & set ROI' in the Calibration tab first, "
+                    "or switch the sync method to Manual/Speaker.")
+                return
+
         # Participant from top bar, calibration = latest
         subject_id = self.get_current_participant() or ""
         calibration_name = self.project_manager.get_latest_calibration(project) or "none"
@@ -299,9 +314,13 @@ class RecordingTab:
     def _auto_sync(self, trial_info, timer=None):
         """Automatically synchronise downloaded video files after recording.
 
+        The sync method follows the bottom-bar selection: audio (manual/speaker
+        claps) or light (LED flash, see light_sync.py). Detection differs; the trim,
+        stitched preview and trial.json update are shared.
+
         If the sync is unacceptable (a bad recording — failed criteria, no audio
-        track, or no clap detected), the trial is discarded: a red popup shows the
-        sync table and the trial folder is deleted. Environment problems (ffmpeg
+        track, no clap / no LED detected), the trial is discarded: a red popup shows
+        the sync table and the trial folder is deleted. Environment problems (ffmpeg
         missing) or trimming errors keep the trial.
         """
         from audio_sync import (check_ffmpeg, check_audio_track, compute_sync_offsets,
@@ -309,7 +328,9 @@ class RecordingTab:
                                 evaluate_sync_acceptance, format_sync_summary,
                                 AudioSyncError)
 
-        if timer: timer.mark("2. Audio checks / prep")
+        light_mode = self.sync_method_var.get() == "light"
+        method_label = "LED" if light_mode else "Audio"
+        if timer: timer.mark(f"2. {method_label} checks / prep")
 
         project = trial_info["project"]
         session = trial_info["session"]
@@ -336,48 +357,68 @@ class RecordingTab:
         offsets = None
         sync_table = None
         discard_reasons = None
+        calibration_tab = self._get_calibration_tab()
         try:
-            # Verify audio tracks
-            for vp in video_paths:
-                name = Path(vp).name
-                if not check_audio_track(vp):
-                    raise AudioSyncError(f"No audio track in: {name}")
-                print(f"  Audio confirmed: {name}")
+            if light_mode:
+                from light_sync import (compute_light_sync_offsets, resolve_rois_for_videos,
+                                        evaluate_light_sync_acceptance,
+                                        format_light_sync_summary)
 
-            # Build camera positions from calibration tab (if available)
-            cam_positions = None
-            calibration_tab = self._get_calibration_tab()
-            if calibration_tab is not None:
-                cam_positions = calibration_tab.get_camera_positions_for_sync(video_paths)
+                rois_by_cam = calibration_tab.get_led_rois() if calibration_tab is not None else {}
+                rois = resolve_rois_for_videos(video_paths, rois_by_cam)  # LightSyncError if missing
 
-            # Sound source position from recording tab UI
-            sound_pos = self._get_sound_source_position()
+                print("Analysing LED ROI brightness for light sync...")
+                offsets = compute_light_sync_offsets(
+                    video_paths, rois,
+                    output_dir=str(video_dir),
+                    progress_callback=lambda msg: print(f"  {msg}"),
+                    timer=timer,
+                )
+                sync_table = format_light_sync_summary(offsets)
+                acceptable, reasons = evaluate_light_sync_acceptance(offsets, max_offset_ms=200.0)
+            else:
+                # Verify audio tracks
+                for vp in video_paths:
+                    name = Path(vp).name
+                    if not check_audio_track(vp):
+                        raise AudioSyncError(f"No audio track in: {name}")
+                    print(f"  Audio confirmed: {name}")
 
-            # Compute sync offsets (onset-based dual-clap detection)
-            print("Analysing audio for onset-based sync...")
-            offsets = compute_sync_offsets(
-                video_paths,
-                output_dir=str(video_dir),
-                progress_callback=lambda msg: print(f"  {msg}"),
-                camera_positions=cam_positions,
-                sound_source_position=sound_pos,
-                timer=timer,
-            )
+                # Build camera positions from calibration tab (if available)
+                cam_positions = None
+                if calibration_tab is not None:
+                    cam_positions = calibration_tab.get_camera_positions_for_sync(video_paths)
 
-            sync_table = format_sync_summary(offsets)
-            acceptable, reasons = evaluate_sync_acceptance(offsets, max_offset_ms=200.0)
+                # Sound source position from recording tab UI
+                sound_pos = self._get_sound_source_position()
+
+                # Compute sync offsets (onset-based dual-clap detection)
+                print("Analysing audio for onset-based sync...")
+                offsets = compute_sync_offsets(
+                    video_paths,
+                    output_dir=str(video_dir),
+                    progress_callback=lambda msg: print(f"  {msg}"),
+                    camera_positions=cam_positions,
+                    sound_source_position=sound_pos,
+                    timer=timer,
+                )
+                sync_table = format_sync_summary(offsets)
+                acceptable, reasons = evaluate_sync_acceptance(offsets, max_offset_ms=200.0)
+
             if not acceptable:
                 discard_reasons = reasons
         except AudioSyncError as e:
-            # No audio track / no clap detected — a bad recording, discard it.
+            # No audio track / no clap / no LED detected — a bad recording, discard it.
+            # (LightSyncError is a subclass of AudioSyncError.)
             discard_reasons = [str(e)]
 
         if discard_reasons is not None:
-            print("Audio sync unacceptable — trial will be discarded:")
+            print(f"{method_label} sync unacceptable — trial will be discarded:")
             for r in discard_reasons:
                 print(f"  - {r}")
+            table_label = f"{method_label} sync table:"
             self.root.after(0, lambda: self._show_sync_discard_dialog(
-                trial_info, sync_table, discard_reasons))
+                trial_info, sync_table, discard_reasons, table_label=table_label))
             return
 
         # ── Acceptable: trim, build preview, mark synced ──
@@ -398,7 +439,9 @@ class RecordingTab:
             )
 
             # Update trial.json
-            self.project_manager.update_trial(project, session, trial_name, synced=True)
+            self.project_manager.update_trial(
+                project, session, trial_name, synced=True,
+                sync_method="light" if light_mode else "audio")
             print(
                 f"Synchronisation complete! "
                 f"{len(output_files)} synced files + stitched preview in synced/ folder")
@@ -414,8 +457,9 @@ class RecordingTab:
             except Exception:
                 pass
 
-    def _show_sync_discard_dialog(self, trial_info, table_text, reasons):
-        """Red modal popup shown when a trial's audio sync is unacceptable.
+    def _show_sync_discard_dialog(self, trial_info, table_text, reasons,
+                                  table_label="Audio sync table:"):
+        """Red modal popup shown when a trial's sync (audio or LED) is unacceptable.
 
         The single OK button (and the window close button) discard the entire trial
         folder. Runs on the GUI thread.
@@ -442,6 +486,7 @@ class RecordingTab:
             heading="SYNC ISSUE — TRIAL DISCARDED",
             subtext=f"Trial '{trial_name}' will be deleted. Please re-record.",
             on_ok=on_ok,
+            table_label=table_label,
         )
 
     def _get_sound_source_position(self):

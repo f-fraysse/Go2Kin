@@ -66,6 +66,15 @@ class CalibrationTab:
         self._bundle = None
         self._intrinsic_results: dict[int, dict] = {}
 
+        # LED sync ROIs: {cam_id: {"roi": (x, y, w, h), "size": (w, h)}} — the frame
+        # size the ROI was drawn on, so it can be rescaled for other resolutions.
+        # Used by the light sync method (see light_sync.py). Persisted per camera
+        # as `led_roi` in the calibration JSON.
+        self._led_rois: dict[int, dict] = {}
+        # Calibration file that populated _camera_array (None after a fresh, unapplied
+        # extrinsic run) — ROI changes are written back into this file in place.
+        self._loaded_calib_path: Path | None = None
+
         # Recording state
         self._calib_recording = False
         self._calib_stop_event = threading.Event()
@@ -73,6 +82,9 @@ class CalibrationTab:
         self._create_widgets()
         self._load_charuco_config()
         self._update_charuco_status()
+
+        # Extrinsic gating depends on the sync method (light needs LED ROIs)
+        self.sync_method_var.trace_add("write", lambda *_: self._update_pipeline_state())
 
     # =================================================================
     # Widget creation
@@ -120,6 +132,10 @@ class CalibrationTab:
 
         # Intrinsic Calibration (collapsible)
         self._create_intrinsic_section(parent)
+
+        # LED Sync ROI (light sync method) — must exist before the extrinsic
+        # recording, since that recording is synced too
+        self._create_led_section(parent)
 
         # Extrinsic Calibration (always visible — primary daily action)
         self._create_extrinsic_section(parent)
@@ -242,6 +258,46 @@ class CalibrationTab:
         # Progress
         self._intrinsic_progress = tk.StringVar(value="")
         ttk.Label(content, textvariable=self._intrinsic_progress).pack(fill="x", pady=2)
+
+    def _create_led_section(self, parent):
+        section = ttk.LabelFrame(parent, text="LED Sync ROI (light sync method)", padding=10)
+        section.pack(fill="x", padx=10, pady=5)
+
+        ttk.Label(
+            section,
+            text="Record a short clip with the LED flashing, then click the LED in each view",
+            foreground="#666666",
+        ).pack(pady=2)
+
+        action_frame = ttk.Frame(section)
+        action_frame.pack(pady=(5, 2))
+
+        self._led_btn = tk.Button(
+            action_frame, text="Record LED clip & set ROI", font=("TkDefaultFont", 10, "bold"),
+            command=self._auto_led_clip, width=24, height=1,
+        )
+        self._led_btn.pack(side="left", padx=2)
+
+        self._led_folder_btn = tk.Button(
+            action_frame, text="Set ROI from folder…", command=self._led_roi_from_folder,
+            width=20, height=1,
+        )
+        self._led_folder_btn.pack(side="left", padx=2)
+
+        # Status row
+        status_frame = ttk.Frame(section)
+        status_frame.pack(fill="x", pady=2)
+
+        self._led_status_canvas = tk.Canvas(
+            status_frame, width=14, height=14, highlightthickness=0, borderwidth=0,
+        )
+        self._led_status_canvas.pack(side="left", padx=(0, 4))
+        self._led_status_circle = self._led_status_canvas.create_oval(
+            2, 2, 12, 12, fill="#9E9E9E", outline="",
+        )
+
+        self._led_status = tk.StringVar(value="Not set")
+        ttk.Label(status_frame, textvariable=self._led_status).pack(side="left")
 
     def _create_extrinsic_section(self, parent):
         section = ttk.LabelFrame(parent, text="Extrinsic Calibration", padding=10)
@@ -371,6 +427,36 @@ class CalibrationTab:
         fill = STATUS_COLORS.get(color, STATUS_COLORS["grey"])
         self._origin_status_canvas.itemconfig(self._origin_status_circle, fill=fill)
 
+    def _set_led_indicator(self, color):
+        """Set LED ROI status circle color."""
+        from GUI.components.collapsible_section import STATUS_COLORS
+        fill = STATUS_COLORS.get(color, STATUS_COLORS["grey"])
+        self._led_status_canvas.itemconfig(self._led_status_circle, fill=fill)
+
+    def _led_missing_cameras(self):
+        """Connected cameras that have no LED ROI yet."""
+        return [num for num, _ in self._get_connected_cameras() if num not in self._led_rois]
+
+    def _update_led_status(self):
+        """Refresh the LED ROI section status line + indicator."""
+        if not self._led_rois:
+            self._set_led_indicator("grey")
+            self._led_status.set("Not set")
+            return
+        cams = ", ".join(f"GP{c}" for c in sorted(self._led_rois))
+        missing = self._led_missing_cameras()
+        if missing:
+            self._set_led_indicator("amber")
+            self._led_status.set(
+                f"ROI set: {cams} — missing " + ", ".join(f"GP{c}" for c in missing))
+        else:
+            self._set_led_indicator("green")
+            self._led_status.set(f"ROI set: {len(self._led_rois)} cameras ({cams})")
+
+    def _calib_sync_mode(self):
+        """Sync mode for calibration recordings from the bottom-bar selection."""
+        return "light" if self.sync_method_var.get() == "light" else "audio"
+
     def _update_pipeline_state(self):
         """Enable/disable buttons based on current pipeline state."""
         has_intrinsics = bool(self._intrinsic_results)
@@ -378,9 +464,18 @@ class CalibrationTab:
                          and hasattr(self._camera_array, 'posed_cameras')
                          and self._camera_array.posed_cameras)
 
-        # Extrinsic button: enabled when intrinsics exist
-        ext_state = "normal" if has_intrinsics else "disabled"
+        # Extrinsic button: enabled when intrinsics exist (and, in light sync
+        # mode, when every connected camera has an LED ROI — the extrinsic
+        # recording is synced with the LED too)
+        light_blocked = (self._calib_sync_mode() == "light"
+                         and bool(self._led_missing_cameras()))
+        ext_state = "normal" if (has_intrinsics and not light_blocked) else "disabled"
         self._ext_auto_btn.config(state=ext_state)
+        gate_msg = "Set LED ROI first (light sync selected)"
+        if light_blocked and has_intrinsics and not self._extrinsic_status.get():
+            self._extrinsic_status.set(gate_msg)
+        elif not light_blocked and self._extrinsic_status.get() == gate_msg:
+            self._extrinsic_status.set("")
 
         # Origin button: enabled when extrinsics done
         origin_state = "normal" if has_extrinsics else "disabled"
@@ -450,6 +545,7 @@ class CalibrationTab:
                     cam_list, video_dir, "extrinsic", timestamp,
                     self._extrinsic_status,
                     on_synced=lambda synced_dir: self._ext_auto_run_calibration(synced_dir, video_dir, timestamp),
+                    sync_mode=self._calib_sync_mode(),
                 )
             except Exception as e:
                 msg = str(e)
@@ -505,8 +601,13 @@ class CalibrationTab:
                 Path(synced_dir), charuco, camera_array,
             )
 
+            # The array was rebuilt from the intrinsics: carry the in-memory LED
+            # ROIs over so Apply writes them into the new calibration file.
+            self._copy_led_rois_to_cameras(camera_array.cameras)
+
             self._camera_array = camera_array
             self._bundle = bundle
+            self._loaded_calib_path = None  # new, unapplied calibration
 
             self.frame.after(0, lambda: self._update_extrinsic_result(bundle))
             self.frame.after(0, lambda: self._update_pipeline_state())
@@ -561,7 +662,7 @@ class CalibrationTab:
                     cam_list, video_dir, "origin", timestamp,
                     self._origin_status,
                     on_synced=lambda synced_dir: self._origin_auto_run(synced_dir, video_dir, timestamp),
-                    skip_sync=True,
+                    sync_mode="trim_only",
                 )
             except Exception as e:
                 msg = str(e)
@@ -659,7 +760,9 @@ class CalibrationTab:
             from calibration.persistence import save_calibration
 
             charuco = self._get_charuco()
+            self._copy_led_rois_to_cameras(self._camera_array.cameras)
             save_calibration(filepath, self._camera_array, charuco)
+            self._loaded_calib_path = filepath
 
             # Persist to app config
             self.app_config["last_calibration"] = str(filepath)
@@ -669,6 +772,231 @@ class CalibrationTab:
             self._on_calibration_saved()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save: {e}")
+
+    # =================================================================
+    # LED sync ROI (light sync method)
+    # =================================================================
+
+    def get_led_rois(self):
+        """Public: {cam_id: {"roi": (x, y, w, h), "size": (w, h)}} for light sync
+        (see light_sync.resolve_rois_for_videos). Empty dict if none are set."""
+        return {cam_id: {"roi": tuple(e["roi"]), "size": e.get("size")}
+                for cam_id, e in self._led_rois.items()}
+
+    def _copy_led_rois_to_cameras(self, cameras):
+        """Write the in-memory ROIs onto CameraData objects (scaled to each
+        camera's calibration `size`), so they are saved with the calibration."""
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from light_sync import scale_roi
+
+        for cam_id, cam in cameras.items():
+            entry = self._led_rois.get(cam_id)
+            if entry is None:
+                continue
+            cam.led_roi = scale_roi(entry["roi"], entry.get("size"), tuple(cam.size))
+
+    def _persist_led_rois(self):
+        """Apply ROIs to the current camera objects and, if a calibration file is
+        loaded, rewrite that file in place so trials keep pointing at the same
+        calibration name."""
+        if self._camera_array is not None:
+            self._copy_led_rois_to_cameras(self._camera_array.cameras)
+        self._copy_led_rois_to_cameras(
+            {cam_id: r["camera"] for cam_id, r in self._intrinsic_results.items()})
+
+        path = self._loaded_calib_path
+        if path is None or not Path(path).exists():
+            return
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+            from calibration.persistence import load_calibration, save_calibration
+
+            camera_array, charuco, sound_source = load_calibration(Path(path))
+            self._copy_led_rois_to_cameras(camera_array.cameras)
+            save_calibration(Path(path), camera_array, charuco, sound_source)
+            print(f"LED ROIs saved into {Path(path).name}")
+        except Exception as e:
+            logger.warning("Could not write LED ROIs into %s: %s", path, e)
+            messagebox.showwarning(
+                "Warning", f"ROIs set, but could not update {Path(path).name}:\n{e}")
+
+    def _auto_led_clip(self):
+        """One-button LED clip: record ~LIGHT_SEARCH_SECONDS on all cameras
+        (auto-stop), decode preview frames, open the ROI picker."""
+        if not self._check_record_preconditions(need_multi=True):
+            return
+        self._led_btn.config(state="disabled", text="Starting...")
+        self._led_folder_btn.config(state="disabled")
+        self._led_status.set("Starting...")
+        self._set_led_indicator("grey")
+        self._led_start_recording()
+
+    def _led_start_recording(self):
+        """Start the fixed-length multi-camera LED clip recording."""
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from light_sync import LIGHT_SEARCH_SECONDS
+
+        cam_list = self._get_connected_cameras()
+        if not cam_list:
+            self._led_reset_button()
+            self._led_status.set("No cameras connected")
+            return
+
+        video_dir = self._get_temp_video_dir()
+        timestamp = self._make_timestamp()
+        record_seconds = LIGHT_SEARCH_SECONDS + 1.0
+
+        self._calib_recording = True
+        self._calib_stop_event.clear()
+        self._led_btn.config(
+            text="STOP", bg="#dc3545", activebackground="#c82333",
+            command=self._led_stop_recording, state="normal",
+        )
+        self._led_status.set(
+            f"Recording LED clip ({len(cam_list)} cameras, auto-stops after {record_seconds:.0f}s)...")
+        self._set_led_indicator("red")
+
+        def worker():
+            try:
+                self._multi_record_worker(
+                    cam_list, video_dir, "ledroi", timestamp,
+                    self._led_status,
+                    on_synced=lambda raw_dir: self._led_process_clip(video_dir, timestamp),
+                    sync_mode="none",
+                    record_seconds=record_seconds,
+                )
+            except Exception as e:
+                msg = str(e)
+                self.frame.after(0, lambda m=msg: self._led_status.set(f"Error: {m}"))
+                self.frame.after(0, lambda: self._set_led_indicator("red"))
+                self.frame.after(0, lambda m=msg: messagebox.showerror("Recording Error", m))
+                self._cleanup_temp_videos(video_dir, "ledroi", timestamp)
+            finally:
+                self._calib_recording = False
+                self.frame.after(0, self.stop_bar_timer)
+                self.frame.after(0, self._led_reset_button)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _led_stop_recording(self):
+        """Stop the LED clip recording early."""
+        self._calib_stop_event.set()
+        self.stop_bar_timer()
+        self._led_btn.config(text="Stopping...", state="disabled")
+
+    def _led_reset_button(self):
+        """Reset LED buttons to idle state."""
+        self._led_btn.config(
+            text="Record LED clip & set ROI", bg="SystemButtonFace",
+            activebackground="SystemButtonFace",
+            command=self._auto_led_clip, state="normal",
+        )
+        self._led_folder_btn.config(state="normal")
+        self._update_pipeline_state()
+
+    def _led_process_clip(self, video_dir, timestamp):
+        """After the LED clip download (worker thread): decode preview frames and
+        open the ROI picker; the temp clip is deleted once the dialog closes."""
+        prefix = f"ledroi_{timestamp}"
+        files = sorted(
+            f for f in video_dir.iterdir()
+            if f.suffix.lower() == ".mp4" and f.is_file() and f.name.startswith(prefix)
+        )
+        cleanup = lambda: self._cleanup_temp_videos(video_dir, "ledroi", timestamp)  # noqa: E731
+        try:
+            self._led_pick_rois_from_files(files, on_done=cleanup)
+        except Exception:
+            cleanup()
+            raise
+
+    def _led_roi_from_folder(self):
+        """Set the ROI from any folder of *_GP{N}.mp4 recordings (e.g. a trial's video/)."""
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from light_sync import cam_id_from_filename
+
+        if self._calib_recording:
+            messagebox.showwarning("Warning", "A calibration recording is in progress")
+            return
+        folder = filedialog.askdirectory(title="Select a folder of *_GP{N}.mp4 recordings")
+        if not folder:
+            return
+        files = sorted(
+            f for f in Path(folder).iterdir()
+            if f.suffix.lower() == ".mp4" and f.is_file()
+            and cam_id_from_filename(f.name) is not None
+        )
+        if not files:
+            messagebox.showwarning("Warning", "No *_GP{N}.mp4 files found in that folder")
+            return
+
+        self._led_btn.config(state="disabled")
+        self._led_folder_btn.config(state="disabled")
+        self._led_status.set("Decoding preview frames...")
+        self._set_led_indicator("grey")
+
+        def worker():
+            try:
+                self._led_pick_rois_from_files(files, on_done=self._led_reset_button)
+            except Exception as e:
+                msg = str(e)
+                self.frame.after(0, lambda m=msg: self._led_status.set(f"Error: {m}"))
+                self.frame.after(0, lambda: self._set_led_indicator("red"))
+                self.frame.after(0, lambda m=msg: messagebox.showerror("LED ROI Error", m))
+                self.frame.after(0, self._led_reset_button)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _led_pick_rois_from_files(self, files, on_done=None):
+        """Worker thread: decode reduced preview frames from each *_GP{N}.mp4 in
+        parallel, then open the ROI dialog on the Tk thread. on_done() runs on the
+        Tk thread after the dialog closes (OK or cancel)."""
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from light_sync import (sample_frames_for_roi, cam_id_from_filename,
+                                probe_video_size, scale_roi, LightSyncError)
+
+        self.frame.after(0, lambda: self._led_status.set("Decoding preview frames..."))
+
+        def _sample(f):
+            frames, scale = sample_frames_for_roi(str(f))
+            return cam_id_from_filename(f.name), frames, scale, probe_video_size(str(f))
+
+        frames_by_cam, scales, sizes = {}, {}, {}
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            for cam_id, frames, scale, size in ex.map(_sample, files):
+                if cam_id is None:
+                    continue
+                frames_by_cam[cam_id] = frames
+                scales[cam_id] = scale
+                sizes[cam_id] = size
+        if not frames_by_cam:
+            raise LightSyncError("No *_GP{N}.mp4 files to pick the ROI from")
+
+        def _open_dialog():
+            from GUI.components.led_roi_dialog import show_led_roi_dialog
+            initial = {}
+            for cam_id, entry in self._led_rois.items():
+                if cam_id in sizes:
+                    initial[cam_id] = scale_roi(entry["roi"], entry.get("size"), sizes[cam_id])
+            self._led_status.set("Click the LED in each view...")
+            result = show_led_roi_dialog(
+                self.frame.winfo_toplevel(), frames_by_cam, scales, initial_rois=initial)
+            if result is not None:
+                for cam_id, roi in result.items():
+                    self._led_rois[cam_id] = {"roi": tuple(roi), "size": sizes[cam_id]}
+                print("LED ROIs set: " + ", ".join(
+                    f"GP{c}={tuple(r)}" for c, r in sorted(result.items())))
+                self._persist_led_rois()
+            self._update_led_status()
+            self._update_pipeline_state()
+            if on_done:
+                on_done()
+
+        self.frame.after(0, _open_dialog)
 
     # =================================================================
     # Browse fallback methods
@@ -982,13 +1310,18 @@ class CalibrationTab:
     # --- Multi-camera recording (extrinsic / origin) ---
 
     def _multi_record_worker(self, cam_list, video_dir, purpose, timestamp, status_var,
-                             on_synced=None, skip_sync=False):
+                             on_synced=None, sync_mode="audio", record_seconds=None):
         """Worker thread for multi-camera recording + auto-sync.
 
-        If on_synced is provided, calls on_synced(synced_dir) after sync completes.
-        If skip_sync is True, audio sync is bypassed: videos are trimmed to a common
-        duration and frame-count-equalised but no clap detection is run. Used for the
-        Set Origin step where the board is static and per-camera sync is unnecessary.
+        If on_synced is provided, calls on_synced(result_dir) after sync completes.
+        sync_mode:
+          "audio"     — clap detection (bottom bar Manual/Speaker), trim, synced/ folder.
+          "light"     — LED flash detection using the LED ROIs, trim, synced/ folder.
+          "trim_only" — no detection, zero offsets: videos are trimmed to a common
+                        duration / frame count only. Used for Set Origin (static board).
+          "none"      — no sync at all; on_synced receives the raw video_dir.
+        record_seconds: if given, the recording auto-stops after that many seconds
+        (the STOP button still works earlier).
         """
         cam_nums = [num for num, cam in cam_list]
         print(f"Calibration: starting {purpose} recording on cameras: {cam_nums}")
@@ -1011,8 +1344,10 @@ class CalibrationTab:
         # Play sync sound (1s delay + two claps) if enabled
         self.play_sync_sound()
 
-        # Wait for user to click Stop
-        self._calib_stop_event.wait()
+        # Wait for user to click Stop (or auto-stop after record_seconds)
+        stopped_by_user = self._calib_stop_event.wait(timeout=record_seconds)
+        if not stopped_by_user:
+            self.frame.after(0, self.stop_bar_timer)
 
         print(f"Calibration: stopping cameras and downloading...")
         self.frame.after(0, lambda: status_var.set("Stopping cameras and downloading..."))
@@ -1039,15 +1374,22 @@ class CalibrationTab:
                 except Exception as e:
                     print(f"  Error downloading GoPro {num}: {e}")
 
-        # Auto-sync (or trim-only for static-board recordings)
-        if skip_sync:
-            print("Calibration: trimming videos (sync skipped — static board)...")
-            self.frame.after(0, lambda: status_var.set("Trimming videos..."))
+        # Auto-sync (or trim-only for static-board recordings, or nothing)
+        if sync_mode == "none":
+            print("Calibration: no sync for this recording")
+            synced_dir = video_dir
         else:
-            print("Calibration: starting audio sync...")
-            self.frame.after(0, lambda: status_var.set("Running audio sync..."))
-        synced_dir = self._run_calib_sync(video_dir, purpose, timestamp, status_var,
-                                          skip_sync=skip_sync)
+            if sync_mode == "trim_only":
+                print("Calibration: trimming videos (sync skipped — static board)...")
+                self.frame.after(0, lambda: status_var.set("Trimming videos..."))
+            elif sync_mode == "light":
+                print("Calibration: starting light (LED) sync...")
+                self.frame.after(0, lambda: status_var.set("Running LED sync..."))
+            else:
+                print("Calibration: starting audio sync...")
+                self.frame.after(0, lambda: status_var.set("Running audio sync..."))
+            synced_dir = self._run_calib_sync(video_dir, purpose, timestamp, status_var,
+                                              sync_mode=sync_mode)
 
         if on_synced:
             on_synced(synced_dir)
@@ -1058,12 +1400,14 @@ class CalibrationTab:
             else:
                 self.frame.after(0, lambda: status_var.set("Sync skipped (< 2 files)"))
 
-    def _run_calib_sync(self, video_dir, purpose, timestamp, status_var, skip_sync=False):
-        """Run audio sync on recorded calibration videos. Returns synced dir Path or None.
+    def _run_calib_sync(self, video_dir, purpose, timestamp, status_var, sync_mode="audio"):
+        """Sync recorded calibration videos. Returns synced dir Path or None.
 
-        If skip_sync is True, clap detection is bypassed and all per-video offsets are
-        set to zero. trim_and_sync_videos is still called so the outputs share a common
-        duration and identical frame counts.
+        sync_mode "audio" runs clap detection, "light" runs LED detection with the
+        stored ROIs (raises LightSyncError if one is missing), "trim_only" sets all
+        offsets to zero. trim_and_sync_videos is always called so the outputs share
+        a common duration and identical frame counts. An unacceptable audio/light
+        sync shows the shared red popup and returns None before the trim.
         """
         from audio_sync import (check_ffmpeg, check_audio_track, compute_sync_offsets,
                                 trim_and_sync_videos, evaluate_sync_acceptance,
@@ -1081,13 +1425,49 @@ class CalibrationTab:
             self.frame.after(0, lambda: status_var.set("ffmpeg not found — sync skipped"))
             return None
 
-        if skip_sync:
+        def _abort(table, reasons, table_label):
+            """Shared red popup + cleanup; caller returns None (no trim)."""
+            from GUI.components.sync_discard_dialog import show_sync_discard_dialog
+            print(f"Extrinsic {table_label[:-1].lower()} unacceptable — aborting calibration:")
+            for r in reasons:
+                print(f"  - {r}")
+            parent = self.frame.winfo_toplevel()
+            self.frame.after(0, lambda: show_sync_discard_dialog(
+                parent, table, reasons,
+                heading="SYNC ISSUE — CALIBRATION ABORTED",
+                subtext="Extrinsic calibration aborted. Please re-record.",
+                on_ok=lambda: self._cleanup_temp_videos(video_dir, purpose, timestamp),
+                table_label=table_label,
+            ))
+
+        if sync_mode == "trim_only":
             offsets = {
                 vp: {"offset_seconds": 0.0, "is_reference": (i == 0), "status": "NO-SYNC"}
                 for i, vp in enumerate(video_paths)
             }
             self.frame.after(0, lambda: status_var.set(
                 f"Trimming {len(video_paths)} videos (no sync)..."))
+        elif sync_mode == "light":
+            from light_sync import (compute_light_sync_offsets, resolve_rois_for_videos,
+                                    evaluate_light_sync_acceptance, format_light_sync_summary)
+
+            # Raises LightSyncError (caught by the worker → "Recording Error") if a
+            # camera has no ROI — a configuration error, not a bad recording.
+            rois = resolve_rois_for_videos(video_paths, self.get_led_rois())
+            offsets = compute_light_sync_offsets(
+                video_paths, rois, output_dir=str(video_dir),
+                progress_callback=lambda msg: print(f"  {msg}"),
+            )
+
+            detail = " | ".join(
+                f"{Path(p).name}: LED@{i['on_frame']} {i['offset_frames']:+d}fr {i['status']}"
+                for p, i in offsets.items())
+            self.frame.after(0, lambda: status_var.set(detail))
+
+            acceptable, reasons = evaluate_light_sync_acceptance(offsets, max_offset_ms=200.0)
+            if not acceptable:
+                _abort(format_light_sync_summary(offsets), reasons, "LED sync table:")
+                return None
         else:
             # Verify audio tracks
             for vp in video_paths:
@@ -1123,18 +1503,7 @@ class CalibrationTab:
             # the wasteful trim re-encode and the multi-minute extrinsic compute.
             acceptable, reasons = evaluate_sync_acceptance(offsets, max_offset_ms=200.0)
             if not acceptable:
-                from GUI.components.sync_discard_dialog import show_sync_discard_dialog
-                print("Extrinsic audio sync unacceptable — aborting calibration:")
-                for r in reasons:
-                    print(f"  - {r}")
-                table = format_sync_summary(offsets)
-                parent = self.frame.winfo_toplevel()
-                self.frame.after(0, lambda: show_sync_discard_dialog(
-                    parent, table, reasons,
-                    heading="SYNC ISSUE — CALIBRATION ABORTED",
-                    subtext="Extrinsic calibration aborted. Please re-record.",
-                    on_ok=lambda: self._cleanup_temp_videos(video_dir, purpose, timestamp),
-                ))
+                _abort(format_sync_summary(offsets), reasons, "Audio sync table:")
                 return None
 
         # Trim and sync — trim_and_sync_videos creates a synced/ subfolder inside output_dir
@@ -1404,6 +1773,15 @@ class CalibrationTab:
 
             camera_array, charuco, _ = load_calibration(filepath)
             self._camera_array = camera_array
+            self._loaded_calib_path = Path(filepath)
+
+            # LED sync ROIs travel with the calibration (tied to camera placement)
+            self._led_rois = {
+                cam_id: {"roi": tuple(cam.led_roi), "size": tuple(cam.size)}
+                for cam_id, cam in camera_array.cameras.items()
+                if getattr(cam, "led_roi", None)
+            }
+            self._update_led_status()
 
             # Update charuco GUI
             self._charuco_cols.set(charuco.columns)
@@ -1530,16 +1908,21 @@ class CalibrationTab:
                 if cam_id in self._intrinsic_entries:
                     entry = self._intrinsic_entries[cam_id]
                     if cam.matrix is not None and cam.distortions is not None:
-                        intrinsic_only = replace(cam, rotation=None, translation=None)
+                        intrinsic_only = replace(cam, rotation=None, translation=None,
+                                                 led_roi=None)
                         self._intrinsic_results[cam_id] = {"camera": intrinsic_only, "report": None}
                         error_str = f"RMSE: {cam.error:.3f}px" if cam.error is not None else "Loaded"
                         entry["status_var"].set(error_str)
                     else:
                         entry["status_var"].set("No intrinsics")
 
-            # Clear extrinsic state so user must re-run extrinsics
+            # Clear extrinsic state so user must re-run extrinsics (the LED ROI is
+            # tied to camera placement like the extrinsics, so it goes too)
             self._camera_array = None
             self._bundle = None
+            self._loaded_calib_path = None
+            self._led_rois = {}
+            self._update_led_status()
             self._extrinsic_status.set("")
             self._set_extrinsic_indicator("grey")
             self._update_3d_viewer(None)

@@ -22,9 +22,10 @@ In the top bar, create a **new session** if needed, and select or create the
 Do this **every session**, and any time a camera may have moved. Intrinsics are *not*
 redone — only extrinsics and origin.
 
-1. **Extrinsic** — with cameras in their final positions, record the charuco board moving through the shared field of view. After files download and auto-sync, browse to the trial's `synced/` folder in the [Calibration tab](gui/calibration-tab.md) and click **Calibrate Extrinsics**.
-2. **Set Origin** — stand the board vertically (portrait) at the lab origin (origin corner **790 mm** above the floor), record on all cameras, browse to the folder and click **Set Origin**.
-3. **Save Calibration** — the top-bar indicator turns **green** (calibrated today).
+1. **LED ROI** (Light sync only) — with cameras in their final positions, **Record LED clip & set ROI** in the [Calibration tab](gui/calibration-tab.md) and click the LED in each view ([details](gui/led-sync.md)).
+2. **Extrinsic** — with cameras in their final positions, record the charuco board moving through the shared field of view. After files download and auto-sync, browse to the trial's `synced/` folder in the [Calibration tab](gui/calibration-tab.md) and click **Calibrate Extrinsics**.
+3. **Set Origin** — stand the board vertically (portrait) at the lab origin (origin corner **790 mm** above the floor), record on all cameras, browse to the folder and click **Set Origin**.
+4. **Save Calibration** — the top-bar indicator turns **green** (calibrated today).
 
 > 🚧 **TODO:** capture guidance — clap near the centre of the camera volume for the extrinsic recording (sound-delay compensation can't apply yet), how long to move the board, and coverage tips.
 
@@ -33,9 +34,9 @@ redone — only extrinsics and origin.
 For each trial:
 
 1. Enter a **trial name** and select cameras in the [Recording tab](gui/recording-tab.md).
-2. **Start** recording, then perform **two loud hand claps within the first 3 seconds**.
+2. **Start** recording, then perform **two loud hand claps within the first 3 seconds** (with **Light** sync the LED flashes instead — no clapping).
 3. Run the movement task, then **Stop**.
-4. Files download and audio sync runs automatically — check the log for `WARN` (clap offsets disagree). If warned, consider re-recording with clearer claps.
+4. Files download and sync runs automatically — check the log for `WARN` (clap or LED on/off offsets disagree). If warned, consider re-recording.
 
 ## 5. Process
 

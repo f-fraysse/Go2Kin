@@ -25,7 +25,7 @@ Multi-camera GoPro control application for research. Controls up to 4 GoPro Hero
     4. Verify: `ffmpeg -hide_banner -encoders | findstr nvenc` lists `hevc_nvenc`.
     - **Caveat:** `conda update ffmpeg` (or recreating the env) reverts these to the LGPL build —
       re-apply the overwrite afterwards.
-- **Tests**: `python tests/test_project_manager.py` (run from repo root)
+- **Tests**: `python tests/test_project_manager.py` and `python tests/test_light_sync.py` (run from repo root)
 
 ## Project Structure
 
@@ -33,6 +33,7 @@ Multi-camera GoPro control application for research. Controls up to 4 GoPro Hero
 code/
   go2kin.py              # Entry point — loads config, creates ProjectManager + GUI
   audio_sync.py          # Audio-based multi-camera video synchronisation
+  light_sync.py          # LED-flash-based synchronisation (ROI brightness pulse detection)
   camera_profiles.py     # CameraProfileManager (profiles + settings references)
   project_manager.py     # ProjectManager (project/session/trial/subject file hierarchy)
   pose2sim_builder.py    # Build Pose2Sim project dirs + run pipeline
@@ -49,6 +50,7 @@ code/
       session_trials_list.py   # SessionTrialsList — Canvas-based trial list (shared by Recording + Processing)
       collapsible_section.py   # CollapsibleSection — expandable UI panel
       sync_discard_dialog.py   # Red "sync issue" popup (shared by Recording + Calibration)
+      led_roi_dialog.py        # LED ROI picker (2x2 frames, click the LED) for light sync
   goproUSB/
     goproUSB.py           # GPcam class (camera HTTP API client)
   calibration/            # Camera calibration (adapted from Caliscope, BSD-2-Clause)
@@ -80,8 +82,10 @@ tools/
   view_calibration.py     # Standalone 3D viewer for calibration camera positions
   export_toml.py          # Convert calibration.json → Pose2Sim TOML
   audio_sync_test.py      # Audio sync test utility
+  light_sync_test.py      # Light sync test utility (run detector on a folder / open ROI picker)
 tests/
   test_project_manager.py  # ProjectManager unit tests
+  test_light_sync.py       # light_sync pulse detection / acceptance / led_roi persistence tests
 docs/
   manual/                 # Published user manual (MkDocs Material) → GitHub Pages
   *.md                    # Dev/technical notes (NOT published; cited from Architecture)
@@ -95,13 +99,14 @@ mkdocs.yml                 # MkDocs config (docs_dir: docs/manual)
 
 - **Go2KinMainWindow** (`GUI/main_window.py`): 5-tab tkinter GUI (Preview, Calibration, Recording, Processing, Visualisation) + persistent TopBar above tabs + fixed bottom camera bar. Starts on Calibration tab.
 - **TopBar** (`GUI/top_bar.py`): Persistent project/session/participant dropdowns + calibration status indicator. Always visible above tabs.
-- **Bottom camera bar** (`GUI/main_window.py`): Per-camera connect/disconnect toggle, status indicators, battery display. Global resolution/FPS dropdowns apply to all cameras.
+- **Bottom camera bar** (`GUI/main_window.py`): Per-camera connect/disconnect toggle, status indicators, battery display. Global resolution/FPS dropdowns apply to all cameras. `Sync:` radio (Manual / Speaker / Light) selects the sync method; persisted as `sync_method` in `go2kin_config.json`.
 - **GPcam** (`goproUSB/goproUSB.py`): HTTP client for one camera. IP derived from serial: `172.2X.1YZ.51:8080`.
 - **CameraProfileManager** (`camera_profiles.py`): Singleton managing per-camera profiles and per-model settings references.
 - **ProjectManager** (`project_manager.py`): Manages project/session/trial/subject file hierarchy at `data_root`. GUI-agnostic — filesystem and JSON only. See `docs/project_manager.md`.
 - **SessionTrialsList** (`GUI/components/session_trials_list.py`): Canvas-based trial list with colored status indicators. Shared by Recording and Processing tabs.
 - **LivePreviewCapture** (`GUI/main_window.py`): Threaded OpenCV capture from UDP stream.
 - **Audio sync** (`audio_sync.py`): Clap-onset detection + frame-accurate ffmpeg trim (re-encodes — stream copy can't cut sub-GOP; GoPro keyframes ~1s apart). Runs automatically after recording. `evaluate_sync_acceptance()` gates quality (2 claps + half-frame consistency + <200ms inter-camera offset); on failure a shared red popup appears and the trial is discarded (Recording tab) or extrinsic calibration is aborted before the expensive compute (Calibration tab). A `StepTimer` prints a per-step timing table after each Recording-tab sync. See `docs/audio_sync_spec.md` and `docs/audio_sync_performance.md` (timing breakdown + CrowdStrike first-run gotcha).
+- **Light sync** (`light_sync.py`): LED-flash alternative to claps, selected with the bottom-bar `Light` radio. Per-camera ROI around the LED (set in the Calibration tab "LED Sync ROI" section via `led_roi_dialog.py`, stored as `CameraData.led_roi` in the calibration JSON, cleared with extrinsics). ffmpeg pipes only the grayscale ROI crop of the first 6 s (`-hwaccel cuda` with CPU fallback); `detect_pulse()` finds the 1 s on/off pulse; offsets are integer frames vs the earliest camera. Same result-dict contract as audio, so `trim_and_sync_videos`/`create_stitched_preview` and the red discard popup are reused. `LightSyncError` subclasses `AudioSyncError`. See `docs/light_sync_spec.md`.
 - **Calibration** (`calibration/`): Charuco-based intrinsic/extrinsic calibration adapted from Caliscope (BSD-2-Clause). Orchestrated by `calibrate.py`.
 - **Pose2Sim integration** (`pose2sim_builder.py`): Stages trial data into Pose2Sim directory structure and runs the pipeline. See `docs/pose2sim_integration.md`.
 - **Visualisation** (`GUI/visualisation_tab.py`): Video playback with keypoint overlays. See `docs/Visualisation.md`.
