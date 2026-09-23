@@ -11,7 +11,7 @@ A loose collection of notes — promote items into the main guide as they firm u
 
 ## Synchronisation
 
-- **`WARN` status** — the offsets from the two claps disagree by more than one frame. Re-record with louder, sharper, well-separated claps inside the first 3 seconds.
+- **Trial discarded: "clap1/clap2 differ by … (> half a frame)"** — the offsets from the two claps disagree too much for a reliable sync (a `WARN` in the sync table is always in this case). Re-record with louder, sharper, well-separated claps inside the first 3 seconds.
 - **Claps not detected** — *(🚧 TODO: common causes — background noise, claps too quiet or too late — and fixes.)*
 - **High frame rates** — at 100+ fps, camera-to-source distance differences cause sub-frame errors; set the sound source position in the Recording tab (requires a loaded calibration).
 - **During extrinsic calibration** — sound-delay compensation can't apply (camera poses don't exist yet); clap near the centre of the camera volume so distance differences largely cancel.

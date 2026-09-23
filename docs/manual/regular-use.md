@@ -27,7 +27,7 @@ redone — only extrinsics and origin.
 3. **Set Origin** — stand the board vertically (portrait) at the lab origin (origin corner **790 mm** above the floor), record on all cameras, browse to the folder and click **Set Origin**.
 4. **Save Calibration** — the top-bar indicator turns **green** (calibrated today).
 
-> 🚧 **TODO:** capture guidance — clap near the centre of the camera volume for the extrinsic recording (sound-delay compensation can't apply yet), how long to move the board, and coverage tips.
+> 🚧 **TODO:** capture guidance — with hand claps, clap near the centre of the camera volume for the extrinsic recording (sound-delay compensation can't apply yet; not an issue with Light sync), how long to move the board, and coverage tips.
 
 ## 4. Record trials
 
@@ -36,7 +36,7 @@ For each trial:
 1. Enter a **trial name** and select cameras in the [Recording tab](gui/recording-tab.md).
 2. **Start** recording, then perform **two loud hand claps within the first 3 seconds** (with **Light** sync the LED flashes instead — no clapping).
 3. Run the movement task, then **Stop**.
-4. Files download and sync runs automatically — check the log for `WARN` (clap or LED on/off offsets disagree). If warned, consider re-recording.
+4. Files download and sync runs automatically. If the sync fails, a red popup explains why and the trial is discarded — just record it again ([details](gui/recording-tab.md#if-the-sync-fails)).
 
 ## 5. Process
 

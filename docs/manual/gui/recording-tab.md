@@ -10,7 +10,7 @@ synchronisation (hand claps or LED flash, per the bottom-bar **Sync** setting).
 1. Enter a **trial name** and select the cameras.
 2. **Start** — then perform **two loud hand claps within the first 3 seconds**. (Two claps enable a consistency check; one clap works, but without cross-validation.) With **Light** sync, the LED flashes instead — no clapping; see [LED light sync](led-sync.md).
 3. Perform the movement, then **Stop**.
-4. Files are downloaded from each camera into `[project]/sessions/[session]/[trial]/video/`, and audio synchronisation runs automatically — synced files appear in `video/synced/`.
+4. Files are downloaded from each camera into `[project]/sessions/[session]/[trial]/video/`, and synchronisation runs automatically with the method set in the bottom bar — synced files appear in `video/synced/`.
 
 A session/trial tree view at the bottom shows all recorded trials.
 
@@ -19,7 +19,14 @@ A session/trial tree view at the bottom shows all recorded trials.
 - Trimmed MP4s in `synced/` — start-aligned and end-trimmed to identical duration. Originals are never modified.
 - `sync_onsets.png` — detected clap onsets on each camera's audio envelope (audio sync), or `sync_led_signal.png` — ROI brightness with the detected LED on/off instants (light sync).
 - `stitched_videos.mp4` — a 2×2 grid preview for quick visual verification of sync.
-- A **`WARN`** status means the two clap offsets disagree by more than one frame — consider re-recording with clearer claps.
+
+## If the sync fails
+
+A red **SYNC ISSUE — TRIAL DISCARDED** popup shows the sync table and the reasons. Clicking
+**OK** deletes the trial folder so you can simply re-record. A `WARN` in the sync table always
+leads to this: the two claps (or the LED on and off instants) gave offsets that disagree.
+See [Known issues → Synchronisation](../troubleshooting.md#synchronisation) for claps and
+[LED light sync → If it fails](led-sync.md#if-it-fails) for the LED.
 
 ## Sound source position (speed-of-sound compensation)
 

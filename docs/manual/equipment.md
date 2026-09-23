@@ -43,6 +43,15 @@ An A1-sized board (~800x600mm) works well for us with cameras in a ~9m square.
 
 - Measure the actual printed square size after you have your board, and use the measured value in the board config. Printers don't always scale exactly.
 
+## Sync LED (optional)
+
+Only needed if you use [LED light sync](gui/led-sync.md) instead of hand claps:
+
+- A **white LED** that all cameras can see, driven at constant current (no PWM dimming) so it is clearly brighter than its background.
+- An **external trigger** that switches it on for **1 second** within the first 6 seconds of each recording.
+
+See [LED light sync](gui/led-sync.md) for placement.
+
 ## Other
 
 - GoPros have small sensors and do not deal with low light particularly well. They will auto adjust ISO to compensate. Make sure your lab space has good lighting. Use extra spotlights if needed.

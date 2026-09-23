@@ -6,9 +6,9 @@
 
 Integrated markerless motion capture pipeline from 2-4 USB-connected GoPro cameras. Single GUI for the full workflow, from camera setup to OpenSim output.
 
-**Pipeline**: Camera connection & control (OpenGoPro HTTP API) → multi-camera calibration (Caliscope) → recording → audio-based synchronisation → pose estimation, triangulation, filtering, interpolation (Pose2Sim, RTMlib) → kinematics (openSim)
+**Pipeline**: Camera connection & control (OpenGoPro HTTP API) → multi-camera calibration (Caliscope) → recording → synchronisation (hand claps or LED flash) → pose estimation, triangulation, filtering, interpolation (Pose2Sim, RTMlib) → kinematics (openSim)
 
-Designed mainly for indoor motion capture labs, to replicate a traditional marker-based workflow (e.g. Vicon Nexus). Opinionated choices like USB-connected cameras and audio sync via hand claps keep things simple and reliable in a lab setting.
+Designed mainly for indoor motion capture labs, to replicate a traditional marker-based workflow (e.g. Vicon Nexus). Opinionated choices like USB-connected cameras and sync via hand claps (or an LED flash) keep things simple and reliable in a lab setting.
 
 **Hardware**: Up to 4 GoPro cameras connected via USB to a single PC. developed and tested with Hero 12. Should work with any GoPro supporting the HTTP API (9+).
 
@@ -123,7 +123,7 @@ The GUI has five tabs, a persistent top bar, and a fixed bottom bar:
 Always visible above the tabs. Project, Session, and Participant dropdowns (with "+" buttons to create new ones) and a calibration status indicator (green = today, orange = older, red = none). A **Manage** button opens a dialog to view and create subjects (initials, age, sex, height, mass). Selections persist between sessions.
 
 ### Bottom Bar - Camera Status & Controls
-Always visible at the bottom of the window, regardless of which tab is selected. Shows per-camera connection status (green/red indicator), connect/disconnect toggle buttons, and battery status. Includes global Resolution and FPS dropdowns that apply to all connected cameras simultaneously. Camera serial numbers are read from `go2kin_config.json`.
+Always visible at the bottom of the window, regardless of which tab is selected. Shows per-camera connection status (green/red indicator), connect/disconnect toggle buttons, and battery status. Includes global Resolution and FPS dropdowns that apply to all connected cameras simultaneously, and a **Sync** selector — **Manual** (hand claps), **Speaker** (PC-played claps, currently too quiet in the lab) or **Light** (LED flash) — remembered between sessions. Camera serial numbers are read from `go2kin_config.json`.
 
 ### Tab 1 - Live Preview
 Stream a live preview from one camera at a time for positioning and framing. Includes real-time digital zoom control (slider, +/-, text entry). Preview runs at 1080p/30fps/Linear regardless of recording settings.
@@ -133,12 +133,13 @@ Multi-camera calibration using a printed charuco board. The calibration pipeline
 
 - **Charuco Board Config** - set board dimensions, square size, ArUco dictionary. Save a printable board image.
 - **Intrinsic Calibration** - per-camera lens calibration from a video of the board. Uses smart frame selection for orientation and spatial coverage diversity.
+- **LED Sync ROI** - only for Light sync. Record a short clip (or pick an existing recording folder) and click the LED in each camera view; Go2Kin watches that small square for the flash. Stored with the calibration and cleared with the extrinsics; redo it whenever a camera or the LED moves. In Light mode, extrinsic calibration is disabled until every connected camera has an ROI.
 - **Extrinsic Calibration** - multi-camera pose estimation from synced videos. Includes PnP solving, outlier rejection, graph bridging, triangulation, and bundle adjustment.
 - **Set Origin** - stand the charuco board vertically in portrait mode at the lab origin. Records a short video on all cameras, trims them to a common duration / frame count (audio sync is skipped — the board is static), then aligns the coordinate system using a Umeyama similarity transform. Can be re-run after loading a saved calibration.
 - **Save/Load** - persist calibration to `config/calibration/calibration.json` (also auto-exports `camera_array_go2kin.toml` for Pose2Sim compatibility).
 
 ### Tab 3 - Recording
-Enter a trial name and start/stop synchronized recording across selected cameras. Files are downloaded from each camera and saved to the project directory (`[project]/sessions/[session]/[trial]/video/`). After download, audio synchronisation runs automatically - synced files appear in `video/synced/`. A session/trial tree view at the bottom shows all recorded trials. See **Video Synchronisation** below for details.
+Enter a trial name and start/stop synchronized recording across selected cameras. Files are downloaded from each camera and saved to the project directory (`[project]/sessions/[session]/[trial]/video/`). After download, synchronisation runs automatically with the method selected in the bottom bar - synced files appear in `video/synced/`. A session/trial tree view at the bottom shows all recorded trials. See **Video Synchronisation** below for details.
 
 ### Tab 4 - Processing
 Run the [Pose2Sim](https://github.com/perfanalytics/pose2sim) pipeline on recorded trials. Select trials from a tree view (with session grouping and checkbox selection), then click **Process Selected** to run pose estimation, triangulation, filtering, and kinematics sequentially. Real-time log output streams in the GUI. Pose2Sim is included as a git submodule at `code/pose2sim/`.
@@ -177,16 +178,20 @@ from [Caliscope](https://github.com/mprib/caliscope)
 ```
 code/
   go2kin.py              # Entry point
-  audio_sync.py          # Audio-based multi-camera video synchronisation
+  audio_sync.py          # Audio-based multi-camera video synchronisation (hand claps)
+  light_sync.py          # LED-flash-based synchronisation (ROI brightness pulse detection)
   camera_profiles.py     # Camera profile and settings reference management
   project_manager.py     # Project/session/trial/subject file hierarchy management
   pose2sim_builder.py    # Build Pose2Sim project dirs + run pipeline
   GUI/
-    main_window.py        # Main GUI window
-    project_tab.py        # Project tab (project/session/subject management)
-    calibration_tab.py    # Calibration tab (charuco config, intrinsic, extrinsic, origin)
+    main_window.py        # Main GUI window (tabs + bottom camera bar)
+    top_bar.py            # Top bar (project/session/participant selection)
+    live_preview_tab.py   # Live Preview tab (camera preview with zoom)
+    calibration_tab.py    # Calibration tab (charuco config, intrinsic, LED ROI, extrinsic, origin)
+    recording_tab.py      # Recording tab (record, download, sync)
     processing_tab.py     # Processing tab (Pose2Sim pipeline execution)
     visualisation_tab.py  # Visualisation tab (video playback + keypoint overlays)
+    components/           # Shared widgets (trial list, collapsible section, sync-issue popup, LED ROI picker)
   goproUSB/
     goproUSB.py           # GoPro HTTP API client (GPcam class)
   calibration/            # Camera calibration pipeline (adapted from Caliscope, BSD-2-Clause)
@@ -210,6 +215,11 @@ tools/
   discover_camera_settings.py  # Settings discovery tool
   export_toml.py               # Convert calibration JSON to Pose2Sim TOML
   view_calibration.py          # Visualise saved calibration results
+  audio_sync_test.py           # Audio sync development / validation script
+  light_sync_test.py           # Run light sync on a folder / open the LED ROI picker
+tests/
+  test_project_manager.py      # ProjectManager unit tests
+  test_light_sync.py           # Light sync pulse detection / acceptance / ROI tests
 output/                   # Legacy recording output (unused by current version)
 go2kin_config_template.json  # Template for app config (copy to go2kin_config.json)
 ```
@@ -241,9 +251,14 @@ Resolution, FPS, lens, and digital zoom are restored from the camera's saved pro
 
 ## Video Synchronisation
 
-Even when starting all cameras simultaneously, each GoPro begins recording at a slightly different time. Audio synchronisation runs automatically after each recording - no manual button press or file selection required.
+Even when starting all cameras simultaneously, each GoPro begins recording at a slightly different time. Synchronisation runs automatically after each recording - no manual button press or file selection required. Two methods, chosen with the **Sync** selector in the bottom bar:
 
-### How to use
+- **Hand claps** (Manual) - audio-based, described first below.
+- **LED flash** (Light) - hands-free and unaffected by room noise; see [Light (LED) sync](#light-led-sync).
+
+Both produce the same `synced/` output and use the same pass/fail popup.
+
+### How to use (hand claps)
 
 1. At the start of each recording, perform **two loud hand claps** within the first 3 seconds while all cameras are recording. Two claps are required for the consistency check.
 2. After files are downloaded, synchronisation runs automatically. The terminal log shows a step-by-step onset detection report with a summary table of offsets and consistency status per camera.
@@ -290,9 +305,34 @@ To correct for this, set the sound source position in the **Recording tab** (Sou
 
 Compensation is **not** applied during extrinsic calibration (camera poses don't yet exist when the calibration video is synced) or during Set Origin (sync is skipped entirely — the board is static). For extrinsic calibration, clap near the centre of the camera volume so per-camera distance differences largely cancel.
 
+### Light (LED) sync
+
+An alternative to claps: a white LED, visible to all cameras, flashes for 1 second near the start of each recording. Go2Kin finds the flash in each video and aligns on it. Full user guide: [LED light sync](https://f-fraysse.github.io/Go2Kin/gui/led-sync/); technical spec: [`docs/light_sync_spec.md`](docs/light_sync_spec.md).
+
+**How to use**
+
+1. Set **Sync** to **Light** in the bottom bar.
+2. With cameras and LED in place, go to the Calibration tab → **LED Sync ROI** → **Record LED clip & set ROI**, and click the LED in each camera view.
+3. Run the extrinsic calibration as usual (its recording is synced with the LED too).
+4. Record trials as usual. Trigger the LED so it switches on for **1 s** and is off again within the **first 6 s** of the recording.
+
+**LED requirements**: white, constant current (no PWM dimming), clearly brighter than its background, and at a similar height in every camera view where nobody walks in front of it.
+
+**Pass/fail**: the flash must be found in every camera (enough brightness contrast, ~1 s long), each camera's offsets from the LED switching on and switching off must agree within 1 frame, and no camera's offset may exceed 200 ms. Otherwise the same red popup appears and the trial is discarded (or the extrinsic calibration aborted), as for claps.
+
+**Output**: as for audio sync, plus `sync_led_signal.png` (ROI brightness per camera with the detected on/off instants). `trial.json` records `"sync_method": "light"`.
+
+| Step | Method | Detail |
+|------|--------|--------|
+| Signal extraction | ffmpeg pipe | Only the grayscale ROI crop of the first 6 s is decoded; NVIDIA GPU decode (`-hwaccel cuda`) with automatic CPU fallback; cameras decoded in parallel |
+| Brightness per frame | Top-16 mean | Mean of the 16 brightest ROI pixels, so the result does not depend on how big the LED looks |
+| Pulse detection | 50 % threshold | Baseline from the first 10 frames; first frame above halfway = on, next below = off; pulse length must be 1 s ± 3 frames |
+| Offsets | Integer frames | Camera with the earliest on-edge is the reference; others offset relative to it |
+| Trimming | Shared with audio sync | Same frame-accurate re-encode and 2×2 stitched preview |
+
 ### Requirements
 
-- **ffmpeg** must be installed and in PATH. For high-resolution / high-frame-rate sync
+- **ffmpeg** must be installed and in PATH. Light sync uses NVIDIA GPU decoding when the ffmpeg build supports it and falls back to CPU otherwise - no extra setup. For high-resolution / high-frame-rate sync
   (e.g. 2.7K @ 200 fps) it must be a build with **NVENC** (`hevc_nvenc`) — the conda-forge
   ffmpeg has no NVENC and will fail. See the NVENC step under [Setup](#setup).
 - **numpy**, **scipy**, and **matplotlib** (included in `requirements.txt`)
@@ -301,7 +341,7 @@ Compensation is **not** applied during extrinsic calibration (camera poses don't
 
 Big ones:
 1. calibration: save calibration "quality metrics" for extrinsics (ie RMSE etc). For intrinsics we already do this. Need to figure out what to keep and where to store it. And define heuristics for extrinsic calib quality check.
-2. sync (audio based): pass/fail criteria + auto-discard now implemented — all cameras detect 2 peaks AND the 2 offsets per camera agree within half a frame AND final offset for any camera <200ms; on failure a red popup shows the sync table and the trial folder is discarded. Remaining: (a) peak-to-background-noise ratio criterion (tbc); (b) on PASS, delete raw unsynced videos and keep only synced ones (currently raw videos are retained), so only 1 video per camera is kept.
+2. sync (audio based): pass/fail criteria + auto-discard now implemented — all cameras detect 2 peaks AND the 2 offsets per camera agree within half a frame AND final offset for any camera <200ms; on failure a red popup shows the sync table and the trial folder is discarded. Remaining: (a) peak-to-background-noise ratio criterion (tbc); (b) on PASS, delete raw unsynced videos and keep only synced ones (currently raw videos are retained), so only 1 video per camera is kept. (LED light sync is now available as a hands-free alternative to claps — see [Light (LED) sync](#light-led-sync).)
 3. Currently functionality is: after recording ends, save raw videos to [trial data path]/video/ (with /synced/ subfolder) and create trial.json with calib file name and participant name. Then when Processing trial, create the staging folder (move videos, copy calib file, copy pose2sim config file). New functionality: create pose2sim staging folder after recording rather than at Processing step - move videos and calib file (if exists) right after recording, create trial JSON (already done then?) Safer to move calib file while we know it exists. (see above for sync pass fail: if sync pass, copy synced and cropped files. If sync failed copy raw unsynced files cropped to same frame numbers) Also avoids duplicate videos (some in [trial]/video, some in [trial]/processed/videos)
 4. user manual — scaffolded & published to GitHub Pages (MkDocs, `docs/manual/`); content still being written
 

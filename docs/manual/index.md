@@ -15,7 +15,7 @@ It covers the full workflow of a traditional
 marker-based lab (e.g. Vicon Nexus): 
 - camera connection and setup (Open GoPro HTTP API over USB),
 - camera calibration (adapted from [Caliscope](https://github.com/mprib/caliscope)),
-- recording and auto-sync in post processing (audio based),
+- recording and auto-sync in post processing (hand claps or an LED flash),
 - pose estimation (RTMpose), triangulation, filtering, interpolation ([Pose2Sim](https://github.com/perfanalytics/pose2sim)),
 -  3D kinematics (OpenSim).
 
@@ -25,6 +25,7 @@ It is also designed mainly for **indoor labs**, and several design choices follo
 
 - USB-wired cameras for simple reliable connection, 
 - Audio-based synchronisation using hand claps - simple and robust indoors,
+- or, hands-free, [LED light sync](gui/led-sync.md) - an LED flash seen by all cameras, unaffected by room noise or camera distance.
 
 Developed and tested with the **GoPro Hero 12 Black** on **Windows 11**; any GoPro
 supporting the HTTP API (Hero 9 or later) should work.
