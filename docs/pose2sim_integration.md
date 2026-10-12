@@ -12,6 +12,9 @@ not pull upstream changes. See CLAUDE.md ("Pose2Sim fork") for the commit/push w
 
 ### OpenSim model: RajagopalLaiUhlrich2023 (fork patch)
 
+Full history of the port and later changes: [`CHANGELOG_Halpe26_to_RLU2023.md`](CHANGELOG_Halpe26_to_RLU2023.md).
+Model comparison (unmodified models, keypoint offsets): *Pose2Sim vs RLU2023 kinematic models and Halpe26 keypoint positions.docx*.
+
 `[kinematics] use_original_RLU2023 = true` (the Go2Kin template default) makes `kinematics.py` use these files
 from `Pose2Sim/OpenSim_Setup/`. Leaving the key `false` or omitting it gives stock Pose2Sim behaviour.
 

@@ -13,7 +13,7 @@ Designed mainly for indoor motion capture labs, to replicate a traditional marke
 **Hardware**: Up to 4 GoPro cameras connected via USB to a single PC. developed and tested with Hero 12. Should work with any GoPro supporting the HTTP API (9+).
 
 **Built on**:
-- [Pose2Sim](https://github.com/perfanalytics/pose2sim) - pose estimation, triangulation, filtering, and kinematics (included as a submodule, run directly from the GUI)
+- [Pose2Sim](https://github.com/perfanalytics/pose2sim) - pose estimation, triangulation, filtering, and kinematics (included as a submodule pinned to a frozen fork, [f-fraysse/pose2sim](https://github.com/f-fraysse/pose2sim), with Go2Kin-specific changes; run directly from the GUI)
 - [Caliscope](https://github.com/mprib/caliscope) - multi-camera calibration algorithms (charuco detection, intrinsic/extrinsic calibration, bundle adjustment), adapted and re-implemented
 - [Open GoPro  API](https://gopro.github.io/OpenGoPro/http) over USB (inspired by [goproUSB](https://github.com/drukasz/goproUSB))
 
@@ -42,9 +42,9 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
 
 ## Setup
 
-1. Clone the repository:
+1. Clone the repository (with the Pose2Sim submodule):
    ```
-   git clone https://github.com/f-fraysse/Go2Kin.git
+   git clone --recurse-submodules https://github.com/f-fraysse/Go2Kin.git
    cd Go2Kin
    ```
 
@@ -78,10 +78,12 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
    > ⚠️ `conda update ffmpeg` (or recreating the env) reverts to the NVENC-less build —
    > re-apply this swap if high-fps sync stops working.
 
-4. Install pose2sim as a submodule:
+4. Install pose2sim as a submodule. `code/pose2sim` is a frozen fork of Pose2Sim
+   ([f-fraysse/pose2sim](https://github.com/f-fraysse/pose2sim)); do not pull from upstream inside it.
+   Clones made before the switch to the fork need `git submodule sync` once.
     ```
-   git submodule init
-   git submodule update
+   git submodule sync
+   git submodule update --init
    pip install -e ./code/pose2sim
    pip uninstall onnxruntime
    pip install onnxruntime-gpu==1.20.1
@@ -142,13 +144,19 @@ Multi-camera calibration using a printed charuco board. The calibration pipeline
 Enter a trial name and start/stop synchronized recording across selected cameras. Files are downloaded from each camera and saved to the project directory (`[project]/sessions/[session]/[trial]/video/`). After download, synchronisation runs automatically with the method selected in the bottom bar - synced files appear in `video/synced/`. A session/trial tree view at the bottom shows all recorded trials. See **Video Synchronisation** below for details.
 
 ### Tab 4 - Processing
-Run the [Pose2Sim](https://github.com/perfanalytics/pose2sim) pipeline on recorded trials. Select trials from a tree view (with session grouping and checkbox selection), then click **Process Selected** to run pose estimation, triangulation, filtering, and kinematics sequentially. Real-time log output streams in the GUI. Pose2Sim is included as a git submodule at `code/pose2sim/`.
+Run the [Pose2Sim](https://github.com/perfanalytics/pose2sim) pipeline on recorded trials. Select trials from a tree view (with session grouping and checkbox selection), then click **Process Selected** to run pose estimation, triangulation, filtering, and kinematics sequentially. Real-time log output streams in the GUI. Pose2Sim is included as a git submodule at `code/pose2sim/` (frozen fork).
 
 The processing pipeline:
 1. **Stages** trial data into Pose2Sim's expected directory structure (`[trial]/processed/`)
 2. **Validates** that synced videos, calibration TOML, and subject data (height, mass) exist
 3. **Runs** each Pose2Sim step: calibration (no-op - reads existing TOML), pose estimation (RTMPose via CUDA), triangulation, Butterworth filtering, and OpenSim kinematics
 4. **Updates** `trial.json` with `processed: true` on success
+
+**OpenSim model:** kinematics (scaling + inverse kinematics) uses the **RajagopalLaiUhlrich2023** model by default, with Halpe26 marker, scaling and IK setups adapted from Pose2Sim's. This is set by `use_original_RLU2023 = true` under `[kinematics]` in `config/pose2sim_config_template.toml`; set it to `false` to use Pose2Sim's stock model.
+- The head is rigid with the torso in RLU2023, so the head keypoints (Nose, Head) are excluded from IK.
+- The pelvis coordinates are unclamped.
+
+See [`docs/CHANGELOG_Halpe26_to_RLU2023.md`](docs/CHANGELOG_Halpe26_to_RLU2023.md) for the full list of changes, and *Pose2Sim vs RLU2023 kinematic models and Halpe26 keypoint positions.docx* in `docs/` for a model comparison.
 
 Batch processing runs trials sequentially. A **Stop** button halts processing after the current step completes. See [`docs/pose2sim_integration.md`](docs/pose2sim_integration.md) for technical details.
 

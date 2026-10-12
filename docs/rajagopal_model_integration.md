@@ -1,6 +1,6 @@
 # Plan: Use RajagopalLaiUhlrich2023.osim for Pose2Sim scaling + IK
 
-**Status: PLAN ONLY — not implemented.** Investigation done 2026-09-17; open questions at the end.
+**Status: implemented 2026-10-12** (original plan below kept for reference). Current state: [`pose2sim_integration.md`](pose2sim_integration.md) and [`CHANGELOG_Halpe26_to_RLU2023.md`](CHANGELOG_Halpe26_to_RLU2023.md). Investigation done 2026-09-17.
 
 ## Context
 

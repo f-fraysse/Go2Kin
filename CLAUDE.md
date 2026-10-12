@@ -45,7 +45,13 @@ branch `main` (forked from upstream commit `491d564`). Pose2Sim is pip-installed
   ```
   If it isn't an editable install: `pip install -e code/pose2sim`.
 - **Fork patch:** `[kinematics] use_original_RLU2023 = true` (template default) uses the
-  RajagopalLaiUhlrich2023 model + Halpe26 setups in `Pose2Sim/OpenSim_Setup/*RLU2023*`. See `docs/pose2sim_integration.md`.
+  RajagopalLaiUhlrich2023 model + Halpe26 setups in `Pose2Sim/OpenSim_Setup/*RLU2023*` (markerset `..._P2Sall.xml`).
+  Deviations from the stock RLU2023 / ported setups:
+  - all 6 pelvis coordinates unclamped;
+  - Nose/Head `apply=false` in the IK setup (head rigid with torso);
+  - `perform_scaling()` forces `marker_set_file = Unassigned`.
+  - Docs: `docs/pose2sim_integration.md`, `docs/CHANGELOG_Halpe26_to_RLU2023.md` (port + fork changes + validation), and
+    `docs/Pose2Sim vs RLU2023 kinematic models and Halpe26 keypoint positions.docx` (comparison of the *unmodified* models).
 
 ## Project Structure
 
