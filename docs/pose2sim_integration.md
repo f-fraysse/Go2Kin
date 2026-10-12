@@ -32,9 +32,14 @@ from `Pose2Sim/OpenSim_Setup/`. Leaving the key `false` or omitting it gives sto
   so relative paths in a custom scaling setup don't break.
 - Missing meshes were copied into `OpenSim_Setup/Geometry/` from the OpenSim 4.5 install (`Models/Rajagopal/Geometry`
   and `Code/Matlab/Moco/example3DWalking/Geometry`). They are only used for display.
-- Validation (Charlotte_Pilot2/jump, 1113 frames): mean IK RMS was 3.4 cm vs 2.2 cm with the default model. Body markers fit within 1–2 cm.
-  The difference is mostly Head/Nose (~9 cm, since Rajagopal has no neck joint) and heels (~4 cm).
-  Hip/knee angle ranges matched the default model to within ~2°.
+- **Nose and Head are excluded from IK** (`apply=false` in `IK_Setup_RLU2023_Halpe26.xml`). RLU2023 has no neck
+  joint, so these markers sit on `torso`, and head turns would drag the trunk. Neck (base of neck) is kept. The eyes and ears
+  (Halpe ids 1–4) never reach IK: Pose2Sim's `HALPE_26` skeleton doesn't triangulate them. Nose/Head are still in the
+  marker set for visual reference.
+- Validation (Charlotte_Pilot2/jump, 1113 frames):
+  - Mean IK RMS was 1.9 cm (worst-marker mean 4.0 cm, usually RHeel), vs 3.4 cm with Nose/Head included and 2.2 cm for
+    the default Pose2Sim model (which includes its head markers).
+  - Hip/knee angle ranges matched the default model to within ~2°.
 
 ## Architecture
 
