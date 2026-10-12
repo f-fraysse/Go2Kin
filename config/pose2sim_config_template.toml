@@ -268,6 +268,8 @@ make_c3d = true # save triangulated data in c3d format in addition to trc
 [kinematics]
 use_augmentation = false  # true or false (lowercase) # Set to true if you want to use the model with augmented markers
 use_simple_model = false # true or false # >10 times faster IK if true. No muscles, no constraints (eg stiff spine and shoulders, no patella)
+use_original_RLU2023 = true # true or false # Go2Kin fork: Rajagopal-Lai-Uhlrich 2023 model + Halpe26 setups (OpenSim_Setup/*RLU2023*). Overrides use_simple_model.
+                            # Requires pose_model = 'Body_with_feet' and use_augmentation = false.
 filter_ik = true # true or false # at TWICE the cut-off frequency defined in the [filtering] section. Useful for force estimations if results are noisy
                  # Note: this triggers an EXTRA filter pass on the IK .mot output AFTER kinematics (in addition to the main [filtering] pass on .trc).
 

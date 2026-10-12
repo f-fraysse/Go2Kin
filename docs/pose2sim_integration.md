@@ -6,7 +6,34 @@ Go2Kin integrates [Pose2Sim](https://github.com/perfanalytics/pose2sim) to run m
 
 The Processing tab (Tab 5) allows users to select recorded trials and run the full Pose2Sim pipeline — from 2D pose estimation through to OpenSim kinematics — without leaving Go2Kin. The integration bridges Go2Kin's project/session/trial file hierarchy to Pose2Sim's expected directory layout.
 
-Pose2Sim is included as a git submodule at `code/pose2sim/`.
+Pose2Sim is included as a git submodule at `code/pose2sim/`. It points at a **frozen fork**
+(`https://github.com/f-fraysse/pose2sim`, branch `main`), forked from upstream commit `491d564`. We do
+not pull upstream changes. See CLAUDE.md ("Pose2Sim fork") for the commit/push workflow.
+
+### OpenSim model: RajagopalLaiUhlrich2023 (fork patch)
+
+`[kinematics] use_original_RLU2023 = true` (the Go2Kin template default) makes `kinematics.py` use these files
+from `Pose2Sim/OpenSim_Setup/`. Leaving the key `false` or omitting it gives stock Pose2Sim behaviour.
+
+| Role | File |
+|------|------|
+| Model | `RajagopalLaiUhlrich2023.osim` |
+| Markers | `Markers_Halpe26_RLU2023_P2Sall.xml` |
+| Scaling setup | `Scaling_Setup_RLU2023_Halpe26.xml` |
+| IK setup | `IK_Setup_RLU2023_Halpe26.xml` |
+
+- The key overrides `use_simple_model`. It needs `pose_model = 'Body_with_feet'` and
+  `use_augmentation = false`, otherwise `kinematics_all()` raises `ValueError`.
+- The ground→pelvis rotations (`pelvis_tilt/list/rotation`) are **unclamped** in the `.osim`. They were
+  ±90° in the original model, which pinned the pelvis whenever the participant faced away from the lab +X axis.
+  On a test jump trial (participant facing ~180°) this caused errors of about 12 cm at RHip/LHip, with hip rotations stuck at their limits.
+- `perform_scaling()` forces `marker_set_file = Unassigned` (the markers are already baked into the saved model),
+  so relative paths in a custom scaling setup don't break.
+- Missing meshes were copied into `OpenSim_Setup/Geometry/` from the OpenSim 4.5 install (`Models/Rajagopal/Geometry`
+  and `Code/Matlab/Moco/example3DWalking/Geometry`). They are only used for display.
+- Validation (Charlotte_Pilot2/jump, 1113 frames): mean IK RMS was 3.4 cm vs 2.2 cm with the default model. Body markers fit within 1–2 cm.
+  The difference is mostly Head/Nose (~9 cm, since Rajagopal has no neck joint) and heels (~4 cm).
+  Hip/knee angle ranges matched the default model to within ~2°.
 
 ## Architecture
 

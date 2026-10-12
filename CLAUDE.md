@@ -27,6 +27,26 @@ Multi-camera GoPro control application for research. Controls up to 4 GoPro Hero
       re-apply the overwrite afterwards.
 - **Tests**: `python tests/test_project_manager.py` and `python tests/test_light_sync.py` (run from repo root)
 
+## Pose2Sim fork (submodule)
+
+`code/pose2sim` is a git submodule pointing at a **frozen fork**: `https://github.com/f-fraysse/pose2sim`,
+branch `main` (forked from upstream commit `491d564`). Pose2Sim is pip-installed in editable mode from
+`code/pose2sim`. **Do not pull from upstream** (`origin` = perfanalytics). The local `main` tracks `myfork/main`.
+
+- **Changing Pose2Sim:** commit inside `code/pose2sim` → `git -C code/pose2sim push myfork main` →
+  in Go2Kin `git add code/pose2sim` (records the new submodule commit) → commit → push Go2Kin.
+  Always push the fork **before** Go2Kin, otherwise Go2Kin points at a commit GitHub doesn't have.
+- **Getting changes on another machine:**
+  ```
+  git pull
+  git submodule sync            # one-time, after the switch from upstream to the fork
+  git submodule update --init
+  pip show pose2sim             # "Editable project location" must be ...\Go2Kin\code\pose2sim
+  ```
+  If it isn't an editable install: `pip install -e code/pose2sim`.
+- **Fork patch:** `[kinematics] use_original_RLU2023 = true` (template default) uses the
+  RajagopalLaiUhlrich2023 model + Halpe26 setups in `Pose2Sim/OpenSim_Setup/*RLU2023*`. See `docs/pose2sim_integration.md`.
+
 ## Project Structure
 
 ```
@@ -70,7 +90,7 @@ code/
     bundle_adjustment.py  # PointDataBundle + scipy least_squares optimization
     alignment.py          # Umeyama similarity transform
     scale_accuracy.py     # Volumetric scale error metrics
-  pose2sim/               # Git submodule (https://github.com/perfanalytics/pose2sim)
+  pose2sim/               # Git submodule — frozen fork (https://github.com/f-fraysse/pose2sim), see "Pose2Sim fork"
 config/
   cameras.json            # Main config (serials, settings, recording prefs)
   camera_profiles/        # Per-camera JSON profiles (profile_{serial}.json)
@@ -108,7 +128,7 @@ mkdocs.yml                 # MkDocs config (docs_dir: docs/manual)
 - **Audio sync** (`audio_sync.py`): Clap-onset detection + frame-accurate ffmpeg trim (re-encodes — stream copy can't cut sub-GOP; GoPro keyframes ~1s apart). Runs automatically after recording. `evaluate_sync_acceptance()` gates quality (2 claps + half-frame consistency + <200ms inter-camera offset); on failure a shared red popup appears and the trial is discarded (Recording tab) or extrinsic calibration is aborted before the expensive compute (Calibration tab). A `StepTimer` prints a per-step timing table after each Recording-tab sync. See `docs/audio_sync_spec.md` and `docs/audio_sync_performance.md` (timing breakdown + CrowdStrike first-run gotcha).
 - **Light sync** (`light_sync.py`): LED-flash alternative to claps, selected with the bottom-bar `Light` radio. Per-camera ROI around the LED (set in the Calibration tab "LED Sync ROI" section via `led_roi_dialog.py`, stored as `CameraData.led_roi` in the calibration JSON, cleared with extrinsics). ffmpeg pipes only the grayscale ROI crop of the first 6 s (`-hwaccel cuda` with CPU fallback); `detect_pulse()` finds the 1 s on/off pulse; offsets are integer frames vs the earliest camera. Same result-dict contract as audio, so `trim_and_sync_videos`/`create_stitched_preview` and the red discard popup are reused. `LightSyncError` subclasses `AudioSyncError`. See `docs/light_sync_spec.md`.
 - **Calibration** (`calibration/`): Charuco-based intrinsic/extrinsic calibration adapted from Caliscope (BSD-2-Clause). Orchestrated by `calibrate.py`.
-- **Pose2Sim integration** (`pose2sim_builder.py`): Stages trial data into Pose2Sim directory structure and runs the pipeline. See `docs/pose2sim_integration.md`.
+- **Pose2Sim integration** (`pose2sim_builder.py`): Stages trial data into Pose2Sim directory structure and runs the pipeline. Kinematics uses the RajagopalLaiUhlrich2023 model via the fork's `use_original_RLU2023` key. See `docs/pose2sim_integration.md`.
 - **Visualisation** (`GUI/visualisation_tab.py`): Video playback with keypoint overlays. See `docs/Visualisation.md`.
 
 ## Documentation

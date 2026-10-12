@@ -1,3 +1,4 @@
 [submodule "code/pose2sim"]
 	path = code/pose2sim
-	url = https://github.com/perfanalytics/pose2sim.git
+	url = https://github.com/f-fraysse/pose2sim.git
+	branch = main
