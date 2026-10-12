@@ -24,9 +24,10 @@ from `Pose2Sim/OpenSim_Setup/`. Leaving the key `false` or omitting it gives sto
 
 - The key overrides `use_simple_model`. It needs `pose_model = 'Body_with_feet'` and
   `use_augmentation = false`, otherwise `kinematics_all()` raises `ValueError`.
-- The ground→pelvis rotations (`pelvis_tilt/list/rotation`) are **unclamped** in the `.osim`. They were
-  ±90° in the original model, which pinned the pelvis whenever the participant faced away from the lab +X axis.
-  On a test jump trial (participant facing ~180°) this caused errors of about 12 cm at RHip/LHip, with hip rotations stuck at their limits.
+- All six ground→pelvis coordinates (`pelvis_tilt/list/rotation/tx/ty/tz`) are **unclamped** in the `.osim`,
+  matching Pose2Sim's own model. In the original RLU2023 model the rotations were clamped to ±90°, which pinned the
+  pelvis whenever the participant faced away from the lab +X axis. On a test jump trial (participant facing ~180°) this caused
+  errors of about 12 cm at RHip/LHip, with hip rotations stuck at their limits. The translations (tx ±5, ty −1..2, tz ±3 m) were also clamped.
 - `perform_scaling()` forces `marker_set_file = Unassigned` (the markers are already baked into the saved model),
   so relative paths in a custom scaling setup don't break.
 - Missing meshes were copied into `OpenSim_Setup/Geometry/` from the OpenSim 4.5 install (`Models/Rajagopal/Geometry`
