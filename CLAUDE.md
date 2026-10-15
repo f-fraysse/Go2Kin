@@ -198,3 +198,27 @@ mkdocs.yml                 # MkDocs config (docs_dir: docs/manual)
 ## Known Issues / TODO
 
 - **Sync sound** (disabled): Automatic speaker-generated clap playback for hands-free sync. Lab HDMI speaker at ~7m is too quiet for GoPro mics. Needs a louder/closer speaker.
+
+### From the climbing pilot (Oct 2026)
+
+That session was calibrated, synced and processed offline with scripts. They're not in the repo; they're in `C:\Markerless_Data\climbing\scripts\` (README) on the lab PC. The full write-up is `...\climbing\sessions\urbanclimb_14_10_26\urbanclimb_14_10_26_quality_report_v3.docx`.
+
+- **Extrinsic sampling:**
+  - `sample_fps` defaults to 5 (`calibrate.py`, `video_processor.py`), and `calibration_tab.py` never passes it. With 2 cameras that gave a 10% scale error; 25 fps was stable. Make 25 the default.
+  - `compute_volumetric_scale_accuracy()` (`bundle_adjustment.py`) is never called.
+- **LED on-time:** `light_sync.detect_pulse` rejects anything but a 1 s ± `PULSE_TOLERANCE_FRAMES` pulse. The remote LED is switched by hand and stayed on 0.4–2.3 s. Accept a range of on-times. The on/off edge agreement gate already exists (`evaluate_light_sync_acceptance`).
+- **Calibration quality not saved:** the JSON stores only the intrinsic `error`. Add the extrinsic RMSE (overall and per camera), scale RMSE and baseline, and show them in the tab.
+- **Sync by stored offsets (larger change):**
+  - Today `trim_and_sync_videos` re-encodes and trims every video, the offsets aren't saved, and a failed Recording-tab sync deletes the trial.
+  - Instead, store offsets in `trial.json` and keep the raw videos.
+  - Every reader then has to apply the offsets: Pose2Sim, the Visualisation tab, extrinsic calibration, and the preview.
+- **Pose2Sim fork bugs** (monkeypatched in the climbing scripts only):
+  - `triangulation.triangulate_all` pads `Q_old` but not `frames_since_last_seen`, which raises a broadcast error in `sort_people_sports2d`.
+  - `personAssociation.compute_affinity` gives persons with no valid keypoints affinity 1, so they steal the match from the real person.
+  - `personAssociation.py` L765 has an `os.path.exist` typo, so the `pose-sync` files are never read.
+- **No per-trial quality metrics** in Go2Kin. Reference implementations are the scripts' `collect_metrics.py` and `ik_diagnostics.py`.
+- **RLU2023 joint ranges are too tight for climbing:** shoulder flexion ±90°, hip flexion 120°, hip rotation ±40°.
+  - The "wide_flex" variant clamps shoulder flexion to −90..180°, hip flexion to −30..140°, hip adduction to −70..30° and hip rotation to ±60°, and keeps shoulder abduction at 120°.
+  - It fixed most of the arm IK error.
+  - Never unclamp the 3-angle ball joints (Euler aliasing) or the pin joints (knees and elbows invert).
+  - Undecided: whether this becomes a per-project model option.
