@@ -240,9 +240,9 @@ class Go2KinMainWindow:
 
         # Sync method: manual claps / speaker claps (audio) or LED flash (light).
         # Persisted in go2kin_config.json so the lab setup survives restarts.
-        initial_sync = (self.app_config or {}).get("sync_method", "manual")
+        initial_sync = (self.app_config or {}).get("sync_method", "light")
         if initial_sync not in ("manual", "speaker", "light"):
-            initial_sync = "manual"
+            initial_sync = "light"
         self.sync_method_var = tk.StringVar(value=initial_sync)
         ttk.Label(settings_frame, text="Sync:").pack(side=tk.LEFT, padx=(0, 3))
         ttk.Radiobutton(settings_frame, text="Manual", variable=self.sync_method_var,
