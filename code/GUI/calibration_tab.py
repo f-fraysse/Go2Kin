@@ -71,9 +71,13 @@ class CalibrationTab:
         # Used by the light sync method (see light_sync.py). Persisted per camera
         # as `led_roi` in the calibration JSON.
         self._led_rois: dict[int, dict] = {}
-        # Calibration file that populated _camera_array (None after a fresh, unapplied
-        # extrinsic run) — ROI changes are written back into this file in place.
+        # Active calibration file: the one loaded, or auto-saved after extrinsic /
+        # origin. ROI changes are written back into this file in place, and new
+        # trials reference it (see get_active_calibration_name).
         self._loaded_calib_path: Path | None = None
+        # File created by this session's extrinsic run — Set Origin overwrites it in
+        # place; on any other file Set Origin saves a new one (trials may reference it).
+        self._session_calib_path: Path | None = None
 
         # Recording state
         self._calib_recording = False
@@ -142,9 +146,6 @@ class CalibrationTab:
 
         # Set Origin (always visible, disabled until extrinsics done)
         self._create_origin_section(parent)
-
-        # Apply Calibration
-        self._create_apply_section(parent)
 
         # 3D viewer in right panel
         self._create_3d_viewer(right_frame)
@@ -377,19 +378,6 @@ class CalibrationTab:
         self._origin_status = tk.StringVar(value="")
         ttk.Label(status_frame, textvariable=self._origin_status).pack(side="left")
 
-    def _create_apply_section(self, parent):
-        section = ttk.Frame(parent)
-        section.pack(fill="x", padx=10, pady=10)
-
-        self._apply_btn = tk.Button(
-            section, text="Apply Calibration", font=("TkDefaultFont", 10, "bold"),
-            command=self._apply_calibration, width=20, height=1, state="disabled",
-        )
-        self._apply_btn.pack(pady=2)
-
-        self._apply_status = tk.StringVar(value="")
-        ttk.Label(section, textvariable=self._apply_status).pack(pady=2)
-
     # =================================================================
     # Status updates
     # =================================================================
@@ -480,10 +468,6 @@ class CalibrationTab:
         # Origin button: enabled when extrinsics done
         origin_state = "normal" if has_extrinsics else "disabled"
         self._origin_auto_btn.config(state=origin_state)
-
-        # Apply button: enabled when extrinsics done
-        apply_state = "normal" if has_extrinsics else "disabled"
-        self._apply_btn.config(state=apply_state)
 
         self._update_intrinsic_status()
 
@@ -601,13 +585,12 @@ class CalibrationTab:
                 Path(synced_dir), charuco, camera_array,
             )
 
-            # The array was rebuilt from the intrinsics: carry the in-memory LED
-            # ROIs over so Apply writes them into the new calibration file.
-            self._copy_led_rois_to_cameras(camera_array.cameras)
-
             self._camera_array = camera_array
             self._bundle = bundle
-            self._loaded_calib_path = None  # new, unapplied calibration
+
+            # Auto-save as a new calibration file (the array was rebuilt from the
+            # intrinsics; the save carries the in-memory LED ROIs over)
+            self._save_active_calibration(new_file=True)
 
             self.frame.after(0, lambda: self._update_extrinsic_result(bundle))
             self.frame.after(0, lambda: self._update_pipeline_state())
@@ -724,6 +707,11 @@ class CalibrationTab:
                 )
                 self._camera_array = new_camera_array
 
+            # Auto-save: overwrite this session's extrinsic file in place; a
+            # loaded calibration is left untouched (trials may reference it)
+            self._save_active_calibration(
+                new_file=(self._loaded_calib_path != self._session_calib_path))
+
             self.frame.after(0, lambda: self._update_3d_viewer(self._camera_array))
             self.frame.after(0, lambda: self._origin_status.set("Origin set successfully"))
             self.frame.after(0, lambda: self._set_origin_indicator("green"))
@@ -736,42 +724,63 @@ class CalibrationTab:
             self.frame.after(0, lambda err=str(e): self._origin_error(err))
 
     # =================================================================
-    # Apply calibration
+    # Auto-save
     # =================================================================
 
-    def _apply_calibration(self):
-        """Commit current calibration: auto-save with timestamp, update top bar."""
-        if self._camera_array is None:
-            messagebox.showwarning("Warning", "No calibration to apply")
-            return
+    def _save_active_calibration(self, new_file):
+        """Save the current calibration (worker thread) and make it the active one.
 
-        calib_dir = self._get_calibrations_dir()
-        if calib_dir is None:
-            messagebox.showwarning("Warning", "No project selected")
-            return
-
-        today = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M")
-        filename = f"calibration_{today}.json"
-        filepath = calib_dir / filename
-
+        new_file=True writes a new timestamped file in [project]/calibrations/;
+        otherwise the active file (_loaded_calib_path) is overwritten in place.
+        Returns True on success. On failure the in-memory result is kept.
+        """
         try:
             import sys
             sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
             from calibration.persistence import save_calibration
 
-            charuco = self._get_charuco()
-            self._copy_led_rois_to_cameras(self._camera_array.cameras)
-            save_calibration(filepath, self._camera_array, charuco)
-            self._loaded_calib_path = filepath
+            if new_file or self._loaded_calib_path is None:
+                calib_dir = self._get_calibrations_dir()
+                if calib_dir is None:
+                    raise RuntimeError("No project selected")
+                now = datetime.datetime.now()
+                filepath = calib_dir / f"calibration_{now:%Y-%m-%d-%H-%M}.json"
+                if filepath.exists():  # never overwrite an existing file here
+                    filepath = calib_dir / f"calibration_{now:%Y-%m-%d-%H-%M-%S}.json"
+            else:
+                filepath = Path(self._loaded_calib_path)
 
-            # Persist to app config
+            self._copy_led_rois_to_cameras(self._camera_array.cameras)
+            save_calibration(filepath, self._camera_array, self._get_charuco())
+            self._loaded_calib_path = filepath
+            self._session_calib_path = filepath
+            print(f"Calibration saved: {filepath}")
+        except Exception as e:
+            logger.warning("Failed to save calibration: %s", e)
+            self.frame.after(0, lambda: self._load_bar_status.set("Calibration NOT saved"))
+            self.frame.after(0, lambda err=str(e): messagebox.showerror(
+                "Error", f"Calibration computed but could not be saved:\n{err}"))
+            return False
+
+        def _on_saved():
             self.app_config["last_calibration"] = str(filepath)
             self._save_app_config()
-
-            self._apply_status.set(f"Applied: {filename}")
+            self._load_bar_status.set(f"Saved: {filepath.name}")
             self._on_calibration_saved()
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to save: {e}")
+
+        self.frame.after(0, _on_saved)
+        return True
+
+    def get_active_calibration_name(self):
+        """Public: name (file stem) of the active calibration if it is in the current
+        project's calibrations/ folder, else None. New trials reference it."""
+        path = self._loaded_calib_path
+        if path is None or not Path(path).exists():
+            return None
+        calib_dir = self._get_calibrations_dir()
+        if calib_dir is None or Path(path).resolve().parent != calib_dir.resolve():
+            return None
+        return Path(path).stem
 
     # =================================================================
     # LED sync ROI (light sync method)
@@ -997,104 +1006,6 @@ class CalibrationTab:
                 on_done()
 
         self.frame.after(0, _open_dialog)
-
-    # =================================================================
-    # Browse fallback methods
-    # =================================================================
-
-    def _browse_and_run_extrinsic(self):
-        """Browse for synced folder then run extrinsic calibration."""
-        folder = filedialog.askdirectory(title="Select synced video folder")
-        if not folder:
-            return
-        self._run_extrinsic_with_folder(folder)
-
-    def _browse_and_run_origin(self):
-        """Browse for origin folder then run set origin."""
-        folder = filedialog.askdirectory(title="Select origin recording folder")
-        if not folder:
-            return
-        self._run_set_origin_with_folder(folder)
-
-    def _run_extrinsic_with_folder(self, folder):
-        """Run extrinsic calibration with a specified folder."""
-        if not self._intrinsic_results:
-            messagebox.showwarning("Warning", "No cameras calibrated. Run intrinsic calibration first.")
-            return
-
-        self._extrinsic_status.set("Running extrinsic calibration...")
-        self._set_extrinsic_indicator("grey")
-
-        def worker():
-            try:
-                import sys
-                sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-                from calibration.calibrate import run_extrinsic_calibration
-                from calibration.data_types import CameraArray
-
-                charuco = self._get_charuco()
-
-                cameras = {}
-                for cam_num, result in self._intrinsic_results.items():
-                    cameras[cam_num] = result["camera"]
-
-                camera_array = CameraArray(cameras=cameras)
-                bundle = run_extrinsic_calibration(
-                    Path(folder), charuco, camera_array,
-                )
-
-                self._camera_array = camera_array
-                self._bundle = bundle
-
-                self.frame.after(0, lambda: self._update_extrinsic_result(bundle))
-                self.frame.after(0, lambda: self._update_pipeline_state())
-            except Exception as e:
-                self.frame.after(0, lambda err=str(e): self._extrinsic_error(err))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _run_set_origin_with_folder(self, folder):
-        """Run set origin with a specified folder."""
-        if self._camera_array is None:
-            messagebox.showwarning("Warning", "Load calibration or run extrinsic calibration first")
-            return
-
-        self._origin_status.set("Setting origin...")
-        self._set_origin_indicator("grey")
-
-        def worker():
-            try:
-                import sys
-                sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-                charuco = self._get_charuco()
-
-                if self._bundle is not None:
-                    from calibration.calibrate import set_origin
-                    aligned_bundle = set_origin(
-                        Path(folder), charuco, self._camera_array, self._bundle,
-                    )
-                    self._bundle = aligned_bundle
-                    self._camera_array = aligned_bundle.camera_array
-                else:
-                    from calibration.calibrate import compute_origin_transform
-                    from calibration.alignment import apply_similarity_transform
-                    transform = compute_origin_transform(
-                        Path(folder), charuco, self._camera_array,
-                    )
-                    new_camera_array, _ = apply_similarity_transform(
-                        self._camera_array, None, transform,
-                    )
-                    self._camera_array = new_camera_array
-
-                self.frame.after(0, lambda: self._update_3d_viewer(self._camera_array))
-                self.frame.after(0, lambda: self._origin_status.set("Origin set successfully"))
-                self.frame.after(0, lambda: self._set_origin_indicator("green"))
-                self.frame.after(0, lambda: self._update_pipeline_state())
-            except Exception as e:
-                self.frame.after(0, lambda err=str(e): self._origin_error(err))
-
-        threading.Thread(target=worker, daemon=True).start()
 
     # =================================================================
     # Cleanup
@@ -1773,7 +1684,9 @@ class CalibrationTab:
 
             camera_array, charuco, _ = load_calibration(filepath)
             self._camera_array = camera_array
+            self._bundle = None  # stale: Set Origin must transform the loaded cameras
             self._loaded_calib_path = Path(filepath)
+            self._session_calib_path = None
 
             # LED sync ROIs travel with the calibration (tied to camera placement)
             self._led_rois = {
@@ -1921,6 +1834,7 @@ class CalibrationTab:
             self._camera_array = None
             self._bundle = None
             self._loaded_calib_path = None
+            self._session_calib_path = None
             self._led_rois = {}
             self._update_led_status()
             self._extrinsic_status.set("")

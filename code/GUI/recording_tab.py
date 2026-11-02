@@ -182,9 +182,12 @@ class RecordingTab:
                     "or switch the sync method to Manual/Speaker.")
                 return
 
-        # Participant from top bar, calibration = latest
+        # Participant from top bar; calibration = the one active in the Calibration
+        # tab (also used for sync), else the latest in the project
         subject_id = self.get_current_participant() or ""
-        calibration_name = self.project_manager.get_latest_calibration(project) or "none"
+        calibration_tab = self._get_calibration_tab()
+        calibration_name = ((calibration_tab.get_active_calibration_name() if calibration_tab else None)
+                            or self.project_manager.get_latest_calibration(project) or "none")
         cameras_used = [self.camera_serials.get(i, f"cam{i}") for i in available_cameras]
 
         # Create trial via ProjectManager

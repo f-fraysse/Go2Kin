@@ -11,12 +11,13 @@ class TopBar:
     """Persistent bar with project/session/participant dropdowns + calibration status."""
 
     def __init__(self, parent, project_manager, app_config, save_config_callback,
-                 on_selection_changed=None):
+                 on_selection_changed=None, get_active_calibration=None):
         self.parent = parent
         self.pm = project_manager
         self.app_config = app_config
         self.save_config = save_config_callback
         self._on_selection_changed = on_selection_changed
+        self._get_active_calibration = get_active_calibration or (lambda: None)
 
         self._current_project = None
         self._current_session = None
@@ -131,7 +132,7 @@ class TopBar:
             self.participant_combo["values"] = []
 
     def _update_calibration_indicator(self):
-        """Query ProjectManager for latest calibration and update indicator."""
+        """Show the active calibration (Calibration tab), else the project's latest."""
         if not self._current_project or not self.pm:
             self.calib_label.config(text="\u2014")
             self.calib_status_canvas.itemconfig(
@@ -139,7 +140,8 @@ class TopBar:
             return
 
         try:
-            latest = self.pm.get_latest_calibration(self._current_project)
+            latest = (self._get_active_calibration()
+                      or self.pm.get_latest_calibration(self._current_project))
         except Exception:
             latest = None
 

@@ -34,9 +34,9 @@ brought into Python. The ROI is defined once per camera placement:
   4× magnified crop in the cell corner. OK only when every camera has an ROI.
 - **Storage**: in memory as `CalibrationTab._led_rois = {cam: {"roi": (x, y, w, h), "size": (w, h)}}`
   (`size` = frame size the ROI was drawn on), and per camera as `led_roi` in the calibration
-  JSON (`CameraData.led_roi`, in the camera's calibration `size` coordinates). If a
-  calibration file is loaded, setting the ROI rewrites that file in place; otherwise the ROI
-  is written by **Apply Calibration**. It is cleared with the extrinsics (`Load Intrinsics
+  JSON (`CameraData.led_roi`, in the camera's calibration `size` coordinates). Setting the
+  ROI rewrites the active calibration file in place (`_persist_led_rois`); the extrinsic
+  auto-save (`_save_active_calibration`) carries the in-memory ROIs into the new file. It is cleared with the extrinsics (`Load Intrinsics
   Only`, `erase_calibration_data`) because it is tied to camera placement. TOML export
   ignores it.
 - **Resolution changes**: `scale_roi` rescales the ROI when a trial's resolution differs from

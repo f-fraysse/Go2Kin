@@ -335,6 +335,8 @@ class Go2KinMainWindow:
             self.root, self.project_manager,
             self.app_config, self.save_app_config,
             on_selection_changed=self._on_top_bar_changed,
+            get_active_calibration=lambda: (self.calibration_tab.get_active_calibration_name()
+                                            if hasattr(self, 'calibration_tab') else None),
         )
 
     def create_calibration_tab(self):

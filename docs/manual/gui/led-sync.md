@@ -27,8 +27,8 @@ works at any distance the cameras can see the LED, and unaffected by room noise.
       magnified crop appear; adjust **ROI size** if the LED is large or small,
     - **OK** when every camera has a square.
 
-    The section shows **ROI set: 4 cameras**. If a calibration is loaded, the ROIs are saved
-    into it straight away; otherwise they are saved when you **Apply Calibration**.
+    The section shows **ROI set: 4 cameras**. The ROIs are saved into the active calibration
+    straight away, and carried into the new calibration file saved by the extrinsic calibration.
 
 3. Run the **extrinsic calibration** as usual — its recording is synced with the LED too, so
    the **Calibrate** button stays disabled until the ROI is set for every connected camera.

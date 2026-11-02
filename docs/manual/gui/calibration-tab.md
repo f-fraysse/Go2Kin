@@ -45,8 +45,17 @@ calibration to redefine the axes.
 
 > 🚧 **TODO:** the 790 mm vertical offset is planned to become user-editable — update once it is.
 
-## Save / Load
+## Saving (automatic) / Load
 
-**Save Calibration** persists results to `config/calibration/calibration.json` and
-auto-exports `camera_array_go2kin.toml` for Pose2Sim. **Load** restores a saved
-calibration; the top-bar indicator reflects its age.
+There is no save button — results are written as soon as each step succeeds:
+
+- **Extrinsic Calibration** saves a new `[project]/calibrations/calibration_YYYY-MM-DD-HH-MM.json`
+  (with a matching `.toml` for Pose2Sim) and makes it the active calibration.
+- **Set Origin** overwrites that same file with the aligned poses. If Set Origin is run on a
+  calibration loaded from disk, a **new** file is saved instead, so trials that already reference
+  the loaded file are not changed.
+- **LED Sync ROI** changes are written into the active file.
+
+The active calibration is shown in the top bar, recorded in each new trial, and reloaded when
+Go2Kin starts. **Load Calibration** makes another saved file the active one; **Load Intrinsics**
+takes only the lens parameters from a file (extrinsics must then be re-run).
