@@ -35,7 +35,7 @@ class CalibrationTab:
     def __init__(self, notebook: ttk.Notebook, config: dict,
                  cameras=None, camera_status=None,
                  project_manager=None, get_current_project=None,
-                 is_recording=None, run_rec_delay=None,
+                 is_recording=None,
                  start_bar_timer=None, stop_bar_timer=None,
                  play_sync_sound=None,
                  app_config=None, save_app_config=None,
@@ -50,7 +50,6 @@ class CalibrationTab:
         self.project_manager = project_manager
         self.get_current_project = get_current_project or (lambda: None)
         self.is_recording = is_recording or (lambda: False)
-        self.run_rec_delay = run_rec_delay or (lambda: None)
         self.start_bar_timer = start_bar_timer or (lambda: None)
         self.stop_bar_timer = stop_bar_timer or (lambda: None)
         self.play_sync_sound = play_sync_sound or (lambda: None)
@@ -310,7 +309,7 @@ class CalibrationTab:
             foreground="#666666",
         ).pack(pady=2)
 
-        # Action button + countdown (centred)
+        # Action button (centred)
         action_frame = ttk.Frame(section)
         action_frame.pack(pady=(5, 2))
 
@@ -319,13 +318,6 @@ class CalibrationTab:
             command=self._auto_calibrate_extrinsics, width=20, height=1,
         )
         self._ext_auto_btn.pack(side="left", padx=2)
-
-        self._ext_countdown_var = tk.StringVar(value="")
-        self._ext_countdown_label = ttk.Label(
-            action_frame, textvariable=self._ext_countdown_var,
-            font=("TkDefaultFont", 16, "bold"), foreground="#F44336",
-        )
-        self._ext_countdown_label.pack(side="left", padx=10)
 
         # Status row
         status_frame = ttk.Frame(section)
@@ -346,7 +338,7 @@ class CalibrationTab:
         section = ttk.LabelFrame(parent, text="Set Origin", padding=10)
         section.pack(fill="x", padx=10, pady=5)
 
-        # Action button + countdown (centred)
+        # Action button (centred)
         action_frame = ttk.Frame(section)
         action_frame.pack(pady=(5, 2))
 
@@ -355,13 +347,6 @@ class CalibrationTab:
             command=self._auto_set_origin, width=20, height=1,
         )
         self._origin_auto_btn.pack(side="left", padx=2)
-
-        self._origin_countdown_var = tk.StringVar(value="")
-        self._origin_countdown_label = ttk.Label(
-            action_frame, textvariable=self._origin_countdown_var,
-            font=("TkDefaultFont", 16, "bold"), foreground="#F44336",
-        )
-        self._origin_countdown_label.pack(side="left", padx=10)
 
         # Status row
         status_frame = ttk.Frame(section)
@@ -472,36 +457,22 @@ class CalibrationTab:
         self._update_intrinsic_status()
 
     # =================================================================
-    # Countdown helper
-    # =================================================================
-
-    def _run_countdown(self, seconds, countdown_var, on_complete):
-        """Run visual countdown, then call on_complete."""
-        if seconds <= 0:
-            countdown_var.set("")
-            on_complete()
-            return
-        countdown_var.set(f"{seconds}...")
-        self.frame.after(1000, lambda: self._run_countdown(seconds - 1, countdown_var, on_complete))
-
-    # =================================================================
     # Automated extrinsic flow
     # =================================================================
 
     def _auto_calibrate_extrinsics(self):
-        """One-button automated extrinsic calibration: countdown → record → sync → calibrate."""
+        """One-button automated extrinsic calibration: record → sync → calibrate."""
         if not self._check_record_preconditions(need_multi=True):
             return
         if not self._intrinsic_results:
             messagebox.showwarning("Warning", "Run intrinsic calibration first")
             return
 
-        # Disable button, show countdown
         self._ext_auto_btn.config(state="disabled", text="Starting...")
-        self._extrinsic_status.set("Starting countdown...")
+        self._extrinsic_status.set("Starting...")
         self._set_extrinsic_indicator("grey")
 
-        self._run_countdown(5, self._ext_countdown_var, self._ext_start_recording)
+        self._ext_start_recording()
 
     def _ext_start_recording(self):
         """Start multi-camera recording for extrinsic calibration."""
@@ -606,7 +577,7 @@ class CalibrationTab:
     # =================================================================
 
     def _auto_set_origin(self):
-        """One-button automated origin: countdown → record → sync → set origin."""
+        """One-button automated origin: record → sync → set origin."""
         if not self._check_record_preconditions(need_multi=True):
             return
         if self._camera_array is None:
@@ -1180,7 +1151,6 @@ class CalibrationTab:
 
             def worker():
                 try:
-                    self.run_rec_delay()
                     self._apply_saved_zoom(cam_num, camera)
                     camera.shutterStart()
                     self.frame.after(0, self.start_bar_timer)

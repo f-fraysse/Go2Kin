@@ -24,7 +24,7 @@ class RecordingTab:
                  get_current_participant,
                  save_camera_settings, save_app_config,
                  get_calibration_tab,
-                 rec_delay_enabled, rec_delay_seconds, rec_delay_countdown_label,
+                 bar_timer_label,
                  sync_method_var, get_camera_zoom=None):
         self.notebook = notebook
         self.root = notebook.winfo_toplevel()
@@ -43,9 +43,7 @@ class RecordingTab:
         self._get_camera_zoom = get_camera_zoom or (lambda camera_num: 0)
 
         # Bottom bar widget references (owned by main_window, shared)
-        self.rec_delay_enabled = rec_delay_enabled
-        self.rec_delay_seconds = rec_delay_seconds
-        self.rec_delay_countdown_label = rec_delay_countdown_label
+        self.bar_timer_label = bar_timer_label
         self.sync_method_var = sync_method_var
 
         # Recording state
@@ -250,9 +248,6 @@ class RecordingTab:
         try:
             print(f"Starting recording on cameras: {camera_list}")
             print(f"Trial directory: {video_dir}")
-
-            # Run recording delay countdown if enabled
-            self._run_rec_delay()
 
             # Start recording on all cameras
             with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
@@ -502,23 +497,7 @@ class RecordingTab:
         except (ValueError, TypeError):
             return None
 
-    # -- Recording delay / sync sound / bar timer ------------------------------
-
-    def _run_rec_delay(self):
-        """Run recording delay countdown if enabled. Called from background threads."""
-        if not self.rec_delay_enabled.get():
-            return
-        try:
-            delay = int(self.rec_delay_seconds.get())
-        except (ValueError, TypeError):
-            return
-        if delay <= 0:
-            return
-        for remaining in range(delay, 0, -1):
-            self.root.after(0, lambda r=remaining:
-                            self.rec_delay_countdown_label.config(text=str(r)))
-            time.sleep(1)
-        self.root.after(0, lambda: self.rec_delay_countdown_label.config(text=""))
+    # -- Sync sound / bar timer ------------------------------------------------
 
     def _generate_sync_sound(self):
         """Generate sync sound: 1.5s HDMI primer + two 10ms clap impulses."""
@@ -559,13 +538,13 @@ class RecordingTab:
             elapsed = int(time.time() - self._bar_timer_start)
             minutes = elapsed // 60
             seconds = elapsed % 60
-            self.rec_delay_countdown_label.config(text=f"{minutes:02d}:{seconds:02d}")
+            self.bar_timer_label.config(text=f"{minutes:02d}:{seconds:02d}")
             self.root.after(1000, self._update_bar_timer)
 
     def _stop_bar_timer(self):
         """Stop the bottom bar timer and clear the label."""
         self._bar_timer_running = False
-        self.rec_delay_countdown_label.config(text="")
+        self.bar_timer_label.config(text="")
 
     # -- Camera recording helpers ----------------------------------------------
 

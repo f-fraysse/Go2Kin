@@ -234,7 +234,7 @@ class Go2KinMainWindow:
         fps_combo.pack(side=tk.LEFT, padx=(3, 0))
         fps_combo.bind('<<ComboboxSelected>>', self.on_global_fps_change)
 
-        # Recording delay controls (right side)
+        # Sync method + recording timer (right side)
         settings_frame = ttk.Frame(bar_frame)
         settings_frame.pack(side=tk.RIGHT)
 
@@ -258,16 +258,9 @@ class Go2KinMainWindow:
                 self.save_app_config()
         self.sync_method_var.trace_add("write", _on_sync_method_change)
 
-        self.rec_delay_enabled = tk.BooleanVar(value=False)
-        ttk.Checkbutton(settings_frame, text="Rec. delay",
-                        variable=self.rec_delay_enabled).pack(side=tk.LEFT, padx=(0, 0))
-        self.rec_delay_seconds = tk.StringVar(value="3")
-        ttk.Entry(settings_frame, textvariable=self.rec_delay_seconds,
-                  width=3).pack(side=tk.LEFT, padx=(3, 0))
-        ttk.Label(settings_frame, text="sec").pack(side=tk.LEFT, padx=(2, 0))
-        self.rec_delay_countdown_label = tk.Label(
+        self.bar_timer_label = tk.Label(
             settings_frame, text="", font=("Arial", 16, "bold"), fg="red")
-        self.rec_delay_countdown_label.pack(side=tk.LEFT, padx=(6, 0))
+        self.bar_timer_label.pack(side=tk.LEFT, padx=(6, 0))
 
     def create_log_panel(self):
         """Create a placeholder log panel above the camera bar"""
@@ -349,7 +342,6 @@ class Go2KinMainWindow:
             project_manager=self.project_manager,
             get_current_project=lambda: self.top_bar.get_current_project(),
             is_recording=lambda: self.recording_tab.recording,
-            run_rec_delay=lambda: self.recording_tab._run_rec_delay(),
             start_bar_timer=lambda: self.recording_tab._start_bar_timer(),
             stop_bar_timer=lambda: self.recording_tab._stop_bar_timer(),
             play_sync_sound=lambda: self.recording_tab._play_sync_sound(),
@@ -391,9 +383,7 @@ class Go2KinMainWindow:
             save_camera_settings=self.save_camera_settings,
             save_app_config=self.save_app_config,
             get_calibration_tab=lambda: self.calibration_tab if hasattr(self, 'calibration_tab') else None,
-            rec_delay_enabled=self.rec_delay_enabled,
-            rec_delay_seconds=self.rec_delay_seconds,
-            rec_delay_countdown_label=self.rec_delay_countdown_label,
+            bar_timer_label=self.bar_timer_label,
             sync_method_var=self.sync_method_var,
             get_camera_zoom=self.get_camera_zoom,
         )
