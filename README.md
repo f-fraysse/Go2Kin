@@ -138,7 +138,7 @@ Multi-camera calibration using a printed charuco board. The calibration pipeline
 - **LED Sync ROI** - only for Light sync. Record a short clip (or pick an existing recording folder) and click the LED in each camera view; Go2Kin watches that small square for the flash. Stored with the calibration and cleared with the extrinsics; redo it whenever a camera or the LED moves. In Light mode, extrinsic calibration is disabled until every connected camera has an ROI.
 - **Extrinsic Calibration** - multi-camera pose estimation from synced videos. Includes PnP solving, outlier rejection, graph bridging, triangulation, and bundle adjustment.
 - **Set Origin** - stand the charuco board vertically in portrait mode at the lab origin. Records a short video on all cameras, trims them to a common duration / frame count (audio sync is skipped — the board is static), then aligns the coordinate system using a Umeyama similarity transform. Can be re-run after loading a saved calibration.
-- **Save/Load** - persist calibration to `config/calibration/calibration.json` (also auto-exports `camera_array_go2kin.toml` for Pose2Sim compatibility).
+- **Saving / Load** - no save button: extrinsic calibration auto-saves a new `[project]/calibrations/calibration_YYYY-MM-DD-HH-MM.json` (plus a Pose2Sim `.toml`), Set Origin updates it, and LED ROI changes are written into it. This active calibration is shown in the top bar, referenced by new trials and reloaded at startup. **Load Calibration** switches to another saved file.
 
 ### Tab 3 - Recording
 Enter a trial name and start/stop synchronized recording across selected cameras. Files are downloaded from each camera and saved to the project directory (`[project]/sessions/[session]/[trial]/video/`). After download, synchronisation runs automatically with the method selected in the bottom bar - synced files appear in `video/synced/`. A session/trial tree view at the bottom shows all recorded trials. See **Video Synchronisation** below for details.
@@ -179,7 +179,7 @@ from [Caliscope](https://github.com/mprib/caliscope)
 2. **Intrinsic calibration.** For each camera, record a video of the board from various angles and distances. In the Calibration tab, browse to each video and click **Calibrate**. Done infrequently - one need to be redone if changing camera Zoom, or camera model altogether. 
 3. **Extrinsic calibration.** With all cameras in their final positions, record the board being moved through the shared field of view. The Recording tab automatically synchronises files after download. Browse to the `synced/` folder and click **Calibrate Extrinsics**.
 4. **Set origin.** Stand the board vertically in portrait mode at the desired world origin (origin corner 790mm above floor). Record with all cameras, synchronise, then browse to the synced folder and click **Set Origin**. This can also be re-run after loading a saved calibration to redefine the coordinate system.
-5. **Save.** Click **Save Calibration** to persist all results. A Pose2Sim-compatible TOML file is auto-generated alongside the JSON.
+5. **Saving is automatic.** Results are saved after steps 3 and 4 — there is no save button. A Pose2Sim-compatible TOML file is generated alongside the JSON.
 
 ## Project Structure
 
@@ -370,4 +370,3 @@ Misc / small:
 - top bar "manage" button redundant with "+" butto nto add participant
 - Pose2Sim re-runs leave stale files in `pose-3d/` and `kinematics/` (e.g. a `processed_0-256_filt_butterworth.trc` from a previous frame range alongside today's `processed_0-255_*`) that get globbed by kinematics as phantom "person 1" entries — extra OpenSim scaling with default 1.75m/70kg, extra IK filter pass. Fix: wipe `pose-3d/` and `kinematics/` at the start of `build_pose2sim_project()` (keep `pose/` and `pose-associated/` so `overwrite_pose=false` workflow stays viable).
 - Remove 5 second countdown before "Set Origin" recording in Calibration tab
-- Remove "Apply calibration" button from calibration tab and auto apply after "Set Origin" instead
