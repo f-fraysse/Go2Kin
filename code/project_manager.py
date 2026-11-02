@@ -257,14 +257,17 @@ class ProjectManager:
         calibration_file: str,
         cameras_used: list[str],
     ) -> Path:
-        """Create trial folder with video/, processed/ subdirs and trial.json."""
+        """Create trial folder with processed/videos/ subdir and trial.json.
+
+        Raw videos are downloaded straight into processed/videos/ (the only copy);
+        sync is stored as per-camera frame offsets in trial.json["sync"].
+        """
         _validate_name(trial_name)
         trial_path = self.get_session_path(project, session) / trial_name
         if trial_path.exists():
             raise ValueError(f"Trial already exists: {trial_name}")
 
-        (trial_path / "video").mkdir(parents=True)
-        (trial_path / "processed").mkdir(parents=True)
+        (trial_path / "processed" / "videos").mkdir(parents=True)
 
         now = datetime.now()
         trial_data = {
@@ -315,17 +318,30 @@ class ProjectManager:
         shutil.rmtree(trial_path)
         logger.info(f"Deleted trial: {trial_path}")
 
+    def get_trial_videos_path(self, project: str, session: str, trial_name: str) -> Path:
+        """Return path to trial's processed/videos/ folder (raw videos + sync plot)."""
+        return self.get_session_path(project, session) / trial_name / "processed" / "videos"
+
     def get_trial_video_path(self, project: str, session: str, trial_name: str) -> Path:
-        """Return path to trial's video/ folder."""
+        """Legacy: trial's video/ folder (raw videos, trials recorded before stored offsets)."""
         return self.get_session_path(project, session) / trial_name / "video"
 
     def get_trial_synced_path(self, project: str, session: str, trial_name: str) -> Path:
-        """Return path to trial's video/synced/ folder."""
+        """Legacy: trial's video/synced/ folder (trimmed videos, trials recorded before stored offsets)."""
         return self.get_session_path(project, session) / trial_name / "video" / "synced"
 
     def get_trial_processed_path(self, project: str, session: str, trial_name: str) -> Path:
         """Return path to trial's processed/ folder."""
         return self.get_session_path(project, session) / trial_name / "processed"
+
+    def get_sync_offsets(self, project: str, session: str, trial_name: str) -> dict[int, int]:
+        """Return {camera number: leading frames to skip} from trial.json["sync"].
+
+        Synced frame s of camera k is raw frame s + offsets[k]. Returns {} for
+        legacy (pre-trimmed) or unsynced trials; callers treat a missing camera as 0.
+        """
+        sync = self.get_trial(project, session, trial_name).get("sync") or {}
+        return {int(cam): int(n) for cam, n in sync.get("offset_frames", {}).items()}
 
     # =========================================================================
     # Tree view

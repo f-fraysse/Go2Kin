@@ -200,7 +200,9 @@ class RecordingTab:
             messagebox.showerror("Error", str(e))
             return
 
-        video_dir = self.project_manager.get_trial_video_path(project, session, trial_name)
+        # Raw videos go straight into processed/videos/ — the only copy; sync is
+        # stored as frame offsets in trial.json, nothing is re-encoded.
+        video_dir = self.project_manager.get_trial_videos_path(project, session, trial_name)
         video_dir.mkdir(parents=True, exist_ok=True)
 
         self._current_trial_info = {
@@ -313,16 +315,17 @@ class RecordingTab:
         """Automatically synchronise downloaded video files after recording.
 
         The sync method follows the bottom-bar selection: audio (manual/speaker
-        claps) or light (LED flash, see light_sync.py). Detection differs; the trim,
-        stitched preview and trial.json update are shared.
+        claps) or light (LED flash, see light_sync.py). Detection differs; the
+        result is stored the same way: per-camera frame offsets in trial.json["sync"]
+        (see audio_sync.offsets_to_trial_sync). Videos are not trimmed or re-encoded.
 
         If the sync is unacceptable (a bad recording — failed criteria, no audio
         track, no clap / no LED detected), the trial is discarded: a red popup shows
         the sync table and the trial folder is deleted. Environment problems (ffmpeg
-        missing) or trimming errors keep the trial.
+        missing) or errors saving the offsets keep the trial.
         """
         from audio_sync import (check_ffmpeg, check_audio_track, compute_sync_offsets,
-                                trim_and_sync_videos, create_stitched_preview,
+                                offsets_to_trial_sync,
                                 evaluate_sync_acceptance, format_sync_summary,
                                 AudioSyncError)
 
@@ -419,30 +422,14 @@ class RecordingTab:
                 trial_info, sync_table, discard_reasons, table_label=table_label))
             return
 
-        # ── Acceptable: trim, build preview, mark synced ──
+        # ── Acceptable: store frame offsets in trial.json, mark synced ──
         try:
-            print("Trimming videos (frame-accurate re-encode)...")
-            output_files = trim_and_sync_videos(
-                video_paths, offsets, str(video_dir),
-                progress_callback=lambda msg: print(f"  {msg}"),
-                timer=timer,
-            )
-
-            synced_dir = str(self.project_manager.get_trial_synced_path(project, session, trial_name))
-            print("Creating 2x2 stitched preview...")
-            create_stitched_preview(
-                synced_dir,
-                progress_callback=lambda msg: print(f"  {msg}"),
-                timer=timer,
-            )
-
-            # Update trial.json
+            sync = offsets_to_trial_sync(offsets)
             self.project_manager.update_trial(
                 project, session, trial_name, synced=True,
-                sync_method="light" if light_mode else "audio")
-            print(
-                f"Synchronisation complete! "
-                f"{len(output_files)} synced files + stitched preview in synced/ folder")
+                sync_method="light" if light_mode else "audio", sync=sync)
+            offsets_str = ", ".join(f"GP{c}={n}" for c, n in sorted(sync["offset_frames"].items()))
+            print(f"Synchronisation complete! Frame offsets saved to trial.json: {offsets_str}")
 
             if timer:
                 timer.stop()

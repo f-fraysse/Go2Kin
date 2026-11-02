@@ -85,18 +85,26 @@ def run_intrinsic_calibration_from_video(
     return output
 
 
+def _resolve_videos(videos) -> dict[int, Path]:
+    """Folder (discovered by _GP<N> name) or an explicit {cam_id: path} mapping."""
+    if isinstance(videos, dict):
+        return {int(k): Path(v) for k, v in videos.items()}
+    return discover_synced_videos(Path(videos))
+
+
 def run_extrinsic_calibration(
-    synced_folder: Path,
+    videos,
     charuco: Charuco,
     camera_array: CameraArray,
     *,
     sample_fps: float = 5.0,
     progress_callback: Optional[Callable[[int, int, int], None]] = None,
+    start_frames: Optional[dict[int, int]] = None,
 ) -> PointDataBundle:
     """Run extrinsic calibration from synchronized multi-camera videos.
 
     Pipeline:
-    1. Discover synced MP4 files in folder
+    1. Resolve per-camera MP4 files
     2. Extract charuco corners from all cameras
     3. PnP per camera per frame -> relative poses
     4. IQR outlier rejection -> quaternion averaging
@@ -107,26 +115,26 @@ def run_extrinsic_calibration(
     Requires: all cameras in camera_array must be intrinsically calibrated.
 
     Args:
-        synced_folder: Path to synced/ subfolder containing per-camera MP4s
+        videos: Folder of per-camera MP4s ({name}_GP{N}.mp4), or {cam_id: path}
         charuco: Charuco board definition
         camera_array: CameraArray with intrinsic calibration (will be mutated)
         sample_fps: Frame sampling rate for corner extraction
         progress_callback: Optional fn(cam_id, frame_idx, total_frames)
+        start_frames: Optional {cam_id: sync offset in frames}; videos are
+            untrimmed, so each camera's sampling starts at its offset
 
     Returns:
         PointDataBundle with optimized camera poses and world points
     """
-    logger.info(f"Extrinsic calibration from {synced_folder}")
+    # 1. Resolve videos
+    video_map = _resolve_videos(videos)
+    logger.info(f"Extrinsic calibration from {len(video_map)} cameras, start frames {start_frames or {}}")
     t_total = time.perf_counter()
-
-    # 1. Discover videos
-    video_map = discover_synced_videos(synced_folder)
-    logger.info(f"Found {len(video_map)} cameras")
 
     # 2. Extract charuco corners
     t0 = time.perf_counter()
     image_points = extract_charuco_points_from_videos(
-        video_map, charuco, sample_fps, progress_callback,
+        video_map, charuco, sample_fps, progress_callback, start_frames=start_frames,
     )
     logger.info(f"Extracted {len(image_points.df)} observations")
     print(f"[timing] corner extraction: {time.perf_counter() - t0:.1f}s")
@@ -172,7 +180,7 @@ def run_extrinsic_calibration(
 
 
 def compute_origin_transform(
-    origin_folder: Path,
+    origin_videos,
     charuco: Charuco,
     camera_array: CameraArray,
     *,
@@ -187,7 +195,7 @@ def compute_origin_transform(
     3. Umeyama similarity transform from triangulated to known board coordinates
 
     Args:
-        origin_folder: Folder with short recordings of board at lab origin
+        origin_videos: Folder with short recordings of board at lab origin, or {cam_id: path}
         charuco: Charuco board definition
         camera_array: CameraArray with extrinsic calibration
         sample_fps: Frame sampling rate
@@ -196,10 +204,9 @@ def compute_origin_transform(
     Returns:
         SimilarityTransform mapping old coordinate frame to new (board-aligned) frame
     """
-    logger.info(f"Computing origin transform from {origin_folder}")
-
-    # Discover and extract corners from origin videos
-    video_map = discover_synced_videos(origin_folder)
+    # Static board: no sync needed, every camera samples from frame 0
+    video_map = _resolve_videos(origin_videos)
+    logger.info(f"Computing origin transform from {len(video_map)} cameras")
     origin_points = extract_charuco_points_from_videos(
         video_map, charuco, sample_fps, progress_callback,
     )
@@ -292,7 +299,7 @@ def compute_origin_transform(
 
 
 def set_origin(
-    origin_folder: Path,
+    origin_videos,
     charuco: Charuco,
     camera_array: CameraArray,
     bundle: PointDataBundle,
@@ -306,7 +313,7 @@ def set_origin(
     (camera poses + world points).
 
     Args:
-        origin_folder: Folder with short recordings of board at lab origin
+        origin_videos: Folder with short recordings of board at lab origin, or {cam_id: path}
         charuco: Charuco board definition
         camera_array: CameraArray with extrinsic calibration
         bundle: Existing PointDataBundle to align
@@ -317,7 +324,7 @@ def set_origin(
         New PointDataBundle aligned to real-world coordinates
     """
     transform = compute_origin_transform(
-        origin_folder, charuco, camera_array,
+        origin_videos, charuco, camera_array,
         sample_fps=sample_fps, progress_callback=progress_callback,
     )
 

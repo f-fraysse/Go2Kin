@@ -34,6 +34,7 @@ def extract_charuco_points_from_video(
     charuco: Charuco,
     sample_fps: float = 5.0,
     progress_callback: Optional[Callable[[int, int, int], None]] = None,
+    start_frame: int = 0,
 ) -> ImagePoints:
     """Extract charuco corners from a single video file.
 
@@ -43,6 +44,8 @@ def extract_charuco_points_from_video(
         charuco: Charuco board definition.
         sample_fps: Frames per second to sample (not every frame).
         progress_callback: Optional fn(cam_id, frame_idx, total_frames).
+        start_frame: Sync offset — raw frames to skip so that sampling starts at
+            synced frame 0 (videos are not trimmed; see audio_sync.offsets_to_trial_sync).
 
     Returns:
         ImagePoints with corners detected in sampled frames.
@@ -76,7 +79,7 @@ def extract_charuco_points_from_video(
         if not cap.grab():
             break
 
-        if frame_idx % step != 0:
+        if frame_idx < start_frame or (frame_idx - start_frame) % step != 0:
             frame_idx += 1
             continue
 
@@ -105,7 +108,7 @@ def extract_charuco_points_from_video(
                 all_rows.append(row)
 
         # sync_index increments once per *sampled* frame so the same sync_index
-        # lines up across cameras (videos are pre-synchronized, same fps).
+        # lines up across cameras (sampling starts at each camera's sync offset, same fps).
         sync_index += 1
 
         if progress_callback:
@@ -131,17 +134,19 @@ def extract_charuco_points_from_videos(
     charuco: Charuco,
     sample_fps: float = 5.0,
     progress_callback: Optional[Callable[[int, int, int], None]] = None,
+    start_frames: Optional[dict[int, int]] = None,
 ) -> ImagePoints:
-    """Extract charuco corners from multiple synchronized video files.
+    """Extract charuco corners from multiple video files.
 
     For extrinsic calibration, the same sync_index across cameras represents
-    the same moment in time (videos must be pre-synchronized).
+    the same moment in time: each camera's sampling starts at its sync offset.
 
     Args:
         video_paths: Mapping of cam_id -> video file path.
         charuco: Charuco board definition.
         sample_fps: Frames per second to sample.
         progress_callback: Optional fn(cam_id, frame_idx, total_frames).
+        start_frames: Optional cam_id -> sync offset (raw frames to skip); missing = 0.
 
     Returns:
         Combined ImagePoints from all cameras.
@@ -156,6 +161,7 @@ def extract_charuco_points_from_videos(
         logger.info(f"Processing camera {cam_id}: {video_path.name}")
         ip = extract_charuco_points_from_video(
             video_path, cam_id, charuco, sample_fps, progress_callback,
+            start_frame=(start_frames or {}).get(cam_id, 0),
         )
         return ip.df
 
@@ -188,7 +194,7 @@ def discover_synced_videos(synced_folder: Path) -> dict[int, Path]:
     """Discover MP4 files in a synced folder and map to camera numbers.
 
     Uses Go2Kin naming convention: {trial}_GP{N}.mp4
-    Skips stitched_videos.mp4 and timestamps.csv.
+    Skips stitched_videos.mp4 and timestamps.csv (legacy synced/ folders).
 
     Args:
         synced_folder: Path to synced/ subfolder.

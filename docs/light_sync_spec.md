@@ -11,9 +11,9 @@ Code: `code/light_sync.py`, `code/GUI/components/led_roi_dialog.py`, wiring in
 
 A white LED visible to every camera is off by default. An external trigger turns it on for
 **1 s** within the first few seconds of each recording. Go2Kin locates the on-edge of that
-pulse in every camera's video and uses it as the sync event, then reuses the audio path's
-`trim_and_sync_videos` / `create_stitched_preview` so `video/synced/` is produced exactly as
-before (start-aligned, equal frame counts, 2×2 preview).
+pulse in every camera's video and uses it as the sync event. The result dict has the audio
+contract, so `audio_sync.offsets_to_trial_sync` stores it the same way: per-camera frame
+offsets in `trial.json["sync"]` (videos are not trimmed; see `audio_sync_spec.md`).
 
 The user selects **Light** in the bottom bar (`Sync:` radio, persisted as `sync_method` in
 `go2kin_config.json`). Manual/Speaker keep the audio path unchanged.
@@ -28,7 +28,7 @@ brought into Python. The ROI is defined once per camera placement:
   `LIGHT_SEARCH_SECONDS + 1` s on all connected cameras (auto-stop), decodes ~24 reduced
   frames per camera (`sample_frames_for_roi`, 4 fps, 960 px wide, one sequential ffmpeg
   decode — no seeking, since a GoPro GOP is ~1 s), and opens the picker dialog. **Set ROI from
-  folder…** does the same from any folder of `*_GP{N}.mp4` (e.g. a trial's `video/`).
+  folder…** does the same from any folder of `*_GP{N}.mp4` (e.g. a trial's `processed/videos/`).
 - **Dialog** (`show_led_roi_dialog`): 2×2 views, shared time slider, ROI-size spinbox
   (default 80 px full-res), click the LED → square ROI centred on the click, red rectangle +
   4× magnified crop in the cell corner. OK only when every camera has an ROI.
@@ -82,23 +82,24 @@ Pure numpy, unit-tested (`tests/test_light_sync.py`):
 ### 3.3 Offsets — `compute_light_sync_offsets`
 
 Reference = camera with the smallest `t_on`. Per camera `offset_frames = round(t_on − t_on_ref)`,
-`offset_seconds = offset_frames / fps` (so `trim_and_sync_videos` reproduces the integer
+`offset_seconds = offset_frames / fps` (so `offsets_to_trial_sync` reproduces the integer
 exactly), `final_offset_ms`. Two-event consistency: `on_off_diff_frames =
 round(t_off − t_off_ref) − offset_frames`; `|diff| > 1` → status `WARN`, else `PASS` (`REF`
 for the reference).
 
 Result dict per video path (superset of the audio contract consumed by
-`trim_and_sync_videos`): `offset_seconds, is_reference, status, final_offset_ms,
+`offsets_to_trial_sync`): `offset_seconds, is_reference, status, final_offset_ms,
 offset_frames, fps, on_frame, off_frame, t_on, t_off, pulse_frames, contrast,
 on_off_diff_frames`.
 
 `evaluate_light_sync_acceptance(results, max_offset_ms=200)`: all non-reference cameras
 have `|on_off_diff_frames| ≤ 1`, and no `|final_offset_ms| > 200`. A missing pulse raises in
 detection instead. On failure the shared red popup is shown: trial discarded (Recording tab)
-or extrinsic calibration aborted before the trim (Calibration tab) — same flow as audio.
+or extrinsic calibration aborted before corner extraction (Calibration tab) — same flow as audio.
 
-Outputs: `synced/sync_led_signal.png` (per-camera signal, 50 % threshold, on/off markers),
-the summary table in the log, and `sync_method: "light"` in `trial.json`.
+Outputs: `sync_led_signal.png` in the video folder (`processed/videos/` for trials; per-camera
+signal, 50 % threshold, on/off markers), the summary table in the log, and
+`sync_method: "light"` + the `sync` offsets block in `trial.json`.
 
 ## 4. Constants (`light_sync.py`)
 
@@ -153,5 +154,5 @@ on or off and only integer offsets carry information.
   long pulse, already-on, no off-edge), acceptance rules, ROI scaling, `led_roi` JSON round-trip.
 - `python tools/light_sync_test.py [folder]` — runs the detector on a folder of raw
   `*_GP{N}.mp4` with the `ROIS` typed at the top of the script (or `CALIB_FILE`), prints the
-  summary + acceptance + `StepTimer` table, writes `synced/sync_led_signal.png`. Set
+  summary + acceptance + `StepTimer` table, writes `sync_led_signal.png` into that folder. Set
   `USE_DIALOG = True` to open the ROI picker on that folder and print the chosen ROIs.

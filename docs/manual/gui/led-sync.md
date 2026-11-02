@@ -35,17 +35,19 @@ works at any distance the cameras can see the LED, and unaffected by room noise.
 4. Record trials in the [Recording tab](recording-tab.md) as usual. No clapping needed.
 
 **Set ROI from folder…** lets you define the ROI from any existing recording folder (for
-example a trial's `video/` folder) instead of recording a new clip.
+example a trial's `processed/videos/` folder) instead of recording a new clip.
 
 Redo the ROI whenever a camera or the LED is moved. Loading a calibration restores the ROIs
 saved with it; *Load Intrinsics Only* clears them, like the extrinsics.
 
 ## Sync outputs
 
-Same as audio sync — trimmed MP4s in `synced/` and the 2×2 `stitched_videos.mp4` (the LED
-should light up in the same frame in all four cells) — plus `sync_led_signal.png`, the ROI
-brightness over time for each camera with the detected on/off instants. The trial's
-`trial.json` records `"sync_method": "light"`.
+Same as audio sync — the per-camera frame offsets are saved in the trial's `trial.json`
+(with `"sync_method": "light"`); the videos themselves are not changed. The trial's
+`processed/videos/` folder also gets `sync_led_signal.png`, the ROI brightness over time for
+each camera with the detected on/off instants. To check by eye, step to the LED flash in the
+[Visualisation tab](visualisation-tab.md) and switch cameras — the LED should light up in the
+same frame in every view.
 
 ## If it fails
 

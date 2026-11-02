@@ -10,22 +10,9 @@ Multi-camera GoPro control application for research. Controls up to 4 GoPro Hero
 - **Run**: `python code/go2kin.py`
 - **Dependencies**: `pip install -r requirements.txt` (requests, opencv-contrib-python, Pillow, numpy, scipy, pandas, matplotlib, sounddevice)
 - **External tools**: `ffmpeg` in PATH (for audio sync; install via `conda install -c conda-forge ffmpeg`).
-  - **NVENC build required for high-res/high-fps sync** (e.g. 2.7K @ 200fps): the audio-sync
-    trim re-encodes with `hevc_nvenc` (NVIDIA GPU). The conda-forge ffmpeg is LGPL
-    (`--disable-gpl`) and has **no NVENC** — its only encoders are the Windows MediaFoundation
-    `h264_mf`/`hevc_mf`, which cannot encode 2.7K@200fps (H.264 level ceiling; `hevc_mf` MFT
-    often missing). Install a full GPL build with NVENC and overwrite the conda binaries:
-    1. Close Go2Kin (so `ffmpeg.exe` isn't locked).
-    2. Download a build matching your NVIDIA driver's NVENC API — the **n7.1** BtbN GPL build
-       (`https://github.com/BtbN/FFmpeg-Builds/releases` → `ffmpeg-n7.1-latest-win64-gpl-7.1.zip`)
-       works with NVENC API 12.2 drivers. The bleeding-edge `master` build needs a very new
-       driver (610+) and will fail with "Driver does not support the required nvenc API version".
-    3. Copy its `bin\ffmpeg.exe` and `bin\ffprobe.exe` over the ones in
-       `<conda>\envs\Go2Kin\Library\bin\` (back up the originals first, e.g. `*.lgpl-bak`).
-    4. Verify: `ffmpeg -hide_banner -encoders | findstr nvenc` lists `hevc_nvenc`.
-    - **Caveat:** `conda update ffmpeg` (or recreating the env) reverts these to the LGPL build —
-      re-apply the overwrite afterwards.
-- **Tests**: `python tests/test_project_manager.py` and `python tests/test_light_sync.py` (run from repo root)
+  - No NVENC/GPL build is needed any more: sync stores frame offsets instead of re-encoding
+    (the conda-forge LGPL build is fine; light sync's `-hwaccel cuda` decode falls back to CPU).
+- **Tests**: `python tests/test_project_manager.py`, `python tests/test_light_sync.py` and `python tests/test_sync_offsets.py` (run from repo root)
 
 ## Pose2Sim fork (submodule)
 
@@ -50,6 +37,8 @@ branch `main` (forked from upstream commit `491d564`). Pose2Sim is pip-installed
   - all 6 pelvis coordinates unclamped;
   - Nose/Head `apply=false` in the IK setup (head rigid with torso);
   - `perform_scaling()` forces `marker_set_file = Unassigned`.
+  - `personAssociation.py`: reads JSONs from the folder it listed them from (upstream's `os.path.exist`
+    typo meant `pose-sync/` names were read from `pose/`, silently undoing any sync).
   - Docs: `docs/pose2sim_integration.md`, `docs/CHANGELOG_Halpe26_to_RLU2023.md` (port + fork changes + validation), and
     `docs/Pose2Sim vs RLU2023 kinematic models and Halpe26 keypoint positions.docx` (comparison of the *unmodified* models).
 
@@ -109,9 +98,11 @@ tools/
   export_toml.py          # Convert calibration.json → Pose2Sim TOML
   audio_sync_test.py      # Audio sync test utility
   light_sync_test.py      # Light sync test utility (run detector on a folder / open ROI picker)
+  resync_trial.py         # Re-run audio/light sync on a recorded trial, write trial.json offsets
 tests/
   test_project_manager.py  # ProjectManager unit tests
   test_light_sync.py       # light_sync pulse detection / acceptance / led_roi persistence tests
+  test_sync_offsets.py     # trial.json sync block + apply_sync_offsets (pose -> pose-sync) tests
 docs/
   manual/                 # Published user manual (MkDocs Material) → GitHub Pages
   *.md                    # Dev/technical notes (NOT published; cited from Architecture)
@@ -131,8 +122,9 @@ mkdocs.yml                 # MkDocs config (docs_dir: docs/manual)
 - **ProjectManager** (`project_manager.py`): Manages project/session/trial/subject file hierarchy at `data_root`. GUI-agnostic — filesystem and JSON only. See `docs/project_manager.md`.
 - **SessionTrialsList** (`GUI/components/session_trials_list.py`): Canvas-based trial list with colored status indicators. Shared by Recording and Processing tabs.
 - **LivePreviewCapture** (`GUI/main_window.py`): Threaded OpenCV capture from UDP stream.
-- **Audio sync** (`audio_sync.py`): Clap-onset detection + frame-accurate ffmpeg trim (re-encodes — stream copy can't cut sub-GOP; GoPro keyframes ~1s apart). Runs automatically after recording. `evaluate_sync_acceptance()` gates quality (2 claps + half-frame consistency + <200ms inter-camera offset); on failure a shared red popup appears and the trial is discarded (Recording tab) or extrinsic calibration is aborted before the expensive compute (Calibration tab). A `StepTimer` prints a per-step timing table after each Recording-tab sync. See `docs/audio_sync_spec.md` and `docs/audio_sync_performance.md` (timing breakdown + CrowdStrike first-run gotcha).
-- **Light sync** (`light_sync.py`): LED-flash alternative to claps, selected with the bottom-bar `Light` radio. Per-camera ROI around the LED (set in the Calibration tab "LED Sync ROI" section via `led_roi_dialog.py`, stored as `CameraData.led_roi` in the calibration JSON, cleared with extrinsics). ffmpeg pipes only the grayscale ROI crop of the first 6 s (`-hwaccel cuda` with CPU fallback); `detect_pulse()` finds the 1 s on/off pulse; offsets are integer frames vs the earliest camera. Same result-dict contract as audio, so `trim_and_sync_videos`/`create_stitched_preview` and the red discard popup are reused. `LightSyncError` subclasses `AudioSyncError`. See `docs/light_sync_spec.md`.
+- **Sync by stored offsets**: videos are never trimmed or re-encoded. Raw downloads go to `[trial]/processed/videos/` (the only copy; the sync plot sits there too). After an accepted sync, `audio_sync.offsets_to_trial_sync()` writes `trial.json["sync"] = {fps, reference_cam, offset_frames: {"<GP n>": frames to skip}}`; synced frame s = raw frame s + offset. Readers apply it: Processing (`pose2sim_builder.apply_sync_offsets` writes `pose-sync/` with shifted JSON frame numbers after pose estimation), Visualisation (timeline in synced frames), extrinsic calibration (`start_frames` in corner extraction). `ProjectManager.get_sync_offsets()` returns `{}` for legacy trials (pre-trimmed `video/synced/`, zero offsets). Keep Pose2Sim `frame_range = 'all'`. Re-sync a trial with `tools/resync_trial.py`.
+- **Audio sync** (`audio_sync.py`): Clap-onset detection. Runs automatically after recording. `evaluate_sync_acceptance()` gates quality (2 claps + half-frame consistency + <200ms inter-camera offset); on failure a shared red popup appears and the trial is discarded (Recording tab) or extrinsic calibration is aborted before the expensive compute (Calibration tab). A `StepTimer` prints a per-step timing table after each Recording-tab sync. See `docs/audio_sync_spec.md` and `docs/audio_sync_performance.md` (timing breakdown from the old trim era + CrowdStrike first-run gotcha).
+- **Light sync** (`light_sync.py`): LED-flash alternative to claps, selected with the bottom-bar `Light` radio. Per-camera ROI around the LED (set in the Calibration tab "LED Sync ROI" section via `led_roi_dialog.py`, stored as `CameraData.led_roi` in the calibration JSON, cleared with extrinsics). ffmpeg pipes only the grayscale ROI crop of the first 6 s (`-hwaccel cuda` with CPU fallback); `detect_pulse()` finds the 1 s on/off pulse; offsets are integer frames vs the earliest camera. Same result-dict contract as audio, so `offsets_to_trial_sync` and the red discard popup are reused. `LightSyncError` subclasses `AudioSyncError`. See `docs/light_sync_spec.md`.
 - **Calibration** (`calibration/`): Charuco-based intrinsic/extrinsic calibration adapted from Caliscope (BSD-2-Clause). Orchestrated by `calibrate.py`.
 - **Pose2Sim integration** (`pose2sim_builder.py`): Stages trial data into Pose2Sim directory structure and runs the pipeline. Kinematics uses the RajagopalLaiUhlrich2023 model via the fork's `use_original_RLU2023` key. See `docs/pose2sim_integration.md`.
 - **Visualisation** (`GUI/visualisation_tab.py`): Video playback with keypoint overlays. See `docs/Visualisation.md`.
@@ -208,14 +200,10 @@ That session was calibrated, synced and processed offline with scripts. They're 
   - `compute_volumetric_scale_accuracy()` (`bundle_adjustment.py`) is never called.
 - **LED on-time:** `light_sync.detect_pulse` rejects anything but a 1 s ± `PULSE_TOLERANCE_FRAMES` pulse. The remote LED is switched by hand and stayed on 0.4–2.3 s. Accept a range of on-times. The on/off edge agreement gate already exists (`evaluate_light_sync_acceptance`).
 - **Calibration quality not saved:** the JSON stores only the intrinsic `error`. Add the extrinsic RMSE (overall and per camera), scale RMSE and baseline, and show them in the tab.
-- **Sync by stored offsets (larger change):**
-  - Today `trim_and_sync_videos` re-encodes and trims every video, the offsets aren't saved, and a failed Recording-tab sync deletes the trial.
-  - Instead, store offsets in `trial.json` and keep the raw videos.
-  - Every reader then has to apply the offsets: Pose2Sim, the Visualisation tab, extrinsic calibration, and the preview.
+- **Sync by stored offsets:** done (Nov 2026, see Architecture). Still open: a failed Recording-tab sync deletes the trial; it could instead keep the raw videos with `synced=False` for a later `tools/resync_trial.py`.
 - **Pose2Sim fork bugs** (monkeypatched in the climbing scripts only):
   - `triangulation.triangulate_all` pads `Q_old` but not `frames_since_last_seen`, which raises a broadcast error in `sort_people_sports2d`.
   - `personAssociation.compute_affinity` gives persons with no valid keypoints affinity 1, so they steal the match from the real person.
-  - `personAssociation.py` L765 has an `os.path.exist` typo, so the `pose-sync` files are never read.
 - **No per-trial quality metrics** in Go2Kin. Reference implementations are the scripts' `collect_metrics.py` and `ik_diagnostics.py`.
 - **RLU2023 joint ranges are too tight for climbing:** shoulder flexion ±90°, hip flexion 120°, hip rotation ±40°.
   - The "wide_flex" variant clamps shoulder flexion to −90..180°, hip flexion to −30..140°, hip adduction to −70..30° and hip rotation to ±60°, and keeps shoulder abduction at 120°.

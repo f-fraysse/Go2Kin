@@ -27,13 +27,12 @@ pip install -r requirements.txt
 conda install -c conda-forge ffmpeg
 ```
 
-### NVENC ffmpeg (required for high-resolution / high-frame-rate recording)
+### NVENC ffmpeg (no longer required)
 
-The automatic audio synchronisation re-encodes each clip on the NVIDIA GPU using
-ffmpeg's `hevc_nvenc` encoder. The `conda-forge` ffmpeg installed above **does not
-include NVENC** and cannot process high-resolution / high-frame-rate footage (for
-example 2.7K at 200 fps) — sync will fail with an encoder error. You must replace it with
-a full ffmpeg build that has NVENC:
+Older versions of Go2Kin re-encoded every clip during sync and needed an ffmpeg build with
+NVIDIA's `hevc_nvenc` encoder. Sync now only stores frame offsets and never re-encodes, so
+the `conda-forge` ffmpeg installed above is enough. If you have already replaced ffmpeg,
+you can keep it. To install the full build anyway (e.g. for GPU video decoding):
 
 1. Close Go2Kin if it is running (otherwise the ffmpeg file is locked and cannot be replaced).
 2. Download a build that matches your NVIDIA driver. The **n7.1** build from
@@ -53,9 +52,8 @@ a full ffmpeg build that has NVENC:
 
    This should list `hevc_nvenc`.
 
-> ⚠️ Running `conda update ffmpeg` (or recreating the environment) reverts ffmpeg to the
-> NVENC-less conda version. If high-frame-rate sync stops working after an update, repeat
-> the steps above.
+> Running `conda update ffmpeg` (or recreating the environment) reverts ffmpeg to the
+> NVENC-less conda version.
 
 ## Install Pose2Sim as a submodule:
 

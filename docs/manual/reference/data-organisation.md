@@ -3,8 +3,8 @@
 Where Go2Kin puts things.
 
 !!! note
-    The staging behaviour is changing (Pose2Sim staging is planned to move from
-    processing time to recording time) — keep this page in step with the code.
+    Videos are downloaded straight into `processed/videos/` and sync is stored as frame
+    offsets in `trial.json` — keep this page in step with the code.
 
 ## The data root
 
@@ -16,11 +16,22 @@ Set via `data_root` in `go2kin_config.json`. Everything you record lives under i
     sessions/
       [session]/
         [trial]/
-          video/            # raw downloads from each camera
-            synced/         # trimmed, start-aligned MP4s + sync diagnostics
-          processed/        # Pose2Sim staging + pipeline outputs
-          trial.json        # calibration file name, participant, synced/processed flags
+          processed/        # Pose2Sim project + pipeline outputs
+            videos/         # raw downloads from each camera (the only copy) + sync plot
+          trial.json        # calibration file name, participant, synced/processed flags, sync offsets
 ```
+
+The videos are never trimmed. `trial.json` stores, per camera, how many frames to skip at the
+start so that all cameras line up, e.g.:
+
+```json
+"synced": true, "sync_method": "light",
+"sync": {"fps": 100.0, "reference_cam": 3, "offset_frames": {"1": 3, "2": 2, "3": 0, "4": 5}}
+```
+
+Processing and the Visualisation tab apply these offsets. Older trials (recorded before this
+change) have a `video/` folder with trimmed copies in `video/synced/` and no `sync` block; they
+still open and process as before.
 
 > 🚧 **TODO:** confirm the exact tree (where participant records live, trial subfolders) and document the `trial.json` fields.
 
@@ -32,4 +43,4 @@ Set via `data_root` in `go2kin_config.json`. Everything you record lives under i
 
 ## Housekeeping
 
-> 🚧 **TODO:** what's safe to delete (raw vs synced videos — automatic cleanup after a sync "pass" is on the roadmap), expected per-trial sizes, and backup guidance.
+> 🚧 **TODO:** what's safe to delete (only one copy of each video is kept — don't delete `processed/videos/`), expected per-trial sizes, and backup guidance.

@@ -41,11 +41,13 @@ All paths below are relative to `data_root`:
   sessions/
     {session_name}/
       {trial_name}/
-        trial.json            # Trial metadata
-        video/                # Raw MP4 recordings from GoPros
-          synced/             # Audio-synced trimmed videos (created by audio_sync)
+        trial.json            # Trial metadata (incl. sync frame offsets)
         processed/            # Pose2Sim staging area and output
+          videos/             # Raw MP4 recordings from GoPros (the only copy) + sync plot
 ```
+
+Legacy trials (recorded before sync offsets were stored) have `video/` (raw) and
+`video/synced/` (trimmed) instead; they are still readable.
 
 ## JSON Schemas
 
@@ -81,9 +83,18 @@ Created automatically when a trial is recorded. `date` and `time` are set to the
 }
 ```
 
+After a successful sync the Recording tab adds:
+
+```json
+    "synced": true,
+    "sync_method": "light",
+    "sync": {"fps": 100.0, "reference_cam": 3, "offset_frames": {"1": 3, "2": 2, "3": 0, "4": 5}}
+```
+
 Notes:
 - `calibration_file` references a name in `calibrations/` (without extension). Can be `"none"` if recording without calibration.
 - `synced` and `processed` are updated by downstream operations via `update_trial()`.
+- `sync.offset_frames[k]` = leading raw frames to skip in camera k (all ≥ 0, reference camera = 0): synced frame `s` == raw frame `s + offset_frames[k]`. Built by `audio_sync.offsets_to_trial_sync()`; videos are never trimmed. Legacy trials have no `sync` block (their videos were already trimmed → zero offsets).
 
 ### Calibration
 
@@ -139,11 +150,13 @@ Creates `data_root` if it doesn't exist.
 | Method | Returns | Description |
 |---|---|---|
 | `list_trials(project, session)` | `list[str]` | Sorted trial folder names |
-| `create_trial(project, session, trial_name, subject_id, calibration_file, cameras_used)` | `Path` | Creates trial dir with `video/`, `processed/`, and `trial.json` |
+| `create_trial(project, session, trial_name, subject_id, calibration_file, cameras_used)` | `Path` | Creates trial dir with `processed/videos/` and `trial.json` |
 | `get_trial(project, session, trial_name)` | `dict` | Loads `trial.json` |
 | `update_trial(project, session, trial_name, **kwargs)` | `None` | Merges kwargs into `trial.json` |
-| `get_trial_video_path(project, session, trial_name)` | `Path` | Path to `video/` |
-| `get_trial_synced_path(project, session, trial_name)` | `Path` | Path to `video/synced/` (not pre-created) |
+| `get_trial_videos_path(project, session, trial_name)` | `Path` | Path to `processed/videos/` (raw videos + sync plot) |
+| `get_sync_offsets(project, session, trial_name)` | `dict[int, int]` | `{camera number: frames to skip}` from `trial.json["sync"]`; `{}` for legacy/unsynced trials (missing camera = 0) |
+| `get_trial_video_path(project, session, trial_name)` | `Path` | Legacy: path to `video/` |
+| `get_trial_synced_path(project, session, trial_name)` | `Path` | Legacy: path to `video/synced/` |
 | `get_trial_processed_path(project, session, trial_name)` | `Path` | Path to `processed/` |
 
 ### Tree View

@@ -20,13 +20,15 @@ The Visualisation tab (`code/GUI/visualisation_tab.py`) is a read-only video pla
 
 ## Video Playback
 
-Uses `cv2.VideoCapture` on the synced MP4 (`[trial]/video/synced/*_GP{N}.mp4`). Frame timing via `root.after()`. Sequential `cap.read()` for smooth playback; `cap.set(POS_FRAMES)` only on seeks (scrubber drag, frame entry).
+Uses `cv2.VideoCapture` on the raw MP4 (`[trial]/processed/videos/*_GP{N}.mp4`; falls back to legacy `[trial]/video/synced/` for old trials that were never processed). Frame timing via `root.after()`. Sequential `cap.read()` for smooth playback; `cap.set(POS_FRAMES)` only on seeks (scrubber drag, frame entry).
+
+**Timeline in synced frames.** Videos are not trimmed; the per-camera offsets come from `trial.json["sync"]` (`ProjectManager.get_sync_offsets`, 0 for legacy trials). Frame index `s` on the scrubber is the synced frame: for camera k the tab reads raw frame `s + offset_k` and shows `raw_frames - offset_k` frames. Switching cameras keeps the same `s`, i.e. the same moment.
 
 ## 2D Keypoint Overlay ("2D kpts")
 
 Draws per-camera 2D pose detection results from OpenPose JSON files.
 
-- **Source**: `[trial]/processed/pose/{trial}_GP{N}_json/{trial}_GP{N}_{frame:06d}.json`
+- **Source**: `[trial]/processed/pose/{trial}_GP{N}_json/{trial}_GP{N}_{frame:06d}.json` — named by **raw** frame, so synced frame `s` reads `{s + offset_k:06d}` (`pose-sync/` holds the shifted copies used by Pose2Sim)
 - **Format**: `data["people"][i]["pose_keypoints_2d"]` — flat `[x, y, conf, x, y, conf, ...]` array indexed by skeleton node ID
 - **Drawing**: Uses Pose2Sim's `draw_skel()` and `draw_keypts()` from `Pose2Sim/common.py`
 
@@ -41,7 +43,7 @@ Projects triangulated 3D markers from TRC files onto the camera view using calib
 
 Pose2Sim writes one 2D JSON per video frame, but **triangulation trims each person's 3D output to the contiguous range where they were tracked** — so a person's TRC covers only, say, frames 152–384 of a 0–384 video. TRC row 0 is the person's `OrigDataStartFrame`, **not** video frame 0.
 
-To line the skeleton up with the video, `_parse_trc()` also reads the TRC `Frame#` column (`frame_numbers`), and `_overlay_trc()` maps the current video frame to a TRC row by lookup (`frame_numbers == frame_idx`) rather than by raw index. This is exact (no off-by-one) and gap-safe. Frames outside a person's tracked range draw nothing for that person. Each overlaid person uses its own `Frame#` mapping, so people tracked over different ranges all stay aligned.
+To line the skeleton up with the video, `_parse_trc()` also reads the TRC `Frame#` column (`frame_numbers`), and `_overlay_trc()` maps the current video frame to a TRC row by lookup (`frame_numbers == frame_idx`) rather than by raw index. TRC `Frame#` is a **synced** frame (triangulation runs on `pose-sync/`), so it is matched against the synced frame `s`. This is exact (no off-by-one) and gap-safe. Frames outside a person's tracked range draw nothing for that person. Each overlaid person uses its own `Frame#` mapping, so people tracked over different ranges all stay aligned.
 
 > Previously the overlay indexed `trc_data[frame_idx]` directly, which shifted the skeleton by the number of untracked lead-in frames — a "ghost" skeleton matching no one in the scene.
 
@@ -99,7 +101,7 @@ Projects OpenSim inverse kinematics body centre positions onto the video as fill
 - **Source**: `.osim` (scaled model) and `.mot` (joint angles) from `[trial]/processed/kinematics/`. IK is single-person: when several persons were processed, the **longest-tracked** one is chosen (the `.mot` with the most rows, via its `nRows=` header), and its `.osim` is paired by stem.
 - **Pre-computation**: On trial load, a background thread extracts body centre positions for all frames using the OpenSim API (`body.getTransformInGround(state)`), following the pattern from `Pose2Sim/Utilities/bodykin_from_mot_osim.py`. Positions are converted from OpenSim Y-up to Go2Kin Z-up (same `[2, 0, 1]` reorder as TRC overlay).
 - **Rendering**: Projects 3D body centres to 2D with `cv2.projectPoints()` using the same camera calibration as the TRC overlay. Draws filled circles (radius 12, bone color RGB 227/218/201).
-- **Frame sync**: The `.mot` uses absolute time on the same base as the TRC (first row = `OrigDataStartFrame / fps`), so the video frame maps directly to a motion row by timestamp (`frame_idx / fps` → nearest motion time via `np.searchsorted`) — no row-offset needed. A range guard skips drawing when `video_time` is outside `[kin_times[0], kin_times[-1]]`, so untracked frames show nothing instead of a frozen first/last pose.
+- **Frame sync**: The `.mot` uses absolute time on the same base as the TRC (first row = `OrigDataStartFrame / fps`), so the synced frame maps directly to a motion row by timestamp (`s / fps` → nearest motion time via `np.searchsorted`) — no row-offset needed. A range guard skips drawing when `video_time` is outside `[kin_times[0], kin_times[-1]]`, so untracked frames show nothing instead of a frozen first/last pose.
 - **Note**: Currently displays all model bodies. May need filtering to show only relevant joint centres.
 
 ## OpenSim Visualizer ("View in OpenSim")

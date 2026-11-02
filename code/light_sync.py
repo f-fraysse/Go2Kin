@@ -8,7 +8,7 @@ on/off edges are located in that 1-D brightness signal and used as sync events.
 
 The result dict has the same contract as audio_sync.compute_sync_offsets
 (offset_seconds / is_reference / status / final_offset_ms / offset_frames / fps)
-so audio_sync.trim_and_sync_videos and create_stitched_preview are reused as-is.
+so audio_sync.offsets_to_trial_sync and the discard popup are reused as-is.
 
 Requires: ffmpeg + ffprobe (in PATH), numpy. See docs/light_sync_spec.md.
 """
@@ -272,7 +272,7 @@ def compute_light_sync_offsets(video_paths: List[str],
 
     rois: {video_path: {"roi": (x, y, w, h), "size": (w, h) | None}} — see
     resolve_rois_for_videos. Returns a dict keyed by video path compatible with
-    audio_sync.trim_and_sync_videos, plus LED diagnostics.
+    audio_sync.offsets_to_trial_sync, plus LED diagnostics.
     """
     def log(msg):
         if progress_callback:
@@ -354,11 +354,9 @@ def compute_light_sync_offsets(video_paths: List[str],
         log(line)
 
     if output_dir:
-        synced_dir = Path(output_dir) / "synced"
-        synced_dir.mkdir(exist_ok=True)
-        plot_path = str(synced_dir / "sync_led_signal.png")
+        plot_path = str(Path(output_dir) / "sync_led_signal.png")
         save_led_signal_plot(signals, pulses, filenames, fps, plot_path)
-        log(f"  Created: synced/sync_led_signal.png")
+        log(f"  Created: sync_led_signal.png")
 
     return results
 

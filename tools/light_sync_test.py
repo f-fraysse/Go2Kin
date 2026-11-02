@@ -3,7 +3,7 @@ Light (LED flash) sync test script.
 
 Runs the real light_sync detector on a folder of raw *_GP{N}.mp4 recordings and
 prints the summary table, acceptance verdict and step timing; saves
-synced/sync_led_signal.png next to the videos. Set USE_DIALOG to open the ROI
+sync_led_signal.png next to the videos. Set USE_DIALOG to open the ROI
 picker on the folder instead (prints the chosen ROIs to paste into ROIS).
 
 Usage:

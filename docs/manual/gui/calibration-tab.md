@@ -30,17 +30,19 @@ extrinsic recording, which is synced with the LED as well.
 
 Multi-camera pose estimation from **synced** videos of the board moving through the
 shared volume — PnP solving, outlier rejection, graph bridging, triangulation and bundle
-adjustment. Browse to the trial's `synced/` folder and click **Calibrate Extrinsics**.
-The recording is synced with the method selected in the bottom bar (claps or LED).
+adjustment. Click **Calibrate** to start recording, move the board, then **STOP**. The
+recording is downloaded and synced with the method selected in the bottom bar (claps or
+LED), and the calibration then runs automatically. The videos are not trimmed: Go2Kin
+simply skips each camera's sync offset when reading them.
 
 > 🚧 **TODO:** extrinsic quality metrics (RMSE etc.) are on the roadmap — document thresholds and a pass/fail heuristic once implemented.
 
 ## Set Origin
 
 Stand the board **vertically, in portrait**, at the desired world origin (origin corner
-**790 mm** above the floor). A short recording on all cameras is trimmed to a common
-duration — audio sync is skipped, since the board is static — and the coordinate system
-is aligned with a Umeyama similarity transform. Can be re-run after loading a saved
+**790 mm** above the floor). Click **Set Origin** to make a short recording on all cameras —
+sync is skipped, since the board is static — and the coordinate system is aligned with a
+Umeyama similarity transform. Can be re-run after loading a saved
 calibration to redefine the axes.
 
 > 🚧 **TODO:** the 790 mm vertical offset is planned to become user-editable — update once it is.

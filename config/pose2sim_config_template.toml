@@ -25,6 +25,9 @@ participant_mass = 64.0             # float (eg 70.0), or list of floats (eg [70
 frame_rate = 'auto' # fps # int or 'auto'. If 'auto', finds from video (or defaults to 60 fps if you work with images)
 frame_range = 'all' # 'auto', 'all', or range like [10,300]. If 'auto', will trim around the frames with low reprojection error (useful if a person enters/exits the scene)
                      # If cameras are not synchronized, designates the frame range of the camera with the shortest recording time
+                     # Go2Kin: keep 'all'. Videos are raw (untrimmed); sync offsets from trial.json are applied after
+                     # pose estimation (pose-sync/). An explicit range would be raw frames in poseEstimation but
+                     # synced frames in triangulation.
                      # N.B.: If you want a time range instead, use frame_range = time_range * frame_rate
                      # For example if you want to analyze from 0.1 to 2 seconds with a 60 fps frame rate,
                      # frame_range = [0.1, 2.0]*frame_rate = [6, 120]

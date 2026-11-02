@@ -499,7 +499,7 @@ class CalibrationTab:
                 self._multi_record_worker(
                     cam_list, video_dir, "extrinsic", timestamp,
                     self._extrinsic_status,
-                    on_synced=lambda synced_dir: self._ext_auto_run_calibration(synced_dir, video_dir, timestamp),
+                    on_synced=lambda synced: self._ext_auto_run_calibration(synced, video_dir, timestamp),
                     sync_mode=self._calib_sync_mode(),
                 )
             except Exception as e:
@@ -529,9 +529,12 @@ class CalibrationTab:
         )
         self._update_pipeline_state()
 
-    def _ext_auto_run_calibration(self, synced_dir, video_dir, timestamp):
-        """Chain extrinsic calibration after sync completes (called from worker thread)."""
-        if synced_dir is None:
+    def _ext_auto_run_calibration(self, synced, video_dir, timestamp):
+        """Chain extrinsic calibration after sync completes (called from worker thread).
+
+        synced: (video_map, start_frames) from _run_calib_sync, or None if the sync failed.
+        """
+        if synced is None:
             self.frame.after(0, lambda: self._extrinsic_status.set("Sync failed/rejected — calibration aborted"))
             self.frame.after(0, lambda: self._set_extrinsic_indicator("red"))
             return
@@ -552,8 +555,9 @@ class CalibrationTab:
                 cameras[cam_num] = result["camera"]
 
             camera_array = CameraArray(cameras=cameras)
+            video_map, start_frames = synced
             bundle = run_extrinsic_calibration(
-                Path(synced_dir), charuco, camera_array,
+                video_map, charuco, camera_array, start_frames=start_frames,
             )
 
             self._camera_array = camera_array
@@ -615,8 +619,8 @@ class CalibrationTab:
                 self._multi_record_worker(
                     cam_list, video_dir, "origin", timestamp,
                     self._origin_status,
-                    on_synced=lambda synced_dir: self._origin_auto_run(synced_dir, video_dir, timestamp),
-                    sync_mode="trim_only",
+                    on_synced=lambda synced: self._origin_auto_run(synced, video_dir, timestamp),
+                    sync_mode="no_sync",
                 )
             except Exception as e:
                 msg = str(e)
@@ -645,10 +649,14 @@ class CalibrationTab:
         )
         self._update_pipeline_state()
 
-    def _origin_auto_run(self, synced_dir, video_dir, timestamp):
-        """Chain set_origin after sync completes (called from worker thread)."""
-        if synced_dir is None:
-            self.frame.after(0, lambda: self._origin_status.set("Sync failed — no synced folder"))
+    def _origin_auto_run(self, synced, video_dir, timestamp):
+        """Chain set_origin after recording completes (called from worker thread).
+
+        synced: (video_map, start_frames) from _run_calib_sync (zero offsets for the
+        static board), or None if fewer than 2 videos were downloaded.
+        """
+        if synced is None:
+            self.frame.after(0, lambda: self._origin_status.set("Origin videos missing (< 2 cameras)"))
             self.frame.after(0, lambda: self._set_origin_indicator("red"))
             return
 
@@ -659,11 +667,12 @@ class CalibrationTab:
             sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
             charuco = self._get_charuco()
+            video_map, _ = synced  # static board: no sync offsets needed
 
             if self._bundle is not None:
                 from calibration.calibrate import set_origin
                 aligned_bundle = set_origin(
-                    Path(synced_dir), charuco, self._camera_array, self._bundle,
+                    video_map, charuco, self._camera_array, self._bundle,
                 )
                 self._bundle = aligned_bundle
                 self._camera_array = aligned_bundle.camera_array
@@ -671,7 +680,7 @@ class CalibrationTab:
                 from calibration.calibrate import compute_origin_transform
                 from calibration.alignment import apply_similarity_transform
                 transform = compute_origin_transform(
-                    Path(synced_dir), charuco, self._camera_array,
+                    video_map, charuco, self._camera_array,
                 )
                 new_camera_array, _ = apply_similarity_transform(
                     self._camera_array, None, transform,
@@ -893,7 +902,7 @@ class CalibrationTab:
             raise
 
     def _led_roi_from_folder(self):
-        """Set the ROI from any folder of *_GP{N}.mp4 recordings (e.g. a trial's video/)."""
+        """Set the ROI from any folder of *_GP{N}.mp4 recordings (e.g. a trial's processed/videos/)."""
         import sys
         sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
         from light_sync import cam_id_from_filename
@@ -989,9 +998,6 @@ class CalibrationTab:
             for f in video_dir.iterdir():
                 if f.is_file() and f.name.startswith(prefix):
                     f.unlink()
-            sync_dir = video_dir / f"{prefix}_sync"
-            if sync_dir.exists():
-                shutil.rmtree(sync_dir)
         except Exception as e:
             logger.warning(f"Could not clean up temp videos: {e}")
 
@@ -1194,12 +1200,13 @@ class CalibrationTab:
                              on_synced=None, sync_mode="audio", record_seconds=None):
         """Worker thread for multi-camera recording + auto-sync.
 
-        If on_synced is provided, calls on_synced(result_dir) after sync completes.
+        If on_synced is provided, calls on_synced(result) after sync completes, where
+        result is (video_map {cam: Path}, start_frames {cam: frames to skip}) from
+        _run_calib_sync, or None if the sync failed. Videos are never trimmed.
         sync_mode:
-          "audio"     — clap detection (bottom bar Manual/Speaker), trim, synced/ folder.
-          "light"     — LED flash detection using the LED ROIs, trim, synced/ folder.
-          "trim_only" — no detection, zero offsets: videos are trimmed to a common
-                        duration / frame count only. Used for Set Origin (static board).
+          "audio"     — clap detection (bottom bar Manual/Speaker) -> frame offsets.
+          "light"     — LED flash detection using the LED ROIs -> frame offsets.
+          "no_sync"   — no detection, zero offsets. Used for Set Origin (static board).
           "none"      — no sync at all; on_synced receives the raw video_dir.
         record_seconds: if given, the recording auto-stops after that many seconds
         (the STOP button still works earlier).
@@ -1255,44 +1262,45 @@ class CalibrationTab:
                 except Exception as e:
                     print(f"  Error downloading GoPro {num}: {e}")
 
-        # Auto-sync (or trim-only for static-board recordings, or nothing)
+        # Auto-sync (or zero offsets for static-board recordings, or nothing)
         if sync_mode == "none":
             print("Calibration: no sync for this recording")
-            synced_dir = video_dir
+            synced = video_dir
         else:
-            if sync_mode == "trim_only":
-                print("Calibration: trimming videos (sync skipped — static board)...")
-                self.frame.after(0, lambda: status_var.set("Trimming videos..."))
+            if sync_mode == "no_sync":
+                print("Calibration: sync skipped (static board)")
             elif sync_mode == "light":
                 print("Calibration: starting light (LED) sync...")
                 self.frame.after(0, lambda: status_var.set("Running LED sync..."))
             else:
                 print("Calibration: starting audio sync...")
                 self.frame.after(0, lambda: status_var.set("Running audio sync..."))
-            synced_dir = self._run_calib_sync(video_dir, purpose, timestamp, status_var,
+            synced = self._run_calib_sync(video_dir, purpose, timestamp, status_var,
                                               sync_mode=sync_mode)
 
         if on_synced:
-            on_synced(synced_dir)
+            on_synced(synced)
         else:
-            if synced_dir:
-                n_synced = len([f for f in synced_dir.iterdir() if f.suffix.lower() == ".mp4"])
+            if synced:
+                n_synced = len(synced[0]) if isinstance(synced, tuple) else len(
+                    [f for f in synced.iterdir() if f.suffix.lower() == ".mp4"])
                 self.frame.after(0, lambda: status_var.set(f"Synced {n_synced} files"))
             else:
                 self.frame.after(0, lambda: status_var.set("Sync skipped (< 2 files)"))
 
     def _run_calib_sync(self, video_dir, purpose, timestamp, status_var, sync_mode="audio"):
-        """Sync recorded calibration videos. Returns synced dir Path or None.
+        """Sync recorded calibration videos without trimming.
 
+        Returns (video_map {cam: Path}, start_frames {cam: frames to skip}) or None.
         sync_mode "audio" runs clap detection, "light" runs LED detection with the
-        stored ROIs (raises LightSyncError if one is missing), "trim_only" sets all
-        offsets to zero. trim_and_sync_videos is always called so the outputs share
-        a common duration and identical frame counts. An unacceptable audio/light
-        sync shows the shared red popup and returns None before the trim.
+        stored ROIs (raises LightSyncError if one is missing), "no_sync" sets all
+        offsets to zero. Corner extraction starts each camera at its offset, so the
+        videos are used as recorded. An unacceptable audio/light sync shows the
+        shared red popup and returns None.
         """
         from audio_sync import (check_ffmpeg, check_audio_track, compute_sync_offsets,
-                                trim_and_sync_videos, evaluate_sync_acceptance,
-                                format_sync_summary, AudioSyncError)
+                                offsets_to_trial_sync, evaluate_sync_acceptance,
+                                format_sync_summary, AudioSyncError, GP_CAM_RE)
 
         prefix = f"{purpose}_{timestamp}"
         video_paths = sorted([
@@ -1301,13 +1309,18 @@ class CalibrationTab:
         ])
         if len(video_paths) < 2:
             return None
+        video_map = {int(GP_CAM_RE.search(Path(vp).name).group(1)): Path(vp)
+                     for vp in video_paths}
+
+        if sync_mode == "no_sync":
+            return video_map, {}
 
         if not check_ffmpeg():
             self.frame.after(0, lambda: status_var.set("ffmpeg not found — sync skipped"))
             return None
 
         def _abort(table, reasons, table_label):
-            """Shared red popup + cleanup; caller returns None (no trim)."""
+            """Shared red popup + cleanup; caller returns None."""
             from GUI.components.sync_discard_dialog import show_sync_discard_dialog
             print(f"Extrinsic {table_label[:-1].lower()} unacceptable — aborting calibration:")
             for r in reasons:
@@ -1321,14 +1334,7 @@ class CalibrationTab:
                 table_label=table_label,
             ))
 
-        if sync_mode == "trim_only":
-            offsets = {
-                vp: {"offset_seconds": 0.0, "is_reference": (i == 0), "status": "NO-SYNC"}
-                for i, vp in enumerate(video_paths)
-            }
-            self.frame.after(0, lambda: status_var.set(
-                f"Trimming {len(video_paths)} videos (no sync)..."))
-        elif sync_mode == "light":
+        if sync_mode == "light":
             from light_sync import (compute_light_sync_offsets, resolve_rois_for_videos,
                                     evaluate_light_sync_acceptance, format_light_sync_summary)
 
@@ -1381,23 +1387,16 @@ class CalibrationTab:
 
             # Same acceptance gate as trial recordings (2 claps + consistency +
             # max offset). On failure, show the shared red popup and abort BEFORE
-            # the wasteful trim re-encode and the multi-minute extrinsic compute.
+            # the extrinsic compute.
             acceptable, reasons = evaluate_sync_acceptance(offsets, max_offset_ms=200.0)
             if not acceptable:
                 _abort(format_sync_summary(offsets), reasons, "Audio sync table:")
                 return None
 
-        # Trim and sync — trim_and_sync_videos creates a synced/ subfolder inside output_dir
-        sync_parent = video_dir / f"{purpose}_{timestamp}_sync"
-        sync_parent.mkdir(parents=True, exist_ok=True)
-        print("Trimming videos (frame-accurate re-encode)...")
-        trim_and_sync_videos(
-            video_paths, offsets, str(sync_parent),
-            progress_callback=lambda msg: print(f"  {msg}"),
-        )
-
-        synced_dir = sync_parent / "synced"
-        return synced_dir
+        # No trim: corner extraction skips each camera's leading offset frames
+        start_frames = {int(c): n for c, n in offsets_to_trial_sync(offsets)["offset_frames"].items()}
+        print(f"Calibration: sync start frames {start_frames}")
+        return video_map, start_frames
 
     def get_camera_positions_for_sync(self, video_paths):
         """Build a {filename: [x, y, z]} dict of camera world positions for ToF sync.

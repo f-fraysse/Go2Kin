@@ -1,5 +1,12 @@
 # Audio Sync Performance & Diagnostics
 
+> **Update (Nov 2026, stored offsets):** sync no longer trims, re-encodes or builds a
+> stitched preview. Steps 10a/10b/11/12 below (frame count, `hevc_nvenc` re-encode,
+> verifying frame counts, stitched preview) no longer exist — the offsets are written to
+> `trial.json["sync"]` instead (see `audio_sync_spec.md`), so the ~28 s re-encode +
+> preview floor is gone and the NVENC ffmpeg build is no longer needed for sync. The
+> measurements below are kept as a historical record.
+
 Notes from a June 2026 investigation into post-recording wall-clock time on the
 Recording tab. Covers the built-in timing diagnostic, where the time actually goes,
 and an important environment gotcha (CrowdStrike) that makes the *first* sync of a

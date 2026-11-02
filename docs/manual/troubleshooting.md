@@ -16,7 +16,7 @@ A loose collection of notes — promote items into the main guide as they firm u
 - **High frame rates** — at 100+ fps, camera-to-source distance differences cause sub-frame errors; set the sound source position in the Recording tab (requires a loaded calibration).
 - **During extrinsic calibration** — sound-delay compensation can't apply (camera poses don't exist yet); clap near the centre of the camera volume so distance differences largely cancel.
 - **Light sync: "LED not detected in ROI" / "does not match the LED" / "No LED ROI for GPn"** — see [LED light sync → If it fails](gui/led-sync.md#if-it-fails).
-- **Sync fails with "ffmpeg trim failed … received no packets" / "error in an external library" / "Driver does not support the required nvenc API version"** — at high resolution / frame rate (e.g. 2.7K @ 200 fps) the trim step needs ffmpeg's `hevc_nvenc` (GPU) encoder. The default conda ffmpeg has no NVENC; install a full NVENC build and (if you get the *nvenc API version* message) one matching your NVIDIA driver. See [Installation → NVENC ffmpeg](first-time-setup/01-installation.md).
+- **Re-running the sync on a trial** — `python tools/resync_trial.py "<project>/sessions/<session>/<trial>" [audio|light]` recomputes the offsets from the videos in `processed/videos/` and saves them to `trial.json` only if the sync passes (light sync uses the LED ROIs from the trial's calibration file).
 
 ## Calibration
 
@@ -28,7 +28,7 @@ A loose collection of notes — promote items into the main guide as they firm u
 
 - **Painfully slow** — you're probably running on CPU. Check `onnxruntime-gpu` is installed (not `onnxruntime`) and that the log reports CUDA.
 - **Phantom "person 1" with default 1.75 m / 70 kg** — stale files from a previous run in `pose-3d/` and `kinematics/` get globbed into the new run. Workaround: delete those two folders inside the trial's `processed/` directory before re-running. An automatic fix is planned.
-- **Validation fails** — check that synced videos exist, a calibration was saved, and the participant has height and mass entered.
+- **Validation fails** — check that the trial is synced and its videos are in `processed/videos/`, a calibration was saved, and the participant has height and mass entered.
 
 ## Tips
 

@@ -6,7 +6,6 @@ hierarchy (calibration, videos, Config.toml).
 """
 
 import logging
-import os
 import re
 import shutil
 
@@ -18,11 +17,11 @@ logger = logging.getLogger(__name__)
 # Path to the Config.toml template shipped with Go2Kin
 _TEMPLATE_PATH = Path(__file__).parent.parent / "config" / "pose2sim_config_template.toml"
 
-# Files to skip when copying synced videos
-_SKIP_FILES = {"stitched_videos.mp4", "timestamps.csv", "audio_waveforms.png"}
-
-# Match the camera id in synced video filenames like "trial_001_GP3.mp4"
+# Match the camera id in video filenames like "trial_001_GP3.mp4"
 _VIDEO_CAM_RE = re.compile(r"_GP(\d+)\.(?:mp4|MP4)$")
+
+# Match the camera id in Pose2Sim pose folders like "trial_001_GP3_json"
+_JSON_DIR_CAM_RE = re.compile(r"_GP(\d+)_json$")
 
 # Anchored TOML section header — won't match a stray '[' inside an array value
 _TOML_SECTION_RE = re.compile(r"^\[([A-Za-z0-9_]+)\]\s*$")
@@ -99,6 +98,59 @@ def _filter_calibration_toml(src_toml, dest_toml, video_files):
     return cam_ids
 
 
+def _trial_videos(folder):
+    """Camera videos ("*_GP<N>.mp4") in folder, or [] if it doesn't exist."""
+    if not folder.is_dir():
+        return []
+    return [f for f in folder.iterdir() if f.is_file() and _VIDEO_CAM_RE.search(f.name)]
+
+
+def apply_sync_offsets(processed_path, offsets):
+    """Write Pose2Sim's pose-sync/ folder from the stored per-camera frame offsets.
+
+    Runs after pose estimation. pose/<vid>_json/<vid>_{raw:06d}.json is copied to
+    pose-sync/<vid>_json/<vid>_{raw - d:06d}.json for raw >= d, where d is the
+    camera's offset (frames to skip). Person association and triangulation pair
+    cameras by the frame number in the filename, so this is all Pose2Sim needs.
+    Same mechanism as Pose2Sim's own synchronization step (synchronization.py).
+
+    Always runs (zero offsets for legacy, pre-trimmed trials) so pose-sync/ is
+    always the source. Stale pose-sync/ and pose-associated/ are removed first.
+
+    Args:
+        processed_path: Pose2Sim project dir ([trial]/processed/)
+        offsets: {camera number: frames to skip}; missing cameras = 0
+    """
+    processed_path = Path(processed_path)
+    pose_dir = processed_path / "pose"
+    sync_dir = processed_path / "pose-sync"
+    for stale in (sync_dir, processed_path / "pose-associated"):
+        if stale.exists():
+            shutil.rmtree(stale)
+
+    json_dirs = []
+    if pose_dir.is_dir():
+        json_dirs = [d for d in pose_dir.iterdir() if d.is_dir() and _JSON_DIR_CAM_RE.search(d.name)]
+    if not json_dirs:
+        raise ValueError(f"No '*_GP<N>_json' pose folders found in {pose_dir}")
+
+    for json_dir in sorted(json_dirs, key=lambda d: _natural_sort_key(d.name)):
+        cam = int(_JSON_DIR_CAM_RE.search(json_dir.name).group(1))
+        d = offsets.get(cam, 0)
+        out_dir = sync_dir / json_dir.name
+        out_dir.mkdir(parents=True)
+        n = 0
+        for f in json_dir.glob("*.json"):
+            parts = re.split(r"(\d+)", f.name)
+            raw = int(parts[-2])
+            if raw < d:
+                continue
+            parts[-2] = f"{raw - d:06d}"
+            shutil.copy2(f, out_dir / "".join(parts))
+            n += 1
+        print(f"  GP{cam}: offset {d} frames -> {n} synced pose files")
+
+
 def build_pose2sim_project(project_manager, project, session, trial_name):
     """Stage a Pose2Sim-compatible directory for a Go2Kin trial.
 
@@ -121,15 +173,23 @@ def build_pose2sim_project(project_manager, project, session, trial_name):
     trial = pm.get_trial(project, session, trial_name)
 
     # 2. Validate inputs
-    # Check synced videos
-    synced_path = pm.get_trial_synced_path(project, session, trial_name)
-    if not synced_path.exists():
-        raise ValueError(f"Synced video folder does not exist: {synced_path}")
+    if not trial.get("synced"):
+        raise ValueError(f"Trial '{trial_name}' is not synced")
 
-    video_files = [f for f in synced_path.iterdir()
-                   if f.suffix.lower() == ".mp4" and f.name not in _SKIP_FILES]
+    # Videos live in processed/videos/ (raw, synced via trial.json offsets).
+    # Legacy trials: trimmed videos in video/synced/ that were never staged
+    # are copied into processed/videos/ (with zero offsets, see apply_sync_offsets).
+    videos_dir = pm.get_trial_videos_path(project, session, trial_name)
+    video_files = _trial_videos(videos_dir)
     if not video_files:
-        raise ValueError(f"No synced MP4 files found in {synced_path}")
+        legacy = _trial_videos(pm.get_trial_synced_path(project, session, trial_name))
+        if not legacy:
+            raise ValueError(f"No '*_GP<N>.mp4' videos found in {videos_dir}")
+        videos_dir.mkdir(parents=True, exist_ok=True)
+        for vf in legacy:
+            shutil.copy2(str(vf), str(videos_dir / vf.name))
+        log(f"Legacy trial: copied {len(legacy)} trimmed videos from video/synced/")
+        video_files = _trial_videos(videos_dir)
 
     # Check calibration
     calib_name = trial.get("calibration_file", "none")
@@ -163,35 +223,14 @@ def build_pose2sim_project(project_manager, project, session, trial_name):
     # 3. Create staging directory
     processed_path = pm.get_trial_processed_path(project, session, trial_name)
     calib_dir = processed_path / "calibration"
-    videos_dir = processed_path / "videos"
     calib_dir.mkdir(parents=True, exist_ok=True)
-    videos_dir.mkdir(parents=True, exist_ok=True)
 
     # 4. Stage calibration TOML, filtered to the cameras present in this trial
     dest_calib = calib_dir / "Calib.toml"
     cam_ids = _filter_calibration_toml(calib_toml, dest_calib, video_files)
     log(f"Staged calibration for cameras {cam_ids} -> {dest_calib.name}")
 
-    # 5. Link or copy synced videos
-    use_symlink = True
-    for vf in video_files:
-        dest = videos_dir / vf.name
-        if dest.exists():
-            dest.unlink()
-        if use_symlink:
-            try:
-                os.symlink(str(vf), str(dest))
-            except OSError:
-                use_symlink = False
-                log("Symlinks not available, falling back to file copy")
-                shutil.copy2(str(vf), str(dest))
-        else:
-            shutil.copy2(str(vf), str(dest))
-
-    method = "symlinked" if use_symlink else "copied"
-    log(f"{method.capitalize()} {len(video_files)} video files")
-
-    # 6. Generate Config.toml from template
+    # 5. Generate Config.toml from template
     if not _TEMPLATE_PATH.exists():
         raise ValueError(f"Config.toml template not found at {_TEMPLATE_PATH}")
 

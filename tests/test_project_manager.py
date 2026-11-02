@@ -290,8 +290,8 @@ class TestProjectManager(unittest.TestCase):
             "proj", "sess", "jump_01", "P01", "2026-03-15_morning",
             ["cam1", "cam2", "cam3", "cam4"],
         )
-        self.assertTrue((path / "video").is_dir())
-        self.assertTrue((path / "processed").is_dir())
+        self.assertTrue((path / "processed" / "videos").is_dir())
+        self.assertFalse((path / "video").exists())  # legacy folder no longer created
         self.assertTrue((path / "trial.json").exists())
 
         with open(path / "trial.json") as f:
@@ -303,6 +303,7 @@ class TestProjectManager(unittest.TestCase):
         self.assertEqual(data["cameras_used"], ["cam1", "cam2", "cam3", "cam4"])
         self.assertFalse(data["synced"])
         self.assertFalse(data["processed"])
+        self.assertNotIn("sync", data)
         # date and time should be present
         self.assertIn("date", data)
         self.assertIn("time", data)
@@ -351,13 +352,35 @@ class TestProjectManager(unittest.TestCase):
         self.pm.create_trial("proj", "sess", "a_trial", "P01", "none", ["cam1"])
         self.assertEqual(self.pm.list_trials("proj", "sess"), ["a_trial", "b_trial"])
 
-    def test_trial_video_path(self):
+    def test_trial_videos_path(self):
+        self.pm.create_project("proj")
+        self.pm.create_session("proj", "sess")
+        self.pm.create_trial("proj", "sess", "t1", "P01", "none", ["cam1"])
+        path = self.pm.get_trial_videos_path("proj", "sess", "t1")
+        self.assertTrue(path.is_dir())
+        self.assertEqual(path.name, "videos")
+        self.assertEqual(path.parent.name, "processed")
+
+    def test_trial_video_path_legacy(self):
         self.pm.create_project("proj")
         self.pm.create_session("proj", "sess")
         self.pm.create_trial("proj", "sess", "t1", "P01", "none", ["cam1"])
         path = self.pm.get_trial_video_path("proj", "sess", "t1")
-        self.assertTrue(path.is_dir())
+        # legacy video/ is not created for new trials
         self.assertEqual(path.name, "video")
+        self.assertFalse(path.exists())
+
+    def test_get_sync_offsets(self):
+        self.pm.create_project("proj")
+        self.pm.create_session("proj", "sess")
+        self.pm.create_trial("proj", "sess", "t1", "P01", "none", ["cam1"])
+        # Unsynced / legacy trial: no "sync" block -> {}
+        self.assertEqual(self.pm.get_sync_offsets("proj", "sess", "t1"), {})
+        sync = {"fps": 200.0, "reference_cam": 2,
+                "offset_frames": {"1": 3, "2": 0, "4": 5}}
+        self.pm.update_trial("proj", "sess", "t1", synced=True, sync=sync)
+        # Survives the JSON round trip; keys become ints
+        self.assertEqual(self.pm.get_sync_offsets("proj", "sess", "t1"), {1: 3, 2: 0, 4: 5})
 
     def test_trial_synced_path(self):
         self.pm.create_project("proj")

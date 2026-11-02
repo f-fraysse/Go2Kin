@@ -60,14 +60,18 @@ Go2Kin trials store data in this structure:
 
 ```
 [data_root]/[project]/sessions/[session]/[trial]/
-├── trial.json              # subject_id, calibration_file, synced, processed
-└── video/
-    └── synced/             # Audio-synchronised MP4 files
+├── trial.json              # subject_id, calibration_file, synced, sync (frame offsets), processed
+└── processed/
+    └── videos/             # Raw (untrimmed) MP4s, downloaded here directly + sync plot
         ├── Trial1_GP1.mp4
         ├── Trial1_GP2.mp4
         ├── Trial1_GP3.mp4
         └── Trial1_GP4.mp4
 ```
+
+Videos are **not trimmed**: sync is stored as per-camera frame offsets in `trial.json["sync"]["offset_frames"]`
+(leading raw frames to skip; synced frame `s` == raw frame `s + offset_k`) and applied after pose estimation
+(see **Apply Sync** below).
 
 Pose2Sim expects:
 
@@ -83,13 +87,14 @@ Pose2Sim expects:
     └── Trial1_GP4.mp4
 ```
 
-The `build_pose2sim_project()` function creates a `processed/` directory inside each trial folder that reproduces this structure:
+The `build_pose2sim_project()` function completes this structure inside the trial's `processed/` directory:
 
-1. **Calibration TOML** — copied from `[project]/calibrations/[name].toml` to `processed/calibration/Calib.toml`
-2. **Video files** — symlinked from `video/synced/` into `processed/videos/` (falls back to file copy on Windows if symlinks aren't available)
+1. **Calibration TOML** — copied from `[project]/calibrations/[name].toml` to `processed/calibration/Calib.toml` (filtered to the cameras present in the trial)
+2. **Video files** — already in `processed/videos/`; nothing is copied or linked. The sync plot (`sync_onsets.png` / `sync_led_signal.png`) sits next to them and is ignored by Pose2Sim.
 3. **Config.toml** — generated from the template with participant-specific values substituted
 
-Files skipped during video staging: `stitched_videos.mp4`, `timestamps.csv`, `audio_waveforms.png`.
+**Legacy trials** (recorded before stored offsets): if `processed/videos/` has no `*_GP<N>.mp4` but `video/synced/` does,
+the trimmed videos are copied into `processed/videos/`. They have no `sync` block, so the offsets are zero.
 
 ## Config.toml Generation
 
@@ -103,7 +108,8 @@ The template at `config/pose2sim_config_template.toml` is a copy of Pose2Sim's e
 
 Key defaults that align with Go2Kin's setup:
 - `calibration_type = 'convert'` with `convert_from = 'caliscope'` — Go2Kin's calibration output is Caliscope-compatible, so the calibration step is effectively a no-op
-- `frame_rate = 50` — matches 50Hz anti-flicker (Australian mains frequency)
+- `frame_rate = 'auto'` — read from the videos
+- `frame_range = 'all'` — **must stay `'all'`**: pose estimation runs on raw frame indices but triangulation on synced ones, so an explicit range would mean different frames in each step
 - `pose_model = 'Body_with_feet'` (HALPE_26)
 - `device = 'CUDA'` — requires an NVIDIA GPU with CUDA support
 
@@ -114,10 +120,21 @@ The pipeline runs each Pose2Sim step individually (not `runAll`) to support stop
 | Step | Function | Output |
 |------|----------|--------|
 | 1. Calibration | `Pose2Sim.calibration()` | Reads the Caliscope TOML (no-op conversion) |
-| 2. Pose Estimation | `Pose2Sim.poseEstimation()` | `processed/pose/` — 2D keypoints per camera |
-| 3. Triangulation | `Pose2Sim.triangulation()` | `processed/pose-3d/` — 3D keypoint trajectories |
-| 4. Filtering | `Pose2Sim.filtering()` | Smoothed 3D trajectories (Butterworth, 6Hz) |
-| 5. Kinematics | `Pose2Sim.kinematics()` | `processed/kinematics/` — OpenSim IK results |
+| 2. Pose Estimation | `Pose2Sim.poseEstimation()` | `processed/pose/` — 2D keypoints per camera, named by raw frame |
+| 3. Apply Sync | `pose2sim_builder.apply_sync_offsets()` | `processed/pose-sync/` — pose JSONs renamed to synced frames |
+| 4. Person Association | `Pose2Sim.personAssociation()` | `processed/pose-associated/` |
+| 5. Triangulation | `Pose2Sim.triangulation()` | `processed/pose-3d/` — 3D keypoint trajectories |
+| 6. Filtering | `Pose2Sim.filtering()` | Smoothed 3D trajectories (Butterworth, 6Hz) |
+| 7. Kinematics | `Pose2Sim.kinematics()` | `processed/kinematics/` — OpenSim IK results |
+
+**Apply Sync** copies `pose/<cam>_json/<cam>_{raw:06d}.json` to `pose-sync/<cam>_json/<cam>_{raw - offset:06d}.json`,
+dropping frames before the camera's offset (same mechanism as Pose2Sim's own synchronization step). Stale `pose-sync/`
+and `pose-associated/` are removed first. It always runs (zero offsets for legacy trials), so `pose-sync/` is always the
+source. Pose2Sim pairs cameras by the frame number in the JSON filename, so everything downstream is in synced frames
+(TRC `Frame#` = synced frame).
+
+Fork fix: upstream `personAssociation.py` tested `open(os.path.exist(...))` (typo, always raised) and silently fell back
+to `pose/`, so `pose-sync/` was never actually read. The fork now reads from whichever folder it listed the files from.
 
 The pipeline changes the working directory to `processed/` before running (Pose2Sim relies on `os.getcwd()` for file discovery) and restores it afterwards via try/finally.
 
@@ -125,7 +142,7 @@ The pipeline changes the working directory to `processed/` before running (Pose2
 
 Before building a project, the following checks must pass:
 
-- Synced video folder exists with at least one MP4 file
+- `trial.json` has `synced: true`, and `processed/videos/` (or legacy `video/synced/`) has at least one `*_GP<N>.mp4`
 - `calibration_file` in trial.json is not `"none"` and the corresponding `.toml` exists
 - Subject exists with `height_m` and `mass_kg` defined
 

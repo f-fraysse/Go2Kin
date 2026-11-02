@@ -95,14 +95,15 @@ IntrinsicCalibrationOutput
 ### Data Flow — Extrinsic Calibration
 
 ```
-Synced MP4 files (from audio sync)
+Untrimmed MP4 files + per-camera sync offsets (start_frames, from audio/light sync)
     |
     v
-video_processor.discover_synced_videos()
-    |  Parse _GP{N}.mp4 filenames, skip stitched_videos.mp4
+calibrate._resolve_videos()
+    |  {cam_id: path} dict, or a folder -> discover_synced_videos() (parse _GP{N}.mp4)
     |
     v
-video_processor.extract_charuco_points_from_videos()
+video_processor.extract_charuco_points_from_videos(start_frames=...)
+    |  Each camera skips its offset frames, then samples every step frames
     |  Same sync_index = same moment in time across cameras
     |
     v
@@ -259,13 +260,12 @@ Smart selection avoids redundant frames. Two-phase approach:
 
 Entry point: `calibrate.run_extrinsic_calibration()`
 
-### 1. Video Discovery (`video_processor.py`)
-- Scans synced folder for `*.mp4` files
-- Skips `stitched_videos.mp4` and `timestamps.csv`
-- Parses camera number from `_GP{N}.mp4` suffix (regex: `_GP(\d+)\.mp4$`)
+### 1. Video Discovery (`calibrate._resolve_videos`)
+- `run_extrinsic_calibration`, `compute_origin_transform` and `set_origin` accept either a `{cam_id: path}` dict (what the Calibration tab passes) or a folder
+- For a folder, `video_processor.discover_synced_videos()` scans for `*.mp4` and parses the camera number from the `_GP{N}.mp4` suffix (regex: `_GP(\d+)\.mp4$`)
 
 ### 2. Corner Extraction
-Same as intrinsic, but sync_index alignment is critical: because videos are pre-synchronized (via audio sync), the same `sync_index` across cameras represents the same physical moment. The same charuco board position is observed from multiple viewpoints.
+Same as intrinsic, but sync_index alignment is critical. Videos are **not trimmed**: the Calibration tab's `_run_calib_sync` returns `(video_map, start_frames)`, where `start_frames[cam]` is the camera's sync offset in frames (audio or light sync; see `audio_sync.offsets_to_trial_sync`). `run_extrinsic_calibration(videos, ..., start_frames=...)` passes it to `extract_charuco_points_from_video(start_frame=...)`, which skips the first `start_frame` frames and then samples every `step` frames, so the same `sync_index` across cameras represents the same physical moment. The same charuco board position is observed from multiple viewpoints. Set Origin uses zero offsets (sync mode `"no_sync"`, static board).
 
 ### 3. PnP Pose Estimation (`extrinsic.py`)
 For each (camera, sync_index) pair with sufficient corners (default: 4+):

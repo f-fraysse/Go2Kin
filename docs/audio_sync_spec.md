@@ -119,6 +119,17 @@ cam3   |      0.58       |   0.71    |      0.61       |   0.85    |    0.03   |
 - Script should be a single file, no external dependencies beyond: numpy, scipy, matplotlib, subprocess (for ffmpeg)
 - Target path: save the script wherever is convenient, we will run it manually
 
+## Storing the result (Go2Kin)
+
+Videos are **not** trimmed or re-encoded. `audio_sync.offsets_to_trial_sync()` turns the per-camera offsets into integer frames (`round(offset_seconds * fps)`) and the Recording tab stores them in `trial.json` (only when `evaluate_sync_acceptance` passes):
+
+```json
+"synced": true, "sync_method": "audio",
+"sync": {"fps": 100.0, "reference_cam": 3, "offset_frames": {"1": 3, "2": 2, "3": 0, "4": 5}}
+```
+
+`offset_frames[k]` = leading raw frames to skip in camera k (all ≥ 0, reference = 0): synced frame `s` == raw frame `s + offset_frames[k]`. The raw videos in `processed/videos/` are the only copy; `sync_onsets.png` is written next to them. Readers apply the offsets: Pose2Sim via the Processing tab's **Apply Sync** step (`pose2sim_builder.apply_sync_offsets`), the Visualisation tab, and extrinsic corner extraction (`start_frames`). `tools/resync_trial.py <trial folder> [audio|light]` recomputes the offsets for an existing trial.
+
 ## Speed-of-sound compensation and the calibration steps
 
 Speed-of-sound (ToF) compensation needs both the camera world positions and the sound-source world position. At ~340 m/s the residual error scales roughly as 3 ms per metre of difference in cam-to-clap distances between any two cameras — meaningful at 60 fps when one camera is much closer to the clap than another.
@@ -126,7 +137,7 @@ Speed-of-sound (ToF) compensation needs both the camera world positions and the 
 The calibration steps deliberately do **not** apply ToF compensation:
 
 - **Extrinsic calibration**: camera positions are not yet known when the calibration video is synced (chicken-and-egg). Sync runs on raw clap onsets only. Practical guidance: clap near the centre of the camera volume so per-camera distance differences largely cancel.
-- **Set Origin**: audio sync is skipped entirely. Because the charuco board is held static, per-camera frame-level alignment is unnecessary. The recorded videos are still trimmed to a common duration and frame-count-equalised so the downstream pipeline sees homogeneous inputs (`_run_calib_sync(..., skip_sync=True)`).
+- **Set Origin**: audio sync is skipped entirely. Because the charuco board is held static, per-camera frame-level alignment is unnecessary: all offsets are zero (`sync_mode="no_sync"`) and the videos are used as recorded.
 
 ToF compensation is applied for **trial recording** ([recording_tab.py](../code/GUI/recording_tab.py)), where the camera poses are already available from the loaded calibration and the sound-source position is read from the Recording tab's own UI fields. The Recording tab is the only place that owns the sound-source position; the Calibration tab does not store one.
 
@@ -134,8 +145,8 @@ ToF compensation is applied for **trial recording** ([recording_tab.py](../code/
 
 The reference camera is initially chosen as the earliest *raw clap onset* (Step 4). ToF compensation (Step 6) subtracts each camera's differential sound-travel delay, which can make a **different** camera the genuinely earliest one — leaving that camera with a *negative* offset relative to the now-incorrect reference.
 
-`compute_sync_offsets` therefore performs a **re-baseline** (Step 7) after compensation: the camera with the minimum compensated offset becomes the reference (offset 0), and every other camera's offset is shifted to `compensated_offset − min` so all front-trims are ≥ 0. The `REF` marker moves to this camera; the displaced old reference takes a normal `PASS` status. This is a no-op when no compensation is applied (raw offsets are already ≥ 0 with the onset-reference at the minimum). Because the per-reference constant cancels under the shift, the result is independent of which camera was the intermediate onset-reference.
+`compute_sync_offsets` therefore performs a **re-baseline** (Step 7) after compensation: the camera with the minimum compensated offset becomes the reference (offset 0), and every other camera's offset is shifted to `compensated_offset − min` so all frame offsets are ≥ 0. The `REF` marker moves to this camera; the displaced old reference takes a normal `PASS` status. This is a no-op when no compensation is applied (raw offsets are already ≥ 0 with the onset-reference at the minimum). Because the per-reference constant cancels under the shift, the result is independent of which camera was the intermediate onset-reference.
 
-Without this step, `trim_and_sync_videos` clamps the negative offset to zero (`max(0, round(offset*fps))`), silently mis-aligning the genuinely-earliest camera by up to a frame.
+Without this step, `offsets_to_trial_sync` clamps the negative offset to zero (`max(0, round(offset*fps))`), silently mis-aligning the genuinely-earliest camera by up to a frame.
 
 > Note: the `Clap1 Lag`/`Clap2 Lag` columns in the summary table remain raw onset lags relative to the *onset*-reference (diagnostic only) and are **not** re-baselined. The `REF` camera may therefore show a non-zero Clap1 Lag while its Final Lag is 0 — this is expected.

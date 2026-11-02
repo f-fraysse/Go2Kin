@@ -4,6 +4,11 @@ Plays back synced trial video with optional overlays: **2D pose keypoints** (per
 detection) and **3D keypoints** (triangulated markers reprojected through the camera
 calibration). Useful for visually checking pose detection and triangulation quality.
 
+The frame counter is in **synced frames**: each camera's sync offset (from `trial.json`) is
+skipped automatically, so switching cameras keeps you on the same moment. This also makes it a
+quick way to check the sync — step to the clap or LED flash and switch cameras. Trials can be
+viewed straight after recording, before processing.
+
 > 🚧 **TODO:** screenshot with overlays enabled.
 
 ## Known quirks

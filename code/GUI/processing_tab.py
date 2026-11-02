@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 _PIPELINE_STEPS = [
     "Calibration",
     "Pose Estimation",
+    "Apply Sync",
     "Person Association",
     "Triangulation",
     # "Participant Filter",
@@ -212,7 +213,8 @@ class ProcessingTab:
 
             # Run pipeline with step-by-step progress
             print(f"Processing {session}/{trial_name}...")
-            ok = self._run_pipeline_with_progress(processed_path, calib_json_path)
+            sync_offsets = self.pm.get_sync_offsets(project, session, trial_name)
+            ok = self._run_pipeline_with_progress(processed_path, calib_json_path, sync_offsets)
 
             if ok:
                 success_count += 1
@@ -239,8 +241,11 @@ class ProcessingTab:
 
         self.root.after(0, finish)
 
-    def _run_pipeline_with_progress(self, processed_path, calib_json_path):
+    def _run_pipeline_with_progress(self, processed_path, calib_json_path, sync_offsets):
         """Run Pose2Sim pipeline, updating step circles after each step.
+
+        sync_offsets ({camera number: frames to skip}, from trial.json) are applied
+        after pose estimation by writing pose-sync/ (see apply_sync_offsets).
 
         Returns True on success, False on failure or cancel.
         """
@@ -259,10 +264,12 @@ class ProcessingTab:
                 sys.path.insert(0, pose2sim_path)
 
             from Pose2Sim import Pose2Sim as P2S
+            from pose2sim_builder import apply_sync_offsets
 
             steps = [
                 ("Calibration", P2S.calibration),
                 ("Pose Estimation", P2S.poseEstimation),
+                ("Apply Sync", lambda: apply_sync_offsets(processed_path, sync_offsets)),
                 ("Person Association", P2S.personAssociation),
                 ("Triangulation", P2S.triangulation),
                 # ("Participant Filter",

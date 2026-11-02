@@ -2,13 +2,14 @@
 Audio-based multi-camera video synchronisation.
 
 Extracts audio from GoPro MP4 files, detects clap onsets using
-Hilbert envelope + derivative threshold crossing, and trims videos to sync.
+Hilbert envelope + derivative threshold crossing. Offsets are stored as per-camera
+frame offsets in trial.json (see offsets_to_trial_sync); videos are not trimmed.
 
 Requires: ffmpeg (in PATH), numpy, scipy
 """
 
 import io
-import math
+import re
 import subprocess
 import time
 import wave
@@ -25,6 +26,9 @@ AUDIO_DURATION = 3.0  # seconds to analyse for onset detection
 SMOOTHING_WINDOW = 240  # 5 ms at 48 kHz
 CLAP_COOLDOWN_SECONDS = 0.3  # minimum gap between claps
 PEAK_HEIGHT_FACTOR = 0.2  # threshold = 20% of max derivative
+
+# Camera number from Go2Kin video filenames like "trial_001_GP3.mp4"
+GP_CAM_RE = re.compile(r"_GP(\d+)\.mp4$", re.IGNORECASE)
 
 
 class AudioSyncError(Exception):
@@ -567,10 +571,10 @@ def compute_sync_offsets(video_paths: List[str],
 
     # ── Step 7: Re-baseline reference after compensation ──
     # Speed-of-sound compensation can make a camera other than the onset-reference
-    # the genuinely earliest one, giving it a negative offset. trim_and_sync_videos
+    # the genuinely earliest one, giving it a negative offset. offsets_to_trial_sync
     # clamps negatives to 0 (max(0, round(...))), which would silently mis-align it.
     # Re-baseline so the minimum compensated offset is the reference (0) and every
-    # other camera gets a positive front-trim. No-op without compensation: raw
+    # other camera gets a positive frame offset. No-op without compensation: raw
     # offsets are all >= 0 with the onset-reference already at the minimum.
     new_ref = min(range(n_cams), key=lambda c: final_offsets[c]["offset_ms"])
     baseline = final_offsets[new_ref]["offset_ms"]
@@ -597,7 +601,7 @@ def compute_sync_offsets(video_paths: List[str],
         ref_cam = new_ref
 
     # Build return dict keyed by video path (enriched for acceptance evaluation
-    # and the discard popup; clap1-based offset in seconds is used for trimming).
+    # and the discard popup; clap1-based offset in seconds becomes the stored frame offset).
     results = {}
     for cam, vp in enumerate(video_paths):
         fo = final_offsets[cam]
@@ -635,187 +639,34 @@ def compute_sync_offsets(video_paths: List[str],
 
     # Save onset plot
     if output_dir:
-        synced_dir = Path(output_dir) / "synced"
-        synced_dir.mkdir(exist_ok=True)
-        plot_path = str(synced_dir / "sync_onsets.png")
+        plot_path = str(Path(output_dir) / "sync_onsets.png")
         log("Saving onset plot...")
         save_onset_plot(audio_tracks, envelopes, onsets, filenames, sr, plot_path)
-        log(f"  Created: synced/sync_onsets.png")
+        log(f"  Created: sync_onsets.png")
 
     return results
 
 
-def trim_and_sync_videos(video_paths: List[str], offsets: Dict[str, dict],
-                         output_dir: str, ffmpeg_path: str = "ffmpeg",
-                         progress_callback: Optional[Callable] = None,
-                         timer: Optional[StepTimer] = None,
-                         ) -> List[str]:
+def offsets_to_trial_sync(results: Dict[str, dict]) -> dict:
+    """Build the trial.json "sync" block from an audio or light sync result dict.
+
+    Returns {"fps", "reference_cam", "offset_frames": {"<cam number>": int}}.
+    offset_frames[k] is the number of leading raw frames to skip in camera k so
+    that synced frame s == raw frame s + offset_frames[k] (reference camera = 0).
+    Camera numbers come from the "_GP{N}" filename suffix. Uses the same rounding
+    as the former trim step: round(offset_seconds * fps).
     """
-    Trim videos: align starts (drop integer front frames per offset) and trim ends
-    to a shortest common frame count.
-
-    Front trimming is done in the FRAME domain with a frame-accurate re-encode
-    (hevc_nvenc, HEVC on the NVIDIA GPU — matches the GoPro source codec and handles
-    high res/fps, e.g. 2.7K @ 200fps, which the Windows MediaFoundation encoders
-    cannot). Requires a full ffmpeg build with NVENC on PATH (see CLAUDE.md / install
-    docs). Stream copy cannot do this: GoPro files keyframe only every ~1s
-    (50 frames @ 50fps), so a sub-GOP `-ss` + `-c copy` snaps back to frame 0 and
-    nothing is trimmed. Re-encoding decodes from the start and cuts on the exact
-    frame, so small inter-camera offsets are honoured.
-
-    Returns list of output file paths.
-    """
-    def log(msg):
-        if progress_callback:
-            progress_callback(msg)
-
-    if timer: timer.mark("10a. Frame count + common")
-    synced_dir = Path(output_dir) / "synced"
-    synced_dir.mkdir(exist_ok=True)
-
-    fps = get_frame_rate(video_paths[0])
-    log(f"FPS: {fps:.0f}")
-
-    # Compute integer front-trim (frames) and remaining frames per camera
-    n_drop = {}
-    available = {}
-    for vp in video_paths:
-        total_frames = get_frame_count(vp)
-        offset = offsets[vp]["offset_seconds"]
-        drop = max(0, round(offset * fps))
-        n_drop[vp] = drop
-        # The (drop + 0.5)/fps output-seek below lands just past frame index `drop`,
-        # so it actually discards drop + 1 frames. Account for that extra frame here,
-        # otherwise common_frames can exceed what the seek leaves on the constraining
-        # camera and that output ends up one frame short (unequal frame counts).
-        available[vp] = total_frames - drop - 1
-        log(f"  {Path(vp).name}: total={total_frames} frames, "
-            f"offset={offset:.4f}s, drop={drop} frames, remaining={available[vp]} frames")
-
-    common_frames = min(available.values())
-    log(f"Common frame count: {common_frames}")
-
-    # Re-encode each video: drop n_drop front frames, keep exactly common_frames.
-    # Output seeking (-ss after -i) is frame-accurate when re-encoding; the
-    # half-frame nudge avoids float rounding landing on the previous frame.
-    if timer: timer.mark("10b. Re-encode (trim)")
-    output_files = []
-    for vp in video_paths:
-        info = offsets[vp]
-        out_path = synced_dir / Path(vp).name
-        seek_seconds = (n_drop[vp] + 0.5) / fps
-
-        cmd = [
-            ffmpeg_path, "-y",
-            "-i", vp,
-            "-ss", f"{seek_seconds:.6f}",
-            "-frames:v", str(common_frames),
-            "-c:v", "hevc_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "19", "-b:v", "0",
-            "-c:a", "aac", "-b:a", "192k",
-            str(out_path)
-        ]
-
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-        if result.returncode != 0:
-            raise AudioSyncError(
-                f"ffmpeg trim failed for {Path(vp).name}: {result.stderr[-300:]}"
-            )
-
-        ref_marker = " (reference)" if info["is_reference"] else ""
-        log(f"  Created: {Path(vp).name}{ref_marker} (dropped {n_drop[vp]} front frames)")
-        output_files.append(str(out_path))
-
-    # Verify all outputs have the identical frame count (should always hold)
-    if timer: timer.mark("11. Verifying frame counts")
-    log("Verifying frame counts...")
-    frame_counts = {}
-    for out_path in output_files:
-        count = get_frame_count(out_path)
-        frame_counts[out_path] = count
-        log(f"  {Path(out_path).name}: {count} frames")
-
-    if len(set(frame_counts.values())) != 1:
-        log(f"  WARNING: frame counts differ across cameras: "
-            f"{ {Path(p).name: c for p, c in frame_counts.items()} }")
-    else:
-        log(f"All files have {common_frames} frames")
-
-    return output_files
-
-
-def create_stitched_preview(synced_dir: str, ffmpeg_path: str = "ffmpeg",
-                            progress_callback: Optional[Callable] = None,
-                            timer: Optional[StepTimer] = None) -> str:
-    """
-    Create a grid preview video from synced files (2 or more).
-    Each input is downscaled to 480x480, arranged in an auto-sized grid.
-    Returns path to the stitched file.
-    """
-    def log(msg):
-        if progress_callback:
-            progress_callback(msg)
-
-    if timer: timer.mark("12. Stitched preview")
-    synced_path = Path(synced_dir)
-    mp4_files = sorted(
-        f for f in synced_path.glob("*.mp4")
-        if f.name.lower() != "stitched_videos.mp4"
-    )
-
-    if len(mp4_files) < 2:
-        raise AudioSyncError(
-            f"Need at least 2 synced files for stitching, found {len(mp4_files)}"
-        )
-
-    output_path = synced_path / "stitched_videos.mp4"
-    n = len(mp4_files)
-    cols = math.ceil(math.sqrt(n))
-    rows = math.ceil(n / cols)
-    cell_size = 480
-    log(f"Creating {cols}x{rows} stitched preview ({n} files)...")
-
-    # Build ffmpeg command with xstack filter
-    cmd = [ffmpeg_path, "-y"]
-    for f in mp4_files:
-        cmd.extend(["-i", str(f)])
-    # Add black filler inputs for empty grid cells
-    pad_count = cols * rows - n
-    for _ in range(pad_count):
-        cmd.extend(["-f", "lavfi", "-i",
-                     f"color=black:s={cell_size}x{cell_size}:d=1"])
-
-    total_inputs = n + pad_count
-    # Scale real inputs, build xstack layout
-    parts = []
-    for i in range(n):
-        parts.append(f"[{i}:v]scale={cell_size}:{cell_size}[v{i}]")
-    for i in range(n, total_inputs):
-        parts.append(f"[{i}:v]copy[v{i}]")
-
-    stack_inputs = "".join(f"[v{i}]" for i in range(total_inputs))
-    layout_parts = []
-    for i in range(total_inputs):
-        r, c = divmod(i, cols)
-        layout_parts.append(f"{c * cell_size}_{r * cell_size}")
-    layout = "|".join(layout_parts)
-
-    parts.append(f"{stack_inputs}xstack=inputs={total_inputs}:layout={layout}[out]")
-    filter_str = ";".join(parts)
-
-    cmd.extend([
-        "-filter_complex", filter_str,
-        "-map", "[out]",
-        "-an",  # no audio needed for preview
-        "-c:v", "mpeg4",
-        "-q:v", "5",
-        str(output_path)
-    ])
-
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-    if result.returncode != 0:
-        raise AudioSyncError(
-            f"ffmpeg stitching failed: {result.stderr[-300:]}"
-        )
-
-    log(f"  Created: stitched_videos.mp4")
-    return str(output_path)
+    fps = None
+    reference_cam = None
+    offset_frames = {}
+    for vp, info in results.items():
+        m = GP_CAM_RE.search(Path(vp).name)
+        if not m:
+            raise AudioSyncError(f"Cannot parse camera number from '{Path(vp).name}'")
+        cam = int(m.group(1))
+        if fps is None:
+            fps = info.get("fps") or get_frame_rate(vp)
+        offset_frames[str(cam)] = max(0, int(round(info["offset_seconds"] * fps)))
+        if info.get("is_reference"):
+            reference_cam = cam
+    return {"fps": fps, "reference_cam": reference_cam, "offset_frames": offset_frames}

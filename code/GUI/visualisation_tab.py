@@ -40,7 +40,8 @@ class VisualisationTab:
         # Video state
         self._cap = None
         self._fps = 50.0
-        self._total_frames = 0
+        self._total_frames = 0        # synced frames available for the active camera
+        self._frame_offset = 0        # raw frame = synced frame + offset (trial.json "sync")
         self._current_frame_idx = -1
         self._playing = False
         self._play_job = None
@@ -215,8 +216,21 @@ class VisualisationTab:
             self._clear_video()
             self._show_placeholder("No synced video available")
 
+    def _videos_dir(self):
+        """Folder holding the trial's camera videos.
+
+        processed/videos/ (raw videos, synced via trial.json offsets; for legacy
+        processed trials it holds copies of the trimmed videos). Falls back to the
+        legacy video/synced/ for old trials that were never processed.
+        """
+        args = (self.get_current_project(), self.get_current_session(), self._current_trial)
+        videos = self.pm.get_trial_videos_path(*args)
+        if videos.exists() and any(videos.glob("*_GP*.mp4")):
+            return videos
+        return self.pm.get_trial_synced_path(*args)
+
     def _scan_cameras(self):
-        """Detect which cameras (GP1-GP4) have synced video files."""
+        """Detect which cameras (GP1-GP4) have video files."""
         self._available_cameras = []
         for n in range(1, 5):
             self._cam_buttons[n].configure(state=tk.DISABLED, relief=tk.RAISED,
@@ -224,13 +238,12 @@ class VisualisationTab:
         if not self.get_current_project() or not self.get_current_session() or not self._current_trial:
             return
 
-        synced = self.pm.get_trial_synced_path(
-            self.get_current_project(), self.get_current_session(), self._current_trial)
-        if not synced.exists():
+        videos = self._videos_dir()
+        if not videos.exists():
             return
 
         for n in range(1, 5):
-            matches = list(synced.glob(f"*_GP{n}.mp4"))
+            matches = list(videos.glob(f"*_GP{n}.mp4"))
             if matches:
                 self._available_cameras.append(n)
                 self._cam_buttons[n].configure(state=tk.NORMAL)
@@ -258,7 +271,12 @@ class VisualisationTab:
     # =========================================================================
 
     def _load_video(self):
-        """Open VideoCapture for the active camera's synced MP4."""
+        """Open VideoCapture for the active camera's MP4.
+
+        The timeline is in synced frames: synced frame s is raw frame
+        s + offset of this camera (0 for legacy, pre-trimmed videos), so the
+        same index is the same moment in every camera and in the TRC/.mot.
+        """
         self._stop_playback()
         if self._cap:
             self._cap.release()
@@ -268,9 +286,7 @@ class VisualisationTab:
                     self._current_trial, self._active_camera]):
             return
 
-        synced = self.pm.get_trial_synced_path(
-            self.get_current_project(), self.get_current_session(), self._current_trial)
-        files = list(synced.glob(f"*_GP{self._active_camera}.mp4"))
+        files = list(self._videos_dir().glob(f"*_GP{self._active_camera}.mp4"))
         if not files:
             self._show_placeholder("Video file not found")
             return
@@ -281,9 +297,19 @@ class VisualisationTab:
             self._show_placeholder("Failed to open video")
             return
 
+        try:
+            offsets = self.pm.get_sync_offsets(
+                self.get_current_project(), self.get_current_session(), self._current_trial)
+        except Exception:
+            offsets = {}
+        self._frame_offset = offsets.get(self._active_camera, 0)
+
         self._fps = self._cap.get(cv2.CAP_PROP_FPS) or 50.0
-        self._total_frames = int(self._cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        self._current_frame_idx = -1  # force seek on first display
+        raw_frames = int(self._cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self._total_frames = max(0, raw_frames - self._frame_offset)
+        self._current_frame_idx = -1  # next sequential read = synced frame 0
+        if self._frame_offset:
+            self._cap.set(cv2.CAP_PROP_POS_FRAMES, self._frame_offset)
 
         # Update scrubber
         self.scrubber.configure(to=max(0, self._total_frames - 1))
@@ -311,6 +337,7 @@ class VisualisationTab:
             self._cap = None
         self._active_camera = None
         self._total_frames = 0
+        self._frame_offset = 0
         self._current_frame_idx = -1
         self._pose_json_dir = None
         self._pose_model = None
@@ -394,9 +421,9 @@ class VisualisationTab:
         self._update_frame_label(frame_idx)
 
     def _read_frame(self, frame_idx):
-        """Read a frame, using sequential read when possible to avoid slow seeks."""
+        """Read synced frame frame_idx (raw frame + offset), sequentially when possible to avoid slow seeks."""
         if frame_idx != self._current_frame_idx + 1:
-            self._cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            self._cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx + self._frame_offset)
         ret, frame = self._cap.read()
         return frame if ret else None
 
@@ -613,8 +640,9 @@ class VisualisationTab:
 
     def _overlay_pose(self, frame, frame_idx):
         """Draw 2D pose keypoints and skeleton on the frame if JSON exists."""
+        # pose/ JSONs are named by raw video frame (pose-sync/ holds the shifted copies)
         cam_name = f"{self._current_trial}_GP{self._active_camera}"
-        json_file = self._pose_json_dir / f"{cam_name}_{frame_idx:06d}.json"
+        json_file = self._pose_json_dir / f"{cam_name}_{frame_idx + self._frame_offset:06d}.json"
 
         if not json_file.exists():
             return frame

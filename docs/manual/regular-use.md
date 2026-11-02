@@ -23,9 +23,9 @@ Do this **every session**, and any time a camera may have moved. Intrinsics are 
 redone — only extrinsics and origin.
 
 1. **LED ROI** (Light sync only) — with cameras in their final positions, **Record LED clip & set ROI** in the [Calibration tab](gui/calibration-tab.md) and click the LED in each view ([details](gui/led-sync.md)).
-2. **Extrinsic** — with cameras in their final positions, record the charuco board moving through the shared field of view. After files download and auto-sync, browse to the trial's `synced/` folder in the [Calibration tab](gui/calibration-tab.md) and click **Calibrate Extrinsics**.
-3. **Set Origin** — stand the board vertically (portrait) at the lab origin (origin corner **790 mm** above the floor), record on all cameras, browse to the folder and click **Set Origin**.
-4. **Save Calibration** — the top-bar indicator turns **green** (calibrated today).
+2. **Extrinsic** — with cameras in their final positions, click **Calibrate** in the [Calibration tab](gui/calibration-tab.md) and move the charuco board through the shared field of view, then **STOP**. Files download, sync and the calibration runs automatically.
+3. **Set Origin** — stand the board vertically (portrait) at the lab origin (origin corner **790 mm** above the floor) and click **Set Origin**.
+4. **Saving is automatic** — the top-bar indicator turns **green** (calibrated today).
 
 > 🚧 **TODO:** capture guidance — with hand claps, clap near the centre of the camera volume for the extrinsic recording (sound-delay compensation can't apply yet; not an issue with Light sync), how long to move the board, and coverage tips.
 
@@ -41,8 +41,8 @@ For each trial:
 ## 5. Process
 
 In the [Processing tab](gui/processing-tab.md), tick the trials and click **Process
-Selected**. Trials run sequentially (pose estimation → triangulation → filtering →
-OpenSim kinematics); **Stop** halts after the current step.
+Selected**. Trials run sequentially (pose estimation → apply sync → person association →
+triangulation → filtering → OpenSim kinematics); **Stop** halts after the current step.
 
 > 🚧 **TODO:** recommended pattern — process between trials, at end of session, or overnight?
 

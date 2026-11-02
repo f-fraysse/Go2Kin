@@ -60,10 +60,10 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
    conda install -c conda-forge ffmpeg
    ```
 
-   **Replace ffmpeg with an NVENC build** (required for high-resolution / high-frame-rate
-   sync, e.g. 2.7K @ 200 fps). The audio-sync trim re-encodes on the NVIDIA GPU with
-   `hevc_nvenc`, but the conda-forge ffmpeg is LGPL (`--disable-gpl`) and has **no NVENC** —
-   high-fps sync fails with an encoder error. Swap in a full GPL build:
+   **(Optional) Replace ffmpeg with a full NVIDIA build.** No longer required: sync stores
+   frame offsets and never re-encodes, so the conda-forge ffmpeg (LGPL, no NVENC/NVDEC) is
+   enough. A full GPL build only lets light sync decode on the GPU (`-hwaccel cuda`; it falls
+   back to CPU otherwise). To swap one in:
 
    1. **Close Go2Kin** if running (so `ffmpeg.exe` isn't locked).
    2. Download a build matching your NVIDIA driver's NVENC API. The **n7.1** build from
@@ -75,8 +75,7 @@ Each camera is identified by its serial number. The GoPro HTTP API is accessed o
       Conda env, e.g. `<conda>\envs\Go2Kin\Library\bin\` (back the originals up first).
    4. Verify: `ffmpeg -hide_banner -encoders | findstr nvenc` lists `hevc_nvenc`.
 
-   > ⚠️ `conda update ffmpeg` (or recreating the env) reverts to the NVENC-less build —
-   > re-apply this swap if high-fps sync stops working.
+   > `conda update ffmpeg` (or recreating the env) reverts to the conda build.
 
 4. Install pose2sim as a submodule. `code/pose2sim` is a frozen fork of Pose2Sim
    ([f-fraysse/pose2sim](https://github.com/f-fraysse/pose2sim)); do not pull from upstream inside it.
@@ -136,20 +135,20 @@ Multi-camera calibration using a printed charuco board. The calibration pipeline
 - **Charuco Board Config** - set board dimensions, square size, ArUco dictionary. Save a printable board image.
 - **Intrinsic Calibration** - per-camera lens calibration from a video of the board. Uses smart frame selection for orientation and spatial coverage diversity.
 - **LED Sync ROI** - only for Light sync. Record a short clip (or pick an existing recording folder) and click the LED in each camera view; Go2Kin watches that small square for the flash. Stored with the calibration and cleared with the extrinsics; redo it whenever a camera or the LED moves. In Light mode, extrinsic calibration is disabled until every connected camera has an ROI.
-- **Extrinsic Calibration** - multi-camera pose estimation from synced videos. Includes PnP solving, outlier rejection, graph bridging, triangulation, and bundle adjustment.
-- **Set Origin** - stand the charuco board vertically in portrait mode at the lab origin. Records a short video on all cameras, trims them to a common duration / frame count (audio sync is skipped — the board is static), then aligns the coordinate system using a Umeyama similarity transform. Can be re-run after loading a saved calibration.
+- **Extrinsic Calibration** - multi-camera pose estimation from synced videos. Includes PnP solving, outlier rejection, graph bridging, triangulation, and bundle adjustment. Videos are not trimmed: corner extraction skips each camera's sync offset frames.
+- **Set Origin** - stand the charuco board vertically in portrait mode at the lab origin. Records a short video on all cameras (sync is skipped — the board is static, zero offsets), then aligns the coordinate system using a Umeyama similarity transform. Can be re-run after loading a saved calibration.
 - **Saving / Load** - no save button: extrinsic calibration auto-saves a new `[project]/calibrations/calibration_YYYY-MM-DD-HH-MM.json` (plus a Pose2Sim `.toml`), Set Origin updates it, and LED ROI changes are written into it. This active calibration is shown in the top bar, referenced by new trials and reloaded at startup. **Load Calibration** switches to another saved file.
 
 ### Tab 3 - Recording
-Enter a trial name and start/stop synchronized recording across selected cameras. Files are downloaded from each camera and saved to the project directory (`[project]/sessions/[session]/[trial]/video/`). After download, synchronisation runs automatically with the method selected in the bottom bar - synced files appear in `video/synced/`. A session/trial tree view at the bottom shows all recorded trials. See **Video Synchronisation** below for details.
+Enter a trial name and start/stop synchronized recording across selected cameras. Files are downloaded from each camera straight into the trial's Pose2Sim folder (`[project]/sessions/[session]/[trial]/processed/videos/`) - the only copy, kept as recorded. After download, synchronisation runs automatically with the method selected in the bottom bar and stores per-camera frame offsets in `trial.json` (no trimming or re-encoding). A session/trial tree view at the bottom shows all recorded trials. See **Video Synchronisation** below for details.
 
 ### Tab 4 - Processing
-Run the [Pose2Sim](https://github.com/perfanalytics/pose2sim) pipeline on recorded trials. Select trials from a tree view (with session grouping and checkbox selection), then click **Process Selected** to run pose estimation, triangulation, filtering, and kinematics sequentially. Real-time log output streams in the GUI. Pose2Sim is included as a git submodule at `code/pose2sim/` (frozen fork).
+Run the [Pose2Sim](https://github.com/perfanalytics/pose2sim) pipeline on recorded trials. Select trials from a tree view (with session grouping and checkbox selection), then click **Process Selected** to run pose estimation, sync, person association, triangulation, filtering, and kinematics sequentially. Real-time log output streams in the GUI. Pose2Sim is included as a git submodule at `code/pose2sim/` (frozen fork).
 
 The processing pipeline:
-1. **Stages** trial data into Pose2Sim's expected directory structure (`[trial]/processed/`)
-2. **Validates** that synced videos, calibration TOML, and subject data (height, mass) exist
-3. **Runs** each Pose2Sim step: calibration (no-op - reads existing TOML), pose estimation (RTMPose via CUDA), triangulation, Butterworth filtering, and OpenSim kinematics
+1. **Stages** trial data into Pose2Sim's expected directory structure (`[trial]/processed/`; the videos are already in `processed/videos/`)
+2. **Validates** that the trial is synced, and that its videos, calibration TOML, and subject data (height, mass) exist
+3. **Runs** each Pose2Sim step: calibration (no-op - reads existing TOML), pose estimation (RTMPose via CUDA), **Apply Sync** (writes `pose-sync/` from the stored frame offsets), person association, triangulation, Butterworth filtering, and OpenSim kinematics. Everything from triangulation on is in synced frames (TRC `Frame#` = synced frame)
 4. **Updates** `trial.json` with `processed: true` on success
 
 **OpenSim model:** kinematics (scaling + inverse kinematics) uses the **RajagopalLaiUhlrich2023** model by default, with Halpe26 marker, scaling and IK setups adapted from Pose2Sim's. This is set by `use_original_RLU2023 = true` under `[kinematics]` in `config/pose2sim_config_template.toml`; set it to `false` to use Pose2Sim's stock model.
@@ -161,7 +160,7 @@ See [`docs/CHANGELOG_Halpe26_to_RLU2023.md`](docs/CHANGELOG_Halpe26_to_RLU2023.m
 Batch processing runs trials sequentially. A **Stop** button halts processing after the current step completes. See [`docs/pose2sim_integration.md`](docs/pose2sim_integration.md) for technical details.
 
 ### Tab 5 - Visualisation (experimental)
-Experimental. Plays back synced trial video with optional overlay of 2D pose keypoints (from per-camera detection) and 3D keypoints (triangulated markers reprojected via camera calibration). Useful for visually checking pose detection and triangulation quality. See [`docs/Visualisation.md`](docs/Visualisation.md) for technical details.
+Experimental. Plays back synced trial video (raw videos with each camera's sync offset skipped, so the timeline is in synced frames) with optional overlay of 2D pose keypoints (from per-camera detection) and 3D keypoints (triangulated markers reprojected via camera calibration). Useful for visually checking pose detection and triangulation quality. See [`docs/Visualisation.md`](docs/Visualisation.md) for technical details.
 
 **Known issues:** 
 - selecting a different trial sometimes does not load the video properly. Select another camera viewpoint to force refresh.
@@ -177,8 +176,8 @@ from [Caliscope](https://github.com/mprib/caliscope)
 
 1. **Print the charuco board.** Configure board parameters in the Calibration tab and click **Save Board Image**. Print at the configured size (default: A1). Mount on a rigid flat surface. **Measure the actual printed square size** - printers don't always scale exactly. Highly recommend also printing the "inverted" image and making a double-sided board (see Caliscope).
 2. **Intrinsic calibration.** For each camera, record a video of the board from various angles and distances. In the Calibration tab, browse to each video and click **Calibrate**. Done infrequently - one need to be redone if changing camera Zoom, or camera model altogether. 
-3. **Extrinsic calibration.** With all cameras in their final positions, record the board being moved through the shared field of view. The Recording tab automatically synchronises files after download. Browse to the `synced/` folder and click **Calibrate Extrinsics**.
-4. **Set origin.** Stand the board vertically in portrait mode at the desired world origin (origin corner 790mm above floor). Record with all cameras, synchronise, then browse to the synced folder and click **Set Origin**. This can also be re-run after loading a saved calibration to redefine the coordinate system.
+3. **Extrinsic calibration.** With all cameras in their final positions, click **Calibrate**, move the board through the shared field of view, then **STOP**. Files are downloaded and synced, and the calibration runs automatically.
+4. **Set origin.** Stand the board vertically in portrait mode at the desired world origin (origin corner 790mm above floor) and click **Set Origin** — it records on all cameras and aligns the coordinate system. This can also be re-run after loading a saved calibration to redefine the coordinate system.
 5. **Saving is automatic.** Results are saved after steps 3 and 4 — there is no save button. A Pose2Sim-compatible TOML file is generated alongside the JSON.
 
 ## Project Structure
@@ -264,7 +263,7 @@ Even when starting all cameras simultaneously, each GoPro begins recording at a 
 - **Hand claps** (Manual) - audio-based, described first below.
 - **LED flash** (Light) - hands-free and unaffected by room noise; see [Light (LED) sync](#light-led-sync).
 
-Both produce the same `synced/` output and use the same pass/fail popup.
+Both produce the same output (frame offsets in `trial.json`) and use the same pass/fail popup.
 
 ### How to use (hand claps)
 
@@ -284,12 +283,18 @@ The **same criteria and popup apply to extrinsic calibration recording**: if the
 
 ### Output
 
-A `synced/` subfolder is created inside the trial's `video/` directory containing:
-- Trimmed MP4 files (same filenames as originals) - start-aligned and end-trimmed to identical duration
-- `sync_onsets.png` - diagnostic plot showing detected clap onsets on audio envelopes (cropped around claps)
-- `stitched_videos.mp4` - a 2x2 grid preview (960x960) of all cameras for quick visual verification of sync
+Videos are **not trimmed or re-encoded** — the raw camera files in `processed/videos/` are kept (higher bitrate, original quality), and the wait between trials is short. On success, `trial.json` gets the per-camera frame offsets:
 
-Original files are never modified. `trial.json` is updated with `synced: true` on success.
+```json
+"synced": true, "sync_method": "light",
+"sync": {"fps": 100.0, "reference_cam": 3, "offset_frames": {"1": 3, "2": 2, "3": 0, "4": 5}}
+```
+
+`offset_frames[k]` = leading raw frames to skip in camera k (all >= 0, reference = 0); synced frame `s` is raw frame `s + offset_frames[k]`. Processing (the **Apply Sync** step), the Visualisation tab and extrinsic calibration apply these offsets.
+
+- `sync_onsets.png` - diagnostic plot showing detected clap onsets on audio envelopes (cropped around claps), saved in `processed/videos/` (Pose2Sim ignores it)
+
+To re-run the sync on an existing trial: `python tools/resync_trial.py "<project>/sessions/<session>/<trial>" [audio|light]` (writes `trial.json["sync"]` only if the sync passes; light sync uses the LED ROIs from the trial's calibration file).
 
 ### Technical approach
 
@@ -300,9 +305,7 @@ Original files are never modified. `trial.json` is updated with `synced: true` o
 | Onset detection | Derivative threshold | Positive-only first derivative, threshold at 20% of peak, 0.3s cooldown between claps |
 | Consistency check | Dual-clap | If both claps detected in all cameras, clap 1 vs clap 2 offsets must agree within 1 frame |
 | Reference selection | Earliest onset | Camera with earliest clap 1 onset is the reference; others offset relative to it |
-| End alignment | Common frame count | All files trimmed to the shortest remaining frame count after start alignment |
-| Video trimming | Frame-accurate re-encode | Drops integer front frames per offset, then re-encodes (`hevc_nvenc`, NVIDIA GPU - handles 2.7K@200fps, which MediaFoundation can't). Stream copy can't cut sub-GOP - GoPro keyframes only every ~1s |
-| Stitched preview | ffmpeg xstack filter | 4 inputs downscaled to 480x480, arranged in 2x2 grid, encoded with built-in mpeg4 codec |
+| Stored offsets | Integer frames | `round(offset × fps)` per camera, saved in `trial.json["sync"]` (`audio_sync.offsets_to_trial_sync`); applied by readers instead of trimming |
 | Speed-of-sound compensation | Optional | If calibration is loaded and a sound source position is set, subtracts differential sound propagation delay (distance / 340 m/s) from measured offsets |
 
 ### Speed-of-sound compensation
@@ -311,7 +314,7 @@ When cameras are at different distances from the clap/speaker, sound arrives at 
 
 To correct for this, set the sound source position in the **Recording tab** (Sound source X / Y / Z in metres, in the calibration coordinate system). When a calibration is loaded so camera world positions are known, the sync algorithm automatically subtracts the differential propagation delay (distance / 340 m/s) from measured offsets. Both raw and compensated offsets are logged in the console. The Recording tab persists its own sound-source values to `go2kin_config.json` so they survive between sessions.
 
-Compensation is **not** applied during extrinsic calibration (camera poses don't yet exist when the calibration video is synced) or during Set Origin (sync is skipped entirely — the board is static). For extrinsic calibration, clap near the centre of the camera volume so per-camera distance differences largely cancel.
+Compensation is **not** applied during extrinsic calibration (camera poses don't yet exist when the calibration video is synced) or during Set Origin (sync is skipped entirely — the board is static, zero offsets). For extrinsic calibration, clap near the centre of the camera volume so per-camera distance differences largely cancel.
 
 ### Light (LED) sync
 
@@ -328,7 +331,7 @@ An alternative to claps: a white LED, visible to all cameras, flashes for 1 seco
 
 **Pass/fail**: the flash must be found in every camera (enough brightness contrast, ~1 s long), each camera's offsets from the LED switching on and switching off must agree within 1 frame, and no camera's offset may exceed 200 ms. Otherwise the same red popup appears and the trial is discarded (or the extrinsic calibration aborted), as for claps.
 
-**Output**: as for audio sync, plus `sync_led_signal.png` (ROI brightness per camera with the detected on/off instants). `trial.json` records `"sync_method": "light"`.
+**Output**: as for audio sync (frame offsets in `trial.json`, `"sync_method": "light"`), plus `sync_led_signal.png` in `processed/videos/` (ROI brightness per camera with the detected on/off instants).
 
 | Step | Method | Detail |
 |------|--------|--------|
@@ -336,28 +339,23 @@ An alternative to claps: a white LED, visible to all cameras, flashes for 1 seco
 | Brightness per frame | Top-16 mean | Mean of the 16 brightest ROI pixels, so the result does not depend on how big the LED looks |
 | Pulse detection | 50 % threshold | Baseline from the first 10 frames; first frame above halfway = on, next below = off; pulse length must be 1 s ± 3 frames |
 | Offsets | Integer frames | Camera with the earliest on-edge is the reference; others offset relative to it |
-| Trimming | Shared with audio sync | Same frame-accurate re-encode and 2×2 stitched preview |
+| Stored offsets | Shared with audio sync | Same `trial.json["sync"]` block; no trimming |
 
 ### Requirements
 
-- **ffmpeg** must be installed and in PATH. Light sync uses NVIDIA GPU decoding when the ffmpeg build supports it and falls back to CPU otherwise - no extra setup. For high-resolution / high-frame-rate sync
-  (e.g. 2.7K @ 200 fps) it must be a build with **NVENC** (`hevc_nvenc`) — the conda-forge
-  ffmpeg has no NVENC and will fail. See the NVENC step under [Setup](#setup).
+- **ffmpeg** and **ffprobe** must be installed and in PATH (audio extraction, LED ROI decoding, frame rate). Light sync uses NVIDIA GPU decoding when the ffmpeg build supports it and falls back to CPU otherwise - no extra setup. No NVENC build is needed (nothing is re-encoded).
 - **numpy**, **scipy**, and **matplotlib** (included in `requirements.txt`)
 
 ## TODO
 
 Big ones:
 1. calibration: save calibration "quality metrics" for extrinsics (ie RMSE etc). For intrinsics we already do this. Need to figure out what to keep and where to store it. And define heuristics for extrinsic calib quality check.
-2. sync (audio based): pass/fail criteria + auto-discard now implemented — all cameras detect 2 peaks AND the 2 offsets per camera agree within half a frame AND final offset for any camera <200ms; on failure a red popup shows the sync table and the trial folder is discarded. Remaining: (a) peak-to-background-noise ratio criterion (tbc); (b) on PASS, delete raw unsynced videos and keep only synced ones (currently raw videos are retained), so only 1 video per camera is kept. (LED light sync is now available as a hands-free alternative to claps — see [Light (LED) sync](#light-led-sync).)
-3. Currently functionality is: after recording ends, save raw videos to [trial data path]/video/ (with /synced/ subfolder) and create trial.json with calib file name and participant name. Then when Processing trial, create the staging folder (move videos, copy calib file, copy pose2sim config file). New functionality: create pose2sim staging folder after recording rather than at Processing step - move videos and calib file (if exists) right after recording, create trial JSON (already done then?) Safer to move calib file while we know it exists. (see above for sync pass fail: if sync pass, copy synced and cropped files. If sync failed copy raw unsynced files cropped to same frame numbers) Also avoids duplicate videos (some in [trial]/video, some in [trial]/processed/videos)
+2. sync (audio based): pass/fail criteria + auto-discard now implemented — all cameras detect 2 peaks AND the 2 offsets per camera agree within half a frame AND final offset for any camera <200ms; on failure a red popup shows the sync table and the trial folder is discarded. Remaining: peak-to-background-noise ratio criterion (tbc). (Done: only 1 video per camera is kept — sync is stored as frame offsets in `trial.json`, raw videos are not trimmed.) (LED light sync is now available as a hands-free alternative to claps — see [Light (LED) sync](#light-led-sync).)
+3. Pose2Sim staging at recording time: done for videos — raw videos are downloaded straight into [trial]/processed/videos/ (no duplicates, no trimming; sync offsets in trial.json). Remaining: the calib TOML and Config.toml are still staged at the Processing step (safer to copy the calib file while we know it exists).
 4. user manual — scaffolded & published to GitHub Pages (MkDocs, `docs/manual/`); content still being written
 
 Misc / small:
 - extrinsic calibration at 2.7K misses too many ArUco/charuco markers for a reliable calibration — record extrinsic at 4K. Investigate why 2.7K detection is poor (resolution/sharpness, detector params).
-- audio sync: frame-accurate re-encode (`hevc_nvenc`, GPU) is slow at high res/fps — 4K@100fps took >2× the usual time. Investigate encoder tuning (preset, lookahead/B-frames, rate-control) or whether HEVC-source decode is the bottleneck.
-- drop audio (`-an`) from synced per-camera MP4s once sync quality is validated - audio is currently kept (re-encoded/aligned) only to help verify sync during development
-- defer or remove the creation of "stitched preview" after sync (takes ~10sec) - after audio sync cleanup
 - check camera configs (double up between old system in config/ and go2kin_config in root)
 - keep extra info in JSON calib file (e.g. quality metrics - to be displayed in Calibration tab later)
 - make charuco board vertical offset editable by user (one/few times setup probably)

@@ -10,15 +10,15 @@ synchronisation (hand claps or LED flash, per the bottom-bar **Sync** setting).
 1. Enter a **trial name** and select the cameras.
 2. **Start** — then perform **two loud hand claps within the first 3 seconds**. (Two claps enable a consistency check; one clap works, but without cross-validation.) With **Light** sync, the LED flashes instead — no clapping; see [LED light sync](led-sync.md).
 3. Perform the movement, then **Stop**.
-4. Files are downloaded from each camera into `[project]/sessions/[session]/[trial]/video/`, and synchronisation runs automatically with the method set in the bottom bar — synced files appear in `video/synced/`.
+4. Files are downloaded from each camera into `[project]/sessions/[session]/[trial]/processed/videos/`, and synchronisation runs automatically with the method set in the bottom bar. It only takes a few seconds — the videos are not re-encoded.
 
 A session/trial tree view at the bottom shows all recorded trials.
 
 ## Sync outputs (per trial)
 
-- Trimmed MP4s in `synced/` — start-aligned and end-trimmed to identical duration. Originals are never modified.
-- `sync_onsets.png` — detected clap onsets on each camera's audio envelope (audio sync), or `sync_led_signal.png` — ROI brightness with the detected LED on/off instants (light sync).
-- `stitched_videos.mp4` — a 2×2 grid preview for quick visual verification of sync.
+- **Frame offsets in `trial.json`** — how many frames to skip at the start of each camera's video so they all line up. The videos are kept exactly as recorded (one copy, full camera quality); Processing and the Visualisation tab apply the offsets.
+- `sync_onsets.png` — detected clap onsets on each camera's audio envelope (audio sync), or `sync_led_signal.png` — ROI brightness with the detected LED on/off instants (light sync). Saved next to the videos in `processed/videos/`.
+- To check the sync by eye, open the trial in the [Visualisation tab](visualisation-tab.md), step to the clap or LED flash and switch cameras.
 
 ## If the sync fails
 
