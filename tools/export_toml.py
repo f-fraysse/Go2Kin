@@ -32,7 +32,13 @@ def main():
         data = json.load(f)
 
     lines = []
+    exported, skipped = [], []
     for cam_id_str, cam in data["cameras"].items():
+        # Cameras with intrinsics only (unposed in the extrinsic run) can't go in the TOML
+        if "rotation" not in cam or "translation" not in cam:
+            skipped.append(cam_id_str)
+            continue
+        exported.append(cam_id_str)
         R = np.array(cam["rotation"])
         rvec = cv2.Rodrigues(R)[0].flatten()
         t = cam["translation"]
@@ -50,11 +56,17 @@ def main():
         lines.append(f"rotation = {rvec.tolist()}")
         lines.append("")
 
+    if skipped:
+        print(f"Skipped cameras without extrinsics: {', '.join(skipped)}")
+    if not exported:
+        print("No cameras with extrinsics - TOML not written")
+        sys.exit(1)
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
         f.write("\n".join(lines))
 
-    print(f"Exported {len(data['cameras'])} cameras to {output_path}")
+    print(f"Exported {len(exported)} cameras to {output_path}")
 
 
 if __name__ == "__main__":

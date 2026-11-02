@@ -51,14 +51,21 @@ def save_calibration(
 
     logger.info(f"Calibration saved to {filepath}")
 
-    # Auto-export TOML for Pose2Sim compatibility
-    try:
-        toml_script = Path(__file__).resolve().parents[2] / "tools" / "export_toml.py"
-        if toml_script.exists():
-            toml_path = filepath.with_suffix(".toml")
-            subprocess.run([sys.executable, str(toml_script), str(filepath), str(toml_path)], check=False)
-    except Exception as e:
-        logger.warning(f"TOML export failed: {e}")
+    # Auto-export TOML for Pose2Sim compatibility. Pose2Sim processing needs it, so a
+    # failure is raised (the JSON above is already saved).
+    toml_script = Path(__file__).resolve().parents[2] / "tools" / "export_toml.py"
+    if toml_script.exists():
+        toml_path = filepath.with_suffix(".toml")
+        result = subprocess.run(
+            [sys.executable, str(toml_script), str(filepath), str(toml_path)],
+            capture_output=True, text=True,
+        )
+        if result.stdout:
+            print(result.stdout.strip())
+        if result.returncode != 0 or not toml_path.exists():
+            detail = (result.stderr or result.stdout).strip()
+            logger.warning(f"TOML export failed: {detail}")
+            raise RuntimeError(f"TOML export failed ({toml_path.name}):\n{detail}")
 
 
 def load_calibration(filepath: Path) -> tuple[CameraArray, Charuco, list[float] | None]:
