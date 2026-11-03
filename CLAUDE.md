@@ -39,6 +39,8 @@ branch `main` (forked from upstream commit `491d564`). Pose2Sim is pip-installed
   - `perform_scaling()` forces `marker_set_file = Unassigned`.
   - `personAssociation.py`: reads JSONs from the folder it listed them from (upstream's `os.path.exist`
     typo meant `pose-sync/` names were read from `pose/`, silently undoing any sync).
+  - `common.sort_people_sports2d`: pads `frames_since_last_seen` to the number of person slots
+    (triangulation crashed with a broadcast error when a person entered the view mid-trial).
   - Docs: `docs/pose2sim_integration.md`, `docs/CHANGELOG_Halpe26_to_RLU2023.md` (port + fork changes + validation), and
     `docs/Pose2Sim vs RLU2023 kinematic models and Halpe26 keypoint positions.docx` (comparison of the *unmodified* models).
 
@@ -201,8 +203,7 @@ That session was calibrated, synced and processed offline with scripts. They're 
 - **LED on-time:** `light_sync.detect_pulse` rejects anything but a 1 s ± `PULSE_TOLERANCE_FRAMES` pulse. The remote LED is switched by hand and stayed on 0.4–2.3 s. Accept a range of on-times. The on/off edge agreement gate already exists (`evaluate_light_sync_acceptance`).
 - **Calibration quality not saved:** the JSON stores only the intrinsic `error`. Add the extrinsic RMSE (overall and per camera), scale RMSE and baseline, and show them in the tab.
 - **Sync by stored offsets:** done (Nov 2026, see Architecture). Still open: a failed Recording-tab sync deletes the trial; it could instead keep the raw videos with `synced=False` for a later `tools/resync_trial.py`.
-- **Pose2Sim fork bugs** (monkeypatched in the climbing scripts only):
-  - `triangulation.triangulate_all` pads `Q_old` but not `frames_since_last_seen`, which raises a broadcast error in `sort_people_sports2d`.
+- **Pose2Sim fork bugs** (monkeypatched in the climbing scripts only; the `frames_since_last_seen` one is now fixed in the fork):
   - `personAssociation.compute_affinity` gives persons with no valid keypoints affinity 1, so they steal the match from the real person.
 - **No per-trial quality metrics** in Go2Kin. Reference implementations are the scripts' `collect_metrics.py` and `ik_diagnostics.py`.
 - **RLU2023 joint ranges are too tight for climbing:** shoulder flexion ±90°, hip flexion 120°, hip rotation ±40°.

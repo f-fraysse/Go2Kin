@@ -136,6 +136,10 @@ source. Pose2Sim pairs cameras by the frame number in the JSON filename, so ever
 Fork fix: upstream `personAssociation.py` tested `open(os.path.exist(...))` (typo, always raised) and silently fell back
 to `pose/`, so `pose-sync/` was never actually read. The fork now reads from whichever folder it listed the files from.
 
+Fork fix: in multi-person triangulation, `triangulate_all` adds person slots to `Q_old` when someone enters the view
+(empty start, or a second person) but not to the `frames_since_last_seen` staleness counter, so `sort_people_sports2d`
+crashed with a broadcast error. `sort_people_sports2d` now pads the counter with zeros (in-memory only, no effect on frames).
+
 The pipeline changes the working directory to `processed/` before running (Pose2Sim relies on `os.getcwd()` for file discovery) and restores it afterwards via try/finally.
 
 ## Validation
